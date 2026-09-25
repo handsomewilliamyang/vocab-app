@@ -312,31 +312,26 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# 💡 絕對強制內嵌單字的動態基礎例句產生器（利用 random.choice 確保每次換題句子必變）
+# 💡 絕對隨機且多變的動態基礎例句產生器（每次呼叫保證從多個真實英文句型中隨機挑選）
 def get_guaranteed_basic_sentence(word):
     sentence_pool = [
+        f"Many people use the word {word} in their daily conversations.",
+        f"It is essential to understand how {word} works in a sentence.",
+        f"The teacher asked us to write a paragraph using {word}.",
+        f"Can you give me an example of {word} being used correctly?",
+        f"Students should practice {word} regularly to improve their English.",
         f"We can easily find a {word} in our daily life.",
-        f"It is very important for us to know about {word}.",
-        f"She told me a great story about {word}.",
-        f"Everyone in the classroom is talking about {word}.",
-        f"Do you have any questions regarding {word}?"
+        f"It is very important for us to know about {word}."
     ]
-    # 如果單字本身太長或動詞性較強，提供動詞專用庫
-    verb_pool = [
-        f"People often try to {word} when they face challenges.",
-        f"Teachers always encourage students to {word} carefully.",
-        f"You need to {word} before making any decisions."
-    ]
-    # 隨機挑選一句，並確保字串內絕對包含該單字本身
-    chosen = random.choice(sentence_pool)
-    return chosen
+    return random.choice(sentence_pool)
 
-# 💡 絕對強制內嵌單字的動態進階英文定義產生器
+# 💡 絕對隨機且多變的動態進階英文定義產生器
 def get_guaranteed_advanced_definition(word):
     definition_pool = [
         f"An essential English concept directly related to the term {word}.",
         f"A common context where speakers talk about {word}.",
-        f"A meaningful expression used to describe {word} in sentences."
+        f"A meaningful expression used to describe {word} in sentences.",
+        f"An important vocabulary item in English representing {word}."
     ]
     return random.choice(definition_pool)
 
@@ -665,12 +660,33 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
-            if "game_word_target" not in st.session_state:
-                st.session_state.game_word_target = df_vocab_game.sample(1).iloc[0]
 
-            target = st.session_state.game_word_target
-            word_str = str(target['word'])
-            
+            # 💡 嚴格狀態機鎖定：確保每次抽題或換題時，題目物件與隨機動態例句被寫入 session_state，點擊換題時才會確實改變
+            if "current_game_target_word" not in st.session_state or st.session_state.get("current_game_unit_scope") != selected_game_unit:
+                st.session_state.current_game_unit_scope = selected_game_unit
+                sampled_row = df_vocab_game.sample(1).iloc[0]
+                w_str = str(sampled_row['word'])
+                
+                db_basic = clean_sentence(sampled_row.get('basic_sentence', ''))
+                if not db_basic or w_str.lower() not in db_basic.lower() or any(bad in db_basic for bad in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
+                    active_basic = get_guaranteed_basic_sentence(w_str)
+                else:
+                    active_basic = db_basic
+
+                db_adv = clean_sentence(sampled_row.get('advanced_sentence', ''))
+                if not db_adv or w_str.lower() not in db_adv.lower() or any(bad in db_adv for bad in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
+                    active_adv = get_guaranteed_advanced_definition(w_str)
+                else:
+                    masked = re.sub(re.escape(w_str), 'the blank word', db_adv, flags=re.IGNORECASE)
+                    active_adv = f"A vocabulary term used in context: {masked}"
+
+                st.session_state.current_game_target_word = w_str
+                st.session_state.current_game_row = sampled_row
+                st.session_state.current_active_basic = active_basic
+                st.session_state.current_active_adv = active_adv
+
+            target = st.session_state.current_game_row
+            word_str = st.session_state.current_game_target_word
             hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
             
             with st.container(border=True):
@@ -678,15 +694,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 # 模式一：經典單字挑戰 (例句挖空 + 單字發音)
                 if "經典" in game_mode:
-                    db_basic = clean_sentence(target.get('basic_sentence', ''))
-                    
-                    # 💡 嚴格防護：若資料庫例句為空、或含有舊的罐頭字眼、或例句內根本沒包含該單字，強制重新即時動態生成保證正確
-                    if not db_basic or word_str.lower() not in db_basic.lower() or any(bad in db_basic for bad in ["example sentence using", "Please write down", "We use the word"]):
-                        basic_sent_game = get_guaranteed_basic_sentence(word_str)
-                    else:
-                        basic_sent_game = db_basic
-
-                    masked_basic_game = re.sub(re.escape(word_str), '______', basic_sent_game, flags=re.IGNORECASE)
+                    masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.current_active_basic, flags=re.IGNORECASE)
                     st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
@@ -702,24 +710,14 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
                     st.markdown("### 🎧 Listen to the English definition and spell the word!")
-                    
-                    db_adv = clean_sentence(target.get('advanced_sentence', ''))
-                    
-                    # 💡 嚴格防護：進階版同步採用絕對不重複的動態英文語境提示
-                    if not db_adv or word_str.lower() not in db_adv.lower() or any(bad in db_adv for bad in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
-                        eng_def = get_guaranteed_advanced_definition(word_str)
-                    else:
-                        masked = re.sub(re.escape(word_str), 'the blank word', db_adv, flags=re.IGNORECASE)
-                        eng_def = f"A vocabulary term used in context: {masked}"
-                    
-                    st.markdown(f"**📌 Definition：** {eng_def}")
+                    st.markdown(f"**📌 Definition：** {st.session_state.current_active_adv}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
                         st.markdown("<div style='margin-top: 15px;'>**🔊 發音提示：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            audio_bytes = generate_audio_bytes(eng_def, lang='en')
+                            audio_bytes = generate_audio_bytes(st.session_state.current_active_adv, lang='en')
                             st.audio(audio_bytes, format="audio/mp3")
                         except Exception:
                             st.warning("發音載入失敗，請確認網路連線。")
@@ -739,7 +737,10 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if user_guess == word_str.lower():
                     st.success(f"🎉 答對了！太棒了！單字就是 **{word_str}**")
                     time.sleep(0.8)
-                    st.session_state.game_word_target = df_vocab_game.sample(1).iloc[0]
+                    # 答對時強制洗掉當前題目狀態，以便下次重新抽新題
+                    for key in ['current_game_target_word', 'current_game_row', 'current_active_basic', 'current_active_adv']:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     st.rerun()
                 else:
                     st.session_state.game_errors += 1
@@ -748,5 +749,8 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     st.rerun()
 
             if skip_question:
-                st.session_state.game_word_target = df_vocab_game.sample(1).iloc[0]
+                # 換一題時強制洗掉當前題目狀態，強迫重新抽選新單字與新隨機句型
+                for key in ['current_game_target_word', 'current_game_row', 'current_active_basic', 'current_active_adv']:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.rerun()
