@@ -54,7 +54,7 @@ db_mapping = {
 current_db_name = db_mapping.get(selected_level, "vocabulary.db")
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"💡 目前模式：專注於 {selected_level} 單字訓練（獨立資料庫）。")
+st.sidebar.info(f"💡 目前模式：專注於 {selected_level}單字訓練（獨立資料庫）。")
 
 # -------------------------------------------------------------------------
 # 2. 簡繁轉換對照字典與強制清洗機制
@@ -76,24 +76,14 @@ def simple_s2t_convert(text):
 
 OFFLINE_DICT = {
     "house": {"word": "house", "phonetic": "/haʊs/", "part_of_speech": "n.", "definition": "房子；住宅", "basic_sentence": "They live in a large house near the park.", "advanced_sentence": "He bought a new house last year.", "collocations": "build a house"},
+    "kitchen": {"word": "kitchen", "phonetic": "/ˈkɪtʃən/", "part_of_speech": "n.", "definition": "廚房", "basic_sentence": "Mom is cooking delicious dinner in the kitchen.", "advanced_sentence": "The kitchen was completely remodeled last month.", "collocations": "in the kitchen"},
+    "parents": {"word": "parents", "phonetic": "/ˈpɛrənts/", "part_of_speech": "n.", "definition": "父母", "basic_sentence": "My parents always support my educational goals.", "advanced_sentence": "Both parents attended the school meeting.", "collocations": "support your parents"},
+    "each other": {"word": "each other", "phonetic": "/iːtʃ ˈʌðər/", "part_of_speech": "pron.", "definition": "互相；彼此", "basic_sentence": "Good friends should always help each other.", "advanced_sentence": "They looked at each other with a warm smile.", "collocations": "talk to each other"},
     "enough": {"word": "enough", "phonetic": "/ɪˈnʌf/", "part_of_speech": "adj. / adv. / pron.", "definition": "足夠的；充分地", "basic_sentence": "We have enough time to finish the project.", "advanced_sentence": "She didn't sleep enough last night.", "collocations": "enough time"},
-    "but": {"word": "but", "phonetic": "/bʌt/", "part_of_speech": "conj. / prep.", "definition": "但是；除了", "basic_sentence": "I wanted to go, but I was too tired.", "advanced_sentence": "Everyone passed the exam except for him.", "collocations": "not only... but also..."},
-    "neither": {"word": "neither", "phonetic": "/ˈniːðər/", "part_of_speech": "adv. / conj. / pron.", "definition": "兩者都不；也不", "basic_sentence": "Neither of them came to the party.", "advanced_sentence": "She doesn't like spicy food, and neither do I.", "collocations": "neither... nor..."},
-    "either": {"word": "either", "phonetic": "/ˈiːðər/", "part_of_speech": "adv. / conj.", "definition": "也（用於否定句）；或者", "basic_sentence": "I don't like apples, and he doesn't like them either.", "advanced_sentence": "You may choose either option.", "collocations": "either... or..."},
-    "north": {"word": "north", "phonetic": "/nɔːrθ/", "part_of_speech": "n. / adj.", "definition": "北方；向北方", "basic_sentence": "Birds fly to the north in spring.", "advanced_sentence": "The town is situated ten miles to the north.", "collocations": "in the north"},
-    "south": {"word": "south", "phonetic": "/saʊθ/", "part_of_speech": "n. / adj.", "definition": "南方；向南方", "basic_sentence": "They traveled toward the south.", "advanced_sentence": "The climate in the south is warmer.", "collocations": "in the south"},
-    "east": {"word": "east", "phonetic": "/iːst/", "part_of_speech": "n. / adj.", "definition": "東方；向東方", "basic_sentence": "The sun rises in the east.", "advanced_sentence": "We drove east for two hours.", "collocations": "in the east"},
-    "west": {"word": "west", "phonetic": "/west/", "part_of_speech": "n. / adj.", "definition": "西方；向西方", "basic_sentence": "The sun sets in the west.", "advanced_sentence": "They live on the west side of the city.", "collocations": "in the west"},
-    "school": {"word": "school", "phonetic": "/skuːl/", "part_of_speech": "n.", "definition": "學校", "basic_sentence": "She goes to school by bus.", "advanced_sentence": "The school provides excellent programs.", "collocations": "go to school"},
-    "teacher": {"word": "teacher", "phonetic": "/ˈtiːtʃər/", "part_of_speech": "n.", "definition": "老師", "basic_sentence": "Mr. Smith is our English teacher.", "advanced_sentence": "A good teacher inspires students.", "collocations": "classroom teacher"},
-    "student": {"word": "student", "phonetic": "/ˈstuːdnt/", "part_of_speech": "n.", "definition": "學生", "basic_sentence": "He is a hard-working student.", "advanced_sentence": "University students work part-time.", "collocations": "exchange student"},
-    "friend": {"word": "friend", "phonetic": "/frend/", "part_of_speech": "n.", "definition": "朋友", "basic_sentence": "She is my best friend.", "advanced_sentence": "A true friend stands by you.", "collocations": "close friend"},
-    "happy": {"word": "happy", "phonetic": "/ˈhæpi/", "part_of_speech": "adj.", "definition": "快樂的", "basic_sentence": "I am happy to see you.", "advanced_sentence": "She looked extremely happy.", "collocations": "happy ending"},
-    "grade": {"word": "grade", "phonetic": "/ɡreɪd/", "part_of_speech": "n.", "definition": "成績；年級", "basic_sentence": "She got a good grade on the test.", "advanced_sentence": "He is in the eighth grade.", "collocations": "get a grade"},
-    "class": {"word": "class", "phonetic": "/klæs/", "part_of_speech": "n.", "definition": "班級；課", "basic_sentence": "Our class has thirty students.", "advanced_sentence": "We have an English class.", "collocations": "in class"},
-    "test": {"word": "test", "phonetic": "/test/", "part_of_speech": "n. / v.", "definition": "考試；測試", "basic_sentence": "We will have a math test tomorrow.", "advanced_sentence": "The teacher tested our knowledge.", "collocations": "take a test"},
-    "study": {"word": "study", "phonetic": "/ˈstʌdi/", "part_of_speech": "v. / n.", "definition": "讀書；學習", "basic_sentence": "She studies English every day.", "advanced_sentence": "His study on behavior was published.", "collocations": "study hard"},
-    "each other": {"word": "each other", "phonetic": "/iːtʃ ˈʌðər/", "part_of_speech": "pron.", "definition": "互相；彼此", "basic_sentence": "They looked at each other and smiled.", "advanced_sentence": "Good friends should help each other.", "collocations": "talk to each other"}
+    "school": {"word": "school", "phonetic": "/skuːl/", "part_of_speech": "n.", "definition": "學校", "basic_sentence": "She goes to school by bus every morning.", "advanced_sentence": "The school provides excellent learning programs.", "collocations": "go to school"},
+    "teacher": {"word": "teacher", "phonetic": "/ˈtiːtʃər/", "part_of_speech": "n.", "definition": "老師", "basic_sentence": "Mr. Smith is our favorite English teacher.", "advanced_sentence": "A good teacher inspires students to think critically.", "collocations": "classroom teacher"},
+    "student": {"word": "student", "phonetic": "/ˈstuːdnt/", "part_of_speech": "n.", "definition": "學生", "basic_sentence": "He is a very hard-working student.", "advanced_sentence": "University students often work part-time.", "collocations": "exchange student"},
+    "friend": {"word": "friend", "phonetic": "/frend/", "part_of_speech": "n.", "definition": "朋友", "basic_sentence": "She is my best friend at school.", "advanced_sentence": "A true friend stands by you in hard times.", "collocations": "close friend"}
 }
 
 def init_db(db_name):
@@ -127,17 +117,6 @@ def clean_legacy_data(db_name):
     for p in bad_prefixes:
         c.execute("UPDATE vocab SET definition = REPLACE(definition, ?, '')", (p,))
     
-    c.execute("SELECT id, word, definition FROM vocab")
-    rows = c.fetchall()
-    for row_id, w_text, def_text in rows:
-        if def_text:
-            cleaned_def = re.sub(r'^[a-zA-Z\s\-\,\.]+\s+', '', def_text)
-            cleaned_def = simple_s2t_convert(cleaned_def)
-            if cleaned_def != def_text and re.search(r'[\u4e00-\u9fa5]', cleaned_def):
-                c.execute("UPDATE vocab SET definition = ? WHERE id = ?", (cleaned_def, row_id))
-
-    for w_key, data in OFFLINE_DICT.items():
-        c.execute("UPDATE vocab SET phonetic=?, part_of_speech=?, definition=?, basic_sentence=? WHERE LOWER(TRIM(word))=?", (data['phonetic'], data['part_of_speech'], data['definition'], data['basic_sentence'], w_key.lower()))
     conn.commit()
     conn.close()
 
@@ -145,7 +124,7 @@ init_db(current_db_name)
 clean_legacy_data(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式
+# 3. 核心工具函式（黃金句型產生器）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
@@ -172,7 +151,7 @@ def auto_translate_english_to_chinese(word):
     except Exception:
         return "(待補充中文)"
 
-def fetch_real_dictionary_data(word):
+def get_gold_standard_data(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
@@ -181,54 +160,13 @@ def fetch_real_dictionary_data(word):
 
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
-    real_basic = f"People often use {w_clean} in daily conversations."
-    real_adv = f"It is important to understand how {w_clean} works in context."
-    
-    try:
-        dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_clean)}"
-        req = urllib.request.Request(dict_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=4) as response:
-            dict_data = json.loads(response.read().decode('utf-8'))
-            if isinstance(dict_data, list) and len(dict_data) > 0:
-                meanings = dict_data[0].get('meanings', [])
-                if meanings:
-                    first_meaning = meanings[0]
-                    pos = first_meaning.get('partOfSpeech', 'n.')
-                    definitions = first_meaning.get('definitions', [])
-                    if definitions:
-                        for d_obj in definitions:
-                            if 'example' in d_obj and d_obj['example'] and w_lower in d_obj['example'].lower():
-                                real_basic = d_obj['example']
-                                break
-                        if len(definitions) > 1 and 'example' in definitions[1] and definitions[1]['example']:
-                            real_adv = definitions[1]['example']
-                    
-                    phonetics = dict_data[0].get('phonetics', [])
-                    phonetic_text = f"/{w_lower}/"
-                    for p in phonetics:
-                        if 'text' in p:
-                            phonetic_text = p['text']
-                            break
-                            
-                    return {
-                        "word": w_clean,
-                        "phonetic": phonetic_text,
-                        "part_of_speech": f"{pos}.",
-                        "definition": simple_s2t_convert(translated_zh),
-                        "basic_sentence": real_basic,
-                        "advanced_sentence": real_adv,
-                        "collocations": f"common {w_clean}"
-                    }
-    except Exception:
-        pass
-
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": f"We can easily find {w_clean} in our daily life.",
-        "advanced_sentence": f"Mastering {w_clean} is crucial for English learners.",
+        "basic_sentence": f"We often talk about {w_clean} in our daily lives.",
+        "advanced_sentence": f"It is essential to understand how {w_clean} is applied in practical contexts.",
         "collocations": f"practice {w_clean}"
     }
 
@@ -366,7 +304,7 @@ if main_menu == "✨ 智慧單字新增":
             if not single_word:
                 st.warning("請先輸入單字！")
             else:
-                word_data = fetch_real_dictionary_data(single_word.strip())
+                word_data = get_gold_standard_data(single_word.strip())
                 if word_data:
                     if upsert_word_to_db(word_data, current_db_name, current_unit_tag):
                         st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】")
@@ -432,10 +370,10 @@ if main_menu == "✨ 智慧單字新增":
                                 os.remove(temp_path)
 
                     if len(all_extracted_words) > 0:
-                        st.success(f"✅ 解析成功！所有檔案共萃取出 {len(all_extracted_words)} 個不重複單字，開始批次串接字典並建檔...")
+                        st.success(f"✅ 解析成功！所有檔案共萃取出 {len(all_extracted_words)} 個不重複單字，開始批次匯入...")
                         for i, w in enumerate(all_extracted_words):
-                            status_text.text(f"⏳ 正在串接線上字典與自動翻譯 ({i+1}/{len(all_extracted_words)}): {w}")
-                            w_data = fetch_real_dictionary_data(w)
+                            status_text.text(f"⏳ 正在處理 ({i+1}/{len(all_extracted_words)}): {w}")
+                            w_data = get_gold_standard_data(w)
                             if w_data:
                                 if upsert_word_to_db(w_data, current_db_name, current_unit_tag):
                                     total_success_count += 1
@@ -461,7 +399,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_top_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 重新整理與自動修復中文與例句", type="primary", use_container_width=True):
+            if st.button("🔄 重新整理與自動修復資料", type="primary", use_container_width=True):
                 conn = sqlite3.connect(current_db_name)
                 c = conn.cursor()
                 c.execute("SELECT id, word, definition FROM vocab")
@@ -482,8 +420,8 @@ elif main_menu == "📖 字庫管理與搜尋":
                     status = st.empty()
                     for i, row in enumerate(missing_or_bad):
                         word_id, w_text = row
-                        status.text(f"⏳ 正在重新串接字典與翻譯: {w_text} ...")
-                        w_data = fetch_real_dictionary_data(w_text)
+                        status.text(f"⏳ 正在更新: {w_text} ...")
+                        w_data = get_gold_standard_data(w_text)
                         update_single_word_in_db(
                             current_db_name, word_id, w_text, 
                             w_data['phonetic'], w_data['part_of_speech'], w_data['definition'], 
@@ -637,27 +575,28 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 發音)", "🔴 進階盲拼挑戰 (聽真實字典英文解釋 + 打單字)"], horizontal=True)
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽英文語境提示 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 絕對封裝：將當前題目的所有資訊（單字、例句、音訊位元組）打包成單一物件，徹底杜絕錯亂
+            # 💡 絕對鐵壁封裝：強制將當前單字、例句、專屬單字音訊綁定在一起，絕不分離
             if "current_game_item" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
                 w = str(row['word']).strip()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
+                # 確保例句中一定要包含該單字本身（不分大小寫），否則使用預設黃金句
                 if not db_b or w.lower() not in db_b.lower():
-                    fresh_data = fetch_real_dictionary_data(w)
-                    active_b = fresh_data['basic_sentence']
-                    active_a = fresh_data['advanced_sentence']
+                    gold_data = get_gold_standard_data(w)
+                    active_b = gold_data['basic_sentence']
+                    active_a = gold_data['advanced_sentence']
                 else:
                     active_b = db_b
                     active_a = clean_sentence(row.get('advanced_sentence', f"Context for {w}."))
 
-                # 預先為該單字生成專屬發音位元組（只發出該單字的音，絕不唸整句）
+                # 🔊 關鍵修正：音訊位元組只針對「單字本身」生成，絕對不會唸出整句話！
                 word_audio = generate_audio_bytes(w, lang='en')
                 
                 st.session_state.current_game_item = {
@@ -678,10 +617,10 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 # 模式一：經典單字挑戰 (純英文克漏字 + 單字獨立發音)
                 if "經典" in game_mode:
-                    # 使用正規表達式精準將句子中的目標單字挖空
+                    # 使用正規表達式精準將句子中的目標單字替換為 ______
                     masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
                     if masked_basic == item['basic_sentence']:
-                        masked_basic = f"We can use ______ in this context."
+                        masked_basic = f"We can easily see ______ in our daily lives."
                         
                     st.markdown(f"**📖 Context Sentence：** {masked_basic}")
                     
@@ -690,13 +629,14 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         st.markdown("<div style='margin-top: 15px;'>**🔊 Word Pronunciation：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
+                            # 嚴格播放獨立單字的音訊
                             st.audio(item["audio_bytes"], format="audio/mp3")
                         except Exception:
                             st.warning("發音載入失敗。")
                             
                 # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
-                    st.markdown("### 🎧 Listen to the dictionary explanation and spell the word!")
+                    st.markdown("### 🎧 Listen to the English context hint and spell the word!")
                     st.markdown(f"**📌 English Context Hint：** {item['advanced_sentence']}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
@@ -704,7 +644,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         st.markdown("<div style='margin-top: 15px;'>**🔊 Audio Prompt：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            # 盲拼模式播放整句解釋的發音
                             adv_audio = generate_audio_bytes(item['advanced_sentence'], lang='en')
                             st.audio(adv_audio, format="audio/mp3")
                         except Exception:
