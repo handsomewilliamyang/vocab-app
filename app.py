@@ -145,7 +145,7 @@ init_db(current_db_name)
 clean_legacy_data(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式（串接真實字典 API 與自然例句）
+# 3. 核心工具函式
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
@@ -181,9 +181,8 @@ def fetch_real_dictionary_data(word):
 
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
-    # 💡 利用開源線上字典 API 抓取真實英文例句
-    real_basic = f"We can see {w_clean} used in everyday communication."
-    real_adv = f"It is essential to understand how {w_clean} functions in context."
+    real_basic = f"People often use {w_clean} in daily conversations."
+    real_adv = f"It is important to understand how {w_clean} works in context."
     
     try:
         dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_clean)}"
@@ -198,7 +197,7 @@ def fetch_real_dictionary_data(word):
                     definitions = first_meaning.get('definitions', [])
                     if definitions:
                         for d_obj in definitions:
-                            if 'example' in d_obj and d_obj['example']:
+                            if 'example' in d_obj and d_obj['example'] and w_lower in d_obj['example'].lower():
                                 real_basic = d_obj['example']
                                 break
                         if len(definitions) > 1 and 'example' in definitions[1] and definitions[1]['example']:
@@ -228,8 +227,8 @@ def fetch_real_dictionary_data(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": f"They often talk about {w_clean} in daily life.",
-        "advanced_sentence": f"Understanding {w_clean} is very helpful for learners.",
+        "basic_sentence": f"We can easily find {w_clean} in our daily life.",
+        "advanced_sentence": f"Mastering {w_clean} is crucial for English learners.",
         "collocations": f"practice {w_clean}"
     }
 
@@ -638,19 +637,18 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (真實字典克漏字 + 發音)", "🔴 進階盲拼挑戰 (聽真實字典英文解釋 + 打單字)"], horizontal=True)
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 發音)", "🔴 進階盲拼挑戰 (聽真實字典英文解釋 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 絕對嚴格鎖定：確保每次抽出的當前題目、真實字典例句、單字完全對應
-            if "game_word_lock" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
+            # 💡 絕對封裝：將當前題目的所有資訊（單字、例句、音訊位元組）打包成單一物件，徹底杜絕錯亂
+            if "current_game_item" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
                 w = str(row['word']).strip()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                # 如果資料庫裡剛好沒有有效例句，現場即時呼叫真實字典補充
                 if not db_b or w.lower() not in db_b.lower():
                     fresh_data = fetch_real_dictionary_data(w)
                     active_b = fresh_data['basic_sentence']
@@ -659,52 +657,58 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     active_b = db_b
                     active_a = clean_sentence(row.get('advanced_sentence', f"Context for {w}."))
 
-                st.session_state.game_word_lock = w
-                st.session_state.game_row_lock = row
-                st.session_state.game_basic_lock = active_b
-                st.session_state.game_adv_lock = active_a
+                # 預先為該單字生成專屬發音位元組（只發出該單字的音，絕不唸整句）
+                word_audio = generate_audio_bytes(w, lang='en')
+                
+                st.session_state.current_game_item = {
+                    "word": w,
+                    "definition": row.get('definition', ''),
+                    "unit_tag": row.get('unit_tag', ''),
+                    "basic_sentence": active_b,
+                    "advanced_sentence": active_a,
+                    "audio_bytes": word_audio
+                }
 
-            target = st.session_state.game_row_lock
-            word_str = st.session_state.game_word_lock
+            item = st.session_state.current_game_item
+            word_str = item["word"]
             hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
             
             with st.container(border=True):
-                st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
+                st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {item['unit_tag']}")
                 
-                # 模式一：經典單字挑戰 (真實字典克漏字 + 發音)
+                # 模式一：經典單字挑戰 (純英文克漏字 + 單字獨立發音)
                 if "經典" in game_mode:
-                    # 使用正規表達式不分大小寫將句子中的單字挖空
-                    masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.game_basic_lock, flags=re.IGNORECASE)
-                    if masked_basic_game == st.session_state.game_basic_lock:
-                        # 若句子剛好沒直接包含該字串（例如時態變化），則直接顯示該句並在下方提示
-                        masked_basic_game = f"{st.session_state.game_basic_lock} (Target word meaning: {target.get('definition', '')})"
+                    # 使用正規表達式精準將句子中的目標單字挖空
+                    masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
+                    if masked_basic == item['basic_sentence']:
+                        masked_basic = f"We can use ______ in this context."
                         
-                    st.markdown(f"**📖 Dictionary Context Sentence：** {masked_basic_game}")
+                    st.markdown(f"**📖 Context Sentence：** {masked_basic}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 Pronunciation：**</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='margin-top: 15px;'>**🔊 Word Pronunciation：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            audio_bytes = generate_audio_bytes(word_str, lang='en')
-                            st.audio(audio_bytes, format="audio/mp3")
+                            st.audio(item["audio_bytes"], format="audio/mp3")
                         except Exception:
-                            st.warning("發音載入失敗，請確認網路連線。")
+                            st.warning("發音載入失敗。")
                             
-                # 模式二：進階盲拼挑戰 (聽真實字典英文解釋 + 打單字)
+                # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
-                    st.markdown("### 🎧 Listen to the dictionary definition and spell the word!")
-                    st.markdown(f"**📌 Dictionary Explanation：** {st.session_state.game_adv_lock}")
+                    st.markdown("### 🎧 Listen to the dictionary explanation and spell the word!")
+                    st.markdown(f"**📌 English Context Hint：** {item['advanced_sentence']}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
                         st.markdown("<div style='margin-top: 15px;'>**🔊 Audio Prompt：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            audio_bytes = generate_audio_bytes(st.session_state.game_adv_lock, lang='en')
-                            st.audio(audio_bytes, format="audio/mp3")
+                            # 盲拼模式播放整句解釋的發音
+                            adv_audio = generate_audio_bytes(item['advanced_sentence'], lang='en')
+                            st.audio(adv_audio, format="audio/mp3")
                         except Exception:
-                            st.warning("發音載入失敗，請確認網路連線。")
+                            st.warning("發音載入失敗。")
 
                 st.markdown(f"**🔤 Spelling Hint：** `{hint_masked}` &nbsp;&nbsp; (Length: {len(word_str)} letters)")
 
@@ -720,16 +724,14 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if user_guess == word_str.lower():
                     st.success(f"🎉 Correct! Excellent job! The word is **{word_str}**")
                     time.sleep(0.8)
-                    for k in ['game_word_lock', 'game_row_lock', 'game_basic_lock', 'game_adv_lock']:
-                        if k in st.session_state:
-                            del st.session_state[k]
+                    if "current_game_item" in st.session_state:
+                        del st.session_state["current_game_item"]
                     st.rerun()
                 else:
                     st.session_state.game_errors += 1
                     st.error("❌ Incorrect! Try again, you can do it!")
 
             if skip_question:
-                for k in ['game_word_lock', 'game_row_lock', 'game_basic_lock', 'game_adv_lock']:
-                    if k in st.session_state:
-                        del st.session_state[k]
+                if "current_game_item" in st.session_state:
+                    del st.session_state["current_game_item"]
                 st.rerun()
