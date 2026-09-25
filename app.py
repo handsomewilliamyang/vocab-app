@@ -128,13 +128,14 @@ def get_word_record_data(word):
     w_lower = w_clean.lower()
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
+    # 建立時直接給予一組絕對包含該單字的標準示範例句
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": "",
-        "advanced_sentence": "",
+        "basic_sentence": f"We need to practice using {w_clean} in our daily sentences.",
+        "advanced_sentence": f"Understanding how to apply {w_clean} is crucial.",
         "collocations": f"practice {w_clean}"
     }
 
@@ -362,7 +363,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽中文定義發音 + 打單字)"], horizontal=True)
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (考卷填空克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽中文定義發音 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
@@ -373,7 +374,12 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 w = str(row['word']).strip()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                active_b = db_b if (db_b and w.lower() in db_b.lower() and "example sentence" not in db_b.lower()) else ""
+                
+                # 💡 核心保證：如果資料庫的例句不包含該單字或空白，系統立刻動態產生一組絕對百分之百包含該單字的標準例句！
+                if not db_b or w.lower() not in db_b.lower() or "example sentence" in db_b.lower():
+                    active_b = f"Students need to know how to use {w} properly in this sentence."
+                else:
+                    active_b = db_b
 
                 word_audio = generate_audio_bytes(w, lang='en')
                 
@@ -392,18 +398,17 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {item['unit_tag']}")
                 
-                # 模式一：經典單字挑戰
+                # 模式一：經典單字挑戰 (考卷填空克漏字)
                 if "經典" in game_mode:
-                    if item['basic_sentence']:
-                        masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
-                        st.markdown(f"**📖 Context Sentence：** {masked_basic}")
-                    else:
-                        st.markdown(f"**📌 中文釋義：** `{item['definition']}`")
-                        st.info("💡 提示：此單字無現成例句，請依據發音與上方中文釋義進行挑戰！")
+                    # 精準將例句中的目標單字挖空，保證字串與答案完全對應
+                    masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
+                    
+                    st.markdown(f"**📖 考卷填空題 (Context Sentence)：**")
+                    st.markdown(f"> ### {masked_basic}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 Word Pronunciation：**</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='margin-top: 15px;'>**🔊 單字發音 (Pronunciation)：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
                             st.audio(item["audio_bytes"], format="audio/mp3")
@@ -424,7 +429,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         except Exception:
                             st.warning("發音載入失敗。")
 
-                st.markdown(f"**🔤 Spelling Hint：** `{hint_masked}` &nbsp;&nbsp; (Length: {len(word_str)} letters)")
+                st.markdown(f"**🔤 拼字提示 (Spelling Hint)：** `{hint_masked}` &nbsp;&nbsp; (Length: {len(word_str)} letters)")
 
             user_guess = st.text_input("Enter your spelling answer:", key="game_input_box").strip().lower()
             
