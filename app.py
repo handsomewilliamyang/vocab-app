@@ -106,7 +106,7 @@ OFFLINE_DICT = {
     "wife": {"word": "wife", "phonetic": "/waɪf/", "part_of_speech": "n.", "definition": "妻子", "basic_sentence": "His wife is an English teacher.", "advanced_sentence": "He bought a nice gift for his wife.", "collocations": "husband and wife"},
     "aunt": {"word": "aunt", "phonetic": "/ænt/", "part_of_speech": "n.", "definition": "姑姑；阿姨；舅媽", "basic_sentence": "My aunt lives in Taipei.", "advanced_sentence": "We are going to visit my aunt this weekend.", "collocations": "my aunt"},
     "baby": {"word": "baby", "phonetic": "/ˈbeɪbi/", "part_of_speech": "n.", "definition": "嬰兒", "basic_sentence": "The baby is sleeping peacefully.", "advanced_sentence": "She takes care of her baby sister.", "collocations": "baby boy"},
-    "family": {"word": "family", "phonetic": "/ˈfæməli/", "part_of_speech": "n.", "definition": "家庭;家族", "basic_sentence": "I love my family very much.", "advanced_sentence": "They spent a wonderful weekend with their family.", "collocations": "family member"},
+    "family": {"word": "family", "phonetic": "/ˈfæməli/", "part_of_speech": "n.", "definition": "家庭；家族", "basic_sentence": "I love my family very much.", "advanced_sentence": "They spent a wonderful weekend with their family.", "collocations": "family member"},
     "housewife": {"word": "housewife", "phonetic": "/ˈhaʊswaɪf/", "part_of_speech": "n.", "definition": "家庭主婦", "basic_sentence": "Her mother is a dedicated housewife.", "advanced_sentence": "Being a housewife requires managing a busy household.", "collocations": "full-time housewife"},
     "elementary school": {"word": "elementary school", "phonetic": "/ˌelɪˈmentəri skuːl/", "part_of_speech": "n.", "definition": "國民小學", "basic_sentence": "Children go to elementary school at age six.", "advanced_sentence": "He teaches music at a local elementary school.", "collocations": "elementary school student"},
     "young": {"word": "young", "phonetic": "/jʌŋ/", "part_of_speech": "adj.", "definition": "年輕的", "basic_sentence": "She is a young and talented artist.", "advanced_sentence": "When I was young, I dreamed of traveling the world.", "collocations": "young people"},
@@ -297,8 +297,8 @@ def generate_vocab_info(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v. / adj.",
         "definition": simple_s2t_convert(translated_definition),
-        "basic_sentence": f"We should learn the word {w_clean} carefully.",
-        "advanced_sentence": f"Mastering the usage of {w_clean} is essential for students.",
+        "basic_sentence": f"Students need to practice the word {w_clean} in daily life.",
+        "advanced_sentence": f"Mastering the precise usage of {w_clean} is essential for advanced English learners.",
         "collocations": f"common {w_clean}"
     }
     return fallback_data, None
@@ -312,7 +312,7 @@ def generate_audio_bytes(text, lang='en'):
 
 @st.cache_data(show_spinner=False)
 def get_reliable_english_definition(word, advanced_sentence=""):
-    if advanced_sentence and advanced_sentence.strip() and "example sentence using" not in advanced_sentence:
+    if advanced_sentence and advanced_sentence.strip() and "example sentence using" not in advanced_sentence and "Please write down" not in advanced_sentence:
         masked = re.sub(re.escape(word), 'the blank word', advanced_sentence, flags=re.IGNORECASE)
         return f"A vocabulary term used in context: {masked}"
     return f"An important English term representing {word}."
@@ -653,14 +653,18 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
                 
-                # 模式一：經典單字挑戰 (例句挖空 + 單字發音，已拿掉中文解釋)
+                # 模式一：經典單字挑戰 (例句挖空 + 單字發音，完全拿掉中文解釋)
                 if "經典" in game_mode:
                     basic_sent_game = clean_sentence(target.get('basic_sentence', ''))
                     
-                    # 💡 智慧防護：如果資料庫裡是假例句，自動動態產生一個真實例句並挖空
-                    if not basic_sent_game or "example sentence using" in basic_sent_game:
-                        basic_sent_game = f"Please write down the target word {word_str} correctly in this sentence."
-                        
+                    # 💡 終極防護：若該單字在舊資料庫沒有例句，或包含罐頭假文字，現場量身打造完美例句！
+                    if not basic_sent_game or "example sentence using" in basic_sent_game or "Please write down" in basic_sent_game:
+                        basic_sent_game = f"It is very important for students to learn the word {word_str} correctly."
+                    
+                    # 確保例句裡一定包含該單字（不分大小寫），若沒有則自動拼裝進去，保證挖空絕對正確
+                    if word_str.lower() not in basic_sent_game.lower():
+                        basic_sent_game = f"We use the term {word_str} in our daily conversation."
+
                     masked_basic_game = re.sub(re.escape(word_str), '______', basic_sent_game, flags=re.IGNORECASE)
                     st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
                     
