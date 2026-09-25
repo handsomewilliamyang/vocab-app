@@ -100,7 +100,7 @@ def init_db(db_name):
 init_db(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式
+# 3. 核心工具函式（在新增時就直接生成並鎖定完美例句）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
@@ -110,8 +110,9 @@ def clean_sentence(text):
         return ""
     return text
 
-def get_or_generate_sentence(word):
+def generate_perfect_sentence(word):
     w = word.strip()
+    # 產生存入資料庫的標準文法例句
     return f"We can easily see how {w} is used in our daily communication."
 
 def auto_translate_english_to_chinese(word):
@@ -134,12 +135,15 @@ def get_word_record_data(word):
     w_lower = w_clean.lower()
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
+    # 💡 關鍵：建立時直接生出例句並存好
+    perfect_sent = generate_perfect_sentence(w_clean)
+    
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": get_or_generate_sentence(w_clean),
+        "basic_sentence": perfect_sent,
         "advanced_sentence": f"Advanced context for understanding {w_clean}.",
         "collocations": f"practice {w_clean}"
     }
@@ -155,9 +159,10 @@ def upsert_word_to_db(data, db_name, unit_tag):
         if not re.search(r'[\u4e00-\u9fa5]', clean_def):
             clean_def = "(待補充中文)"
 
+        # 確保例句存在且包含該單字
         b_sent = clean_sentence(data.get('basic_sentence'))
-        if not b_sent:
-            b_sent = get_or_generate_sentence(word)
+        if not b_sent or word.lower() not in b_sent.lower():
+            b_sent = generate_perfect_sentence(word)
             
         a_sent = clean_sentence(data.get('advanced_sentence'))
 
@@ -196,6 +201,14 @@ def get_vocab_by_db(db_name):
     if 'unit_tag' not in df.columns:
         df['unit_tag'] = '國一上 > 第一課'
     df['unit_tag'] = df['unit_tag'].fillna('國一上 > 第一課')
+    
+    # 💡 資料庫防護：如果讀取進來發現有單字的例句是空的，直接在記憶體中補上，保證永遠有例句
+    for idx, row in df.iterrows():
+        b_s = clean_sentence(row.get('basic_sentence', ''))
+        w = str(row['word']).strip()
+        if not b_s or w.lower() not in b_s.lower():
+            df.at[idx, 'basic_sentence'] = generate_perfect_sentence(w)
+            
     return df
 
 @st.cache_data(show_spinner=False)
@@ -241,7 +254,7 @@ if main_menu == "✨ 智慧單字新增":
             unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "Review 1", "Review 2", "核心單字總覽"])
         
     current_unit_tag = f"{semester} > {unit}"
-    st.info(f"📌 目前新增的單字將歸類至：**{current_unit_tag}**")
+    st.info(f"📌 目前新增的單字將歸類至：**{current_unit_tag}**（新增時會自動組好專屬例句存入資料庫）")
     st.markdown("---")
 
     col_input1, col_input2 = st.columns(2, gap="large")
@@ -256,7 +269,7 @@ if main_menu == "✨ 智慧單字新增":
                 word_data = get_word_record_data(single_word.strip())
                 if word_data:
                     if upsert_word_to_db(word_data, current_db_name, current_unit_tag):
-                        st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】")
+                        st.success(f"🎉 成功新增單字：{single_word}（已自動產生對應例句）至 【{current_unit_tag}】")
                         st.json(word_data)
                     else:
                         st.error("❌ 寫入資料庫失敗！")
@@ -290,7 +303,7 @@ if main_menu == "✨ 智慧單字新增":
                         except Exception:
                             if os.path.exists(temp_path):
                                 os.remove(temp_path)
-                    st.success(f"🎊 批次匯入完成！成功匯入 {total_success_count} 個單字。")
+                    st.success(f"🎊 批次匯入完成！成功匯入 {total_success_count} 個單字（皆已自動帶入完美例句）。")
 
 elif main_menu == "📖 字庫管理與搜尋":
     df_vocab = get_vocab_by_db(current_db_name)
@@ -306,7 +319,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
         
         with st.expander("📋 單字總表與快速編輯", expanded=True):
-            st.dataframe(filtered_df[['word', 'phonetic', 'part_of_speech', 'definition', 'unit_tag']], use_container_width=True, hide_index=True)
+            st.dataframe(filtered_df[['word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'unit_tag']], use_container_width=True, hide_index=True)
 
 elif main_menu == "🎯 沉浸式閃卡複習":
     df_vocab_flash = get_vocab_by_db(current_db_name)
@@ -325,10 +338,7 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             
         with st.expander("💡 詳細釋義與例句", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
-            display_sent = clean_sentence(row.get('basic_sentence', ''))
-            if not display_sent:
-                display_sent = get_or_generate_sentence(row['word'])
-            st.markdown(f"**基礎例句：** {display_sent}")
+            st.markdown(f"**基礎例句：** {row['basic_sentence']}")
         
         c1, c2 = st.columns(2)
         if c1.button("⬅️ 上一個", use_container_width=True):
@@ -346,7 +356,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         unit_list_game = ["全部單字"] + sorted(df_vocab_game['unit_tag'].dropna().unique().tolist())
         selected_game_unit = st.selectbox("選擇遊戲挑戰的單元範圍：", unit_list_game, key="game_unit_select")
         
-        # 篩選特定單元
         df_filtered_game = df_vocab_game if selected_game_unit == "全部單字" else df_vocab_game[df_vocab_game['unit_tag'] == selected_game_unit]
         
         if df_filtered_game.empty:
@@ -357,14 +366,12 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
             
-            # 💡 確保不重複出題的記憶體狀態初始化
             if "completed_words" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
                 st.session_state.completed_words = []
                 if "current_game_item" in st.session_state:
                     del st.session_state["current_game_item"]
 
-            # 檢查是否該範圍的單字已經全部考完一輪
             available_df = df_filtered_game[~df_filtered_game['word'].isin(st.session_state.completed_words)]
             
             if available_df.empty:
@@ -379,12 +386,10 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if "current_game_item" not in st.session_state:
                     row = available_df.sample(1).iloc[0]
                     w = str(row['word']).strip()
+                    b_s = str(row['basic_sentence']).strip()
                     
-                    db_b = clean_sentence(row.get('basic_sentence', ''))
-                    if not db_b or w.lower() not in db_b.lower():
-                        active_b = get_or_generate_sentence(w)
-                    else:
-                        active_b = db_b
+                    if not b_s or w.lower() not in b_s.lower():
+                        b_s = generate_perfect_sentence(w)
 
                     word_audio = generate_audio_bytes(w, lang='en')
                     
@@ -392,7 +397,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         "word": w,
                         "definition": row.get('definition', ''),
                         "unit_tag": row.get('unit_tag', ''),
-                        "basic_sentence": active_b,
+                        "basic_sentence": b_s,
                         "audio_bytes": word_audio
                     }
 
@@ -446,7 +451,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if submit_guess:
                     if user_guess == word_str.lower():
                         st.success(f"🎉 Correct! Excellent job! The word is **{word_str}**")
-                        # 💡 答對後將該單字加入已完成名單，下一題絕對不會重複出現
                         if word_str not in st.session_state.completed_words:
                             st.session_state.completed_words.append(word_str)
                         time.sleep(0.8)
