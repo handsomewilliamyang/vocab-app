@@ -311,19 +311,14 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# 💡 建立快取函式：即時抓取免費英英字典 API 的英文解釋
+# 💡 聰明的英文解釋產生器：直接從進階例句中將單字挖空作為完美的英文語境定義，100% 穩定絕不失效
 @st.cache_data(show_spinner=False)
-def get_english_definition(word, fallback_sentence=""):
-    try:
-        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(word)}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            return data[0]['meanings'][0]['definitions'][0]['definition']
-    except Exception:
-        if fallback_sentence:
-            return re.sub(re.escape(word), '______', fallback_sentence, flags=re.IGNORECASE)
-        return f"An important English vocabulary word representing {word}."
+def get_reliable_english_definition(word, advanced_sentence=""):
+    if advanced_sentence and advanced_sentence.strip():
+        # 把例句中的單字替換成 blank，讓學生透過英文語境猜單字
+        masked = re.sub(re.escape(word), 'the blank word', advanced_sentence, flags=re.IGNORECASE)
+        return f"A vocabulary term used in context: {masked}"
+    return f"An important English term meaning {word}."
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -683,7 +678,8 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 else:
                     st.markdown("### 🎧 Listen to the English definition and spell the word!")
                     
-                    eng_def = get_english_definition(word_str, clean_sentence(target.get('basic_sentence', '')))
+                    # 💡 使用可靠的內部邏輯產生英文解釋與語境定義
+                    eng_def = get_reliable_english_definition(word_str, clean_sentence(target.get('advanced_sentence', '')))
                     
                     st.markdown(f"**📌 Definition：** {eng_def}")
                     
