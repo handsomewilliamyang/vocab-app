@@ -75,6 +75,7 @@ def simple_s2t_convert(text):
     return text
 
 OFFLINE_DICT = {
+    "enough": {"word": "enough", "phonetic": "/ɪˈnʌf/", "part_of_speech": "adj. / adv. / pron.", "definition": "足夠的；充分地", "basic_sentence": "We have enough time to finish the project.", "advanced_sentence": "She didn't sleep enough last night.", "collocations": "enough time"},
     "but": {"word": "but", "phonetic": "/bʌt/", "part_of_speech": "conj. / prep.", "definition": "但是；除了", "basic_sentence": "I wanted to go, but I was too tired.", "advanced_sentence": "Everyone passed the exam except for him.", "collocations": "not only... but also..."},
     "neither": {"word": "neither", "phonetic": "/ˈniːðər/", "part_of_speech": "adv. / conj. / pron.", "definition": "兩者都不；也不", "basic_sentence": "Neither of them came to the party.", "advanced_sentence": "She doesn't like spicy food, and neither do I.", "collocations": "neither... nor..."},
     "either": {"word": "either", "phonetic": "/ˈiːðər/", "part_of_speech": "adv. / conj.", "definition": "也（用於否定句）；或者", "basic_sentence": "I don't like apples, and he doesn't like them either.", "advanced_sentence": "You may choose either option.", "collocations": "either... or..."},
@@ -169,7 +170,7 @@ def clean_legacy_data(db_name):
                 c.execute("UPDATE vocab SET definition = ? WHERE id = ?", (cleaned_def, row_id))
 
     for w_key, data in OFFLINE_DICT.items():
-        c.execute("UPDATE vocab SET phonetic=?, part_of_speech=?, definition=? WHERE LOWER(TRIM(word))=?", (data['phonetic'], data['part_of_speech'], data['definition'], w_key.lower()))
+        c.execute("UPDATE vocab SET phonetic=?, part_of_speech=?, definition=?, basic_sentence=? WHERE LOWER(TRIM(word))=?", (data['phonetic'], data['part_of_speech'], data['definition'], data['basic_sentence'], w_key.lower()))
     conn.commit()
     conn.close()
 
@@ -297,7 +298,7 @@ def generate_vocab_info(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v. / adj.",
         "definition": simple_s2t_convert(translated_definition),
-        "basic_sentence": f"Students need to practice the word {w_clean} in daily life.",
+        "basic_sentence": f"We often use the word {w_clean} in our daily conversation.",
         "advanced_sentence": f"Mastering the precise usage of {w_clean} is essential for advanced English learners.",
         "collocations": f"common {w_clean}"
     }
@@ -657,13 +658,13 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if "經典" in game_mode:
                     basic_sent_game = clean_sentence(target.get('basic_sentence', ''))
                     
-                    # 💡 終極防護：若該單字在舊資料庫沒有例句，或包含罐頭假文字，現場量身打造完美例句！
+                    # 💡 終極防護：若該單字在舊資料庫沒有例句或包含罐頭假文字，自動動態產生成立的例句
                     if not basic_sent_game or "example sentence using" in basic_sent_game or "Please write down" in basic_sent_game:
-                        basic_sent_game = f"It is very important for students to learn the word {word_str} correctly."
+                        basic_sent_game = f"We use the word {word_str} frequently in our daily life."
                     
                     # 確保例句裡一定包含該單字（不分大小寫），若沒有則自動拼裝進去，保證挖空絕對正確
                     if word_str.lower() not in basic_sent_game.lower():
-                        basic_sent_game = f"We use the term {word_str} in our daily conversation."
+                        basic_sent_game = f"Students should learn how to use {word_str} correctly in context."
 
                     masked_basic_game = re.sub(re.escape(word_str), '______', basic_sent_game, flags=re.IGNORECASE)
                     st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
