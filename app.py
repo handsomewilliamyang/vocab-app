@@ -56,7 +56,7 @@ st.sidebar.markdown("---")
 st.sidebar.info(f"💡 目前模式：專注於 {selected_level} 單字訓練（獨立資料庫）。")
 
 # -------------------------------------------------------------------------
-# 2. 簡繁轉換與黃金對應庫
+# 2. 簡繁轉換與初始化
 # -------------------------------------------------------------------------
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
@@ -72,18 +72,6 @@ def simple_s2t_convert(text):
     for s, t in S2T_DICT.items():
         text = text.replace(s, t)
     return text
-
-GOLDEN_WORD_DB = {
-    "kitchen": {"word": "kitchen", "phonetic": "/ˈkɪtʃən/", "part_of_speech": "n.", "definition": "廚房", "basic_sentence": "Mom is cooking delicious dinner in the kitchen.", "advanced_sentence": "The kitchen was completely remodeled last month."},
-    "parents": {"word": "parents", "phonetic": "/ˈpɛrənts/", "part_of_speech": "n.", "definition": "父母", "basic_sentence": "My parents always support my educational goals.", "advanced_sentence": "Both parents attended the school meeting."},
-    "each other": {"word": "each other", "phonetic": "/iːtʃ ˈʌðər/", "part_of_speech": "pron.", "definition": "互相；彼此", "basic_sentence": "Good friends should always help each other.", "advanced_sentence": "They looked at each other with a warm smile."},
-    "house": {"word": "house", "phonetic": "/haʊs/", "part_of_speech": "n.", "definition": "房子；住宅", "basic_sentence": "They live in a large house near the park.", "advanced_sentence": "He bought a new house last year."},
-    "enough": {"word": "enough", "phonetic": "/ɪˈnʌf/", "part_of_speech": "adj. / adv. / pron.", "definition": "足夠的；充分地", "basic_sentence": "We have enough time to finish the project.", "advanced_sentence": "She didn't sleep enough last night."},
-    "school": {"word": "school", "phonetic": "/skuːl/", "part_of_speech": "n.", "definition": "學校", "basic_sentence": "She goes to school by bus every morning.", "advanced_sentence": "The school provides excellent learning programs."},
-    "teacher": {"word": "teacher", "phonetic": "/ˈtiːtʃər/", "part_of_speech": "n.", "definition": "老師", "basic_sentence": "Mr. Smith is our favorite English teacher.", "advanced_sentence": "A good teacher inspires students to think critically."},
-    "student": {"word": "student", "phonetic": "/ˈstuːdnt/", "part_of_speech": "n.", "definition": "學生", "basic_sentence": "He is a very hard-working student.", "advanced_sentence": "University students often work part-time."},
-    "friend": {"word": "friend", "phonetic": "/frend/", "part_of_speech": "n.", "definition": "朋友", "basic_sentence": "She is my best friend at school.", "advanced_sentence": "A true friend stands by you in hard times."}
-}
 
 def init_db(db_name):
     conn = sqlite3.connect(db_name)
@@ -109,17 +97,7 @@ def init_db(db_name):
     conn.commit()
     conn.close()
 
-def clean_legacy_data(db_name):
-    conn = sqlite3.connect(db_name)
-    c = conn.cursor()
-    bad_prefixes = ['實用單字： ', '核心單字： ', '實用字彙： ', '核心字彙： ']
-    for p in bad_prefixes:
-        c.execute("UPDATE vocab SET definition = REPLACE(definition, ?, '')", (p,))
-    conn.commit()
-    conn.close()
-
 init_db(current_db_name)
-clean_legacy_data(current_db_name)
 
 # -------------------------------------------------------------------------
 # 3. 核心工具函式
@@ -131,10 +109,6 @@ def clean_sentence(text):
     return text.strip()
 
 def auto_translate_english_to_chinese(word):
-    w_lower = word.strip().lower()
-    if w_lower in GOLDEN_WORD_DB:
-        return GOLDEN_WORD_DB[w_lower]['definition']
-
     try:
         url = f"https://api.mymemory.translated.net/get?q={urllib.parse.quote(word)}&langpair=en|zh-TW"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -152,10 +126,6 @@ def auto_translate_english_to_chinese(word):
 def get_word_record_data(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
-    
-    if w_lower in GOLDEN_WORD_DB:
-        return GOLDEN_WORD_DB[w_lower]
-
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
     return {
@@ -163,8 +133,8 @@ def get_word_record_data(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": f"We often use {w_clean} in our daily conversations.",
-        "advanced_sentence": f"It is helpful to know how {w_clean} works in context.",
+        "basic_sentence": "",
+        "advanced_sentence": "",
         "collocations": f"practice {w_clean}"
     }
 
@@ -369,7 +339,8 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
         with st.expander("💡 詳細釋義", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
-            st.markdown(f"**基礎例句：** {clean_sentence(row['basic_sentence'])}")
+            if row.get('basic_sentence'):
+                st.markdown(f"**基礎例句：** {clean_sentence(row['basic_sentence'])}")
         
         c1, c2 = st.columns(2)
         if c1.button("⬅️ 上一個", use_container_width=True):
@@ -391,8 +362,8 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            # 🟢 完美保留雙模式選擇器
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽英文語境提示 + 打單字)"], horizontal=True)
+            # 🟢 雙模式選擇器完整保留
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽中文定義發音 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
@@ -401,19 +372,10 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
                 w = str(row['word']).strip()
-                w_lower = w.lower()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                if not db_b or w_lower not in db_b.lower() or "example sentence using" in db_b.lower():
-                    if w_lower in GOLDEN_WORD_DB:
-                        active_b = GOLDEN_WORD_DB[w_lower]['basic_sentence']
-                        active_a = GOLDEN_WORD_DB[w_lower]['advanced_sentence']
-                    else:
-                        active_b = f"We often use {w} in our daily conversations."
-                        active_a = f"Advanced context for understanding {w}."
-                else:
-                    active_b = db_b
-                    active_a = clean_sentence(row.get('advanced_sentence', f"Advanced context for {w}."))
+                # 獨立確保：若有合法例句就用，沒有就留空，絕不塞爛句子
+                active_b = db_b if (db_b and w.lower() in db_b.lower() and "example sentence" not in db_b.lower()) else ""
 
                 word_audio = generate_audio_bytes(w, lang='en')
                 
@@ -422,7 +384,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     "definition": row.get('definition', ''),
                     "unit_tag": row.get('unit_tag', ''),
                     "basic_sentence": active_b,
-                    "advanced_sentence": active_a,
                     "audio_bytes": word_audio
                 }
 
@@ -435,11 +396,11 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 # 模式一：經典單字挑戰
                 if "經典" in game_mode:
-                    masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
-                    if masked_basic == item['basic_sentence']:
-                        masked_basic = f"We can easily see ______ in our daily lives."
-                        
-                    st.markdown(f"**📖 Context Sentence：** {masked_basic}")
+                    if item['basic_sentence']:
+                        masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
+                        st.markdown(f"**📖 Context Sentence：** {masked_basic}")
+                    else:
+                        st.markdown(f"**📌 中文釋義：** `{item['definition']}` (此單字無現成例句，請依發音與定義挑戰)")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
@@ -452,16 +413,15 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                             
                 # 模式二：進階盲拼挑戰
                 else:
-                    st.markdown("### 🎧 Listen to the English context hint and spell the word!")
-                    st.markdown(f"**📌 English Context Hint：** {item['advanced_sentence']}")
+                    st.markdown("### 🎧 Listen to the pronunciation and spell the word based on its definition!")
+                    st.markdown(f"**📌 中文釋義提示：** `{item['definition']}`")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
                         st.markdown("<div style='margin-top: 15px;'>**🔊 Audio Prompt：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            adv_audio = generate_audio_bytes(item['advanced_sentence'], lang='en')
-                            st.audio(adv_audio, format="audio/mp3")
+                            st.audio(item["audio_bytes"], format="audio/mp3")
                         except Exception:
                             st.warning("發音載入失敗。")
 
