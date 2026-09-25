@@ -264,8 +264,8 @@ def generate_vocab_info(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v. / adj.",
         "definition": simple_s2t_convert(translated_definition),
-        "basic_sentence": f"We often talk about {w_clean} in our daily life.",
-        "advanced_sentence": f"Understanding the concept of {w_clean} is very important.",
+        "basic_sentence": f"It is widely known that {w_clean} plays a significant role in our daily studies.",
+        "advanced_sentence": f"Students should carefully examine how {w_clean} is applied in practical contexts.",
         "collocations": f"common {w_clean}"
     }
     return fallback_data, None
@@ -277,12 +277,24 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# 💡 絕對精準的單字動態包裝產生器（保證例句內一定含有該單字本身）
-def get_safe_game_sentence(word, definition):
-    return f"In our daily life, people often use the word '{word}', which means '{definition}'."
+# 💡 純英文的自然克漏字句型產生器（完全無中文，文法流暢自然）
+def get_pure_english_sentence(word):
+    sentence_pool = [
+        f"Many experts suggest that we should pay more attention to {word} in modern society.",
+        f"It is quite fascinating to observe how {word} influences our daily routine.",
+        f"Teachers always encourage students to practice using {word} in proper contexts.",
+        f"Everyone agrees that understanding {word} is essential for language learners.",
+        f"The main purpose of this exercise is to help you master {word} effectively."
+    ]
+    return random.choice(sentence_pool)
 
-def get_safe_advanced_definition(word, definition):
-    return f"English definition context for '{word}' (meaning: {definition})."
+def get_pure_english_advanced_definition(word):
+    definition_pool = [
+        f"An important English vocabulary concept directly associated with {word}.",
+        f"A contextual framework used by native speakers when discussing {word}.",
+        f"A standard linguistic expression designed to illustrate the meaning of {word}."
+    ]
+    return random.choice(definition_pool)
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -605,27 +617,26 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (例句挖空 + 單字發音)", "🔴 進階盲拼挑戰 (聽英文解釋發音 + 打單字)"], horizontal=True)
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽英文語境提示 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 絕對嚴格鎖定：確保每次抽出的當前題目、例句、拼字提示皆屬於同一個單字物件
+            # 💡 絕對嚴格鎖定：確保每次抽出的當前題目與純英文例句完全對應
             if "game_word_lock" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
                 w = str(row['word']).strip()
-                d = str(row['definition']).strip()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                if not db_b or w.lower() not in db_b.lower() or any(b in db_b for b in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
-                    active_b = get_safe_game_sentence(w, d)
+                if not db_b or w.lower() not in db_b.lower() or any(b in db_b for b in ["example sentence using", "Please write down", "We use the word", "the blank word", "means"]):
+                    active_b = get_pure_english_sentence(w)
                 else:
                     active_b = db_b
 
                 db_a = clean_sentence(row.get('advanced_sentence', ''))
-                if not db_a or w.lower() not in db_a.lower() or any(b in db_a for b in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
-                    active_a = get_safe_advanced_definition(w, d)
+                if not db_a or w.lower() not in db_a.lower() or any(b in db_a for b in ["example sentence using", "Please write down", "We use the word", "the blank word", "means"]):
+                    active_a = get_pure_english_advanced_definition(w)
                 else:
                     masked = re.sub(re.escape(w), 'the blank word', db_a, flags=re.IGNORECASE)
                     active_a = f"A vocabulary term used in context: {masked}"
@@ -641,16 +652,15 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
-                st.markdown(f"**📌 中文釋義提示：** `{target.get('definition', '')}`")
                 
-                # 模式一：經典單字挑戰 (例句挖空 + 單字發音)
+                # 模式一：經典單字挑戰 (純英文克漏字 + 單字發音，完全無中文)
                 if "經典" in game_mode:
                     masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.game_basic_lock, flags=re.IGNORECASE)
-                    st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
+                    st.markdown(f"**📖 Context Clue Sentence：** {masked_basic_game}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 單字發音：**</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='margin-top: 15px;'>**🔊 Pronunciation：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
                             audio_bytes = generate_audio_bytes(word_str, lang='en')
@@ -661,11 +671,11 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
                     st.markdown("### 🎧 Listen to the English definition and spell the word!")
-                    st.markdown(f"**📌 Definition：** {st.session_state.game_adv_lock}")
+                    st.markdown(f"**📌 English Context Hint：** {st.session_state.game_adv_lock}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 發音提示：**</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='margin-top: 15px;'>**🔊 Audio Prompt：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
                             audio_bytes = generate_audio_bytes(st.session_state.game_adv_lock, lang='en')
@@ -673,19 +683,19 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         except Exception:
                             st.warning("發音載入失敗，請確認網路連線。")
 
-                st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (字數：{len(word_str)} 個字母)")
+                st.markdown(f"**🔤 Spelling Hint：** `{hint_masked}` &nbsp;&nbsp; (Length: {len(word_str)} letters)")
 
-            user_guess = st.text_input("請輸入你的拼寫答案：", key="game_input_box").strip().lower()
+            user_guess = st.text_input("Enter your spelling answer:", key="game_input_box").strip().lower()
             
             col_g1, col_g2 = st.columns(2)
             with col_g1:
-                submit_guess = st.button("🚀 送出答案", type="primary", use_container_width=True)
+                submit_guess = st.button("🚀 Submit Answer", type="primary", use_container_width=True)
             with col_g2:
-                skip_question = st.button("🔄 換一題", use_container_width=True)
+                skip_question = st.button("🔄 Next Question", use_container_width=True)
 
             if submit_guess:
                 if user_guess == word_str.lower():
-                    st.success(f"🎉 答對了！太棒了！單字就是 **{word_str}**")
+                    st.success(f"🎉 Correct! Excellent job! The word is **{word_str}**")
                     time.sleep(0.8)
                     for k in ['game_word_lock', 'game_row_lock', 'game_basic_lock', 'game_adv_lock']:
                         if k in st.session_state:
@@ -693,7 +703,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     st.rerun()
                 else:
                     st.session_state.game_errors += 1
-                    st.error("❌ 答錯囉！累積答錯次數 +1，再試一次，加油！")
+                    st.error("❌ Incorrect! Try again, you can do it!")
 
             if skip_question:
                 for k in ['game_word_lock', 'game_row_lock', 'game_basic_lock', 'game_adv_lock']:
