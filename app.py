@@ -100,13 +100,12 @@ def init_db(db_name):
 init_db(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式（串接免費字典 API 抓取真實官方例句）
+# 3. 核心工具函式（安全且非阻塞的字典串接）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
         return ""
     text = re.sub(r'\s*\(.*?\)', '', str(text)).strip()
-    # 過濾掉之前殘留的假例句
     if "example sentence using" in text.lower() or "we can easily see how" in text.lower():
         return ""
     return text
@@ -115,7 +114,7 @@ def auto_translate_english_to_chinese(word):
     try:
         url = f"https://api.mymemory.translated.net/get?q={urllib.parse.quote(word)}&langpair=en|zh-TW"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(req, timeout=3) as response:
             data = json.loads(response.read().decode('utf-8'))
             translated_text = data.get('responseData', {}).get('translatedText', word)
             translated_text = re.sub(r'^[a-zA-Z\s\-\,\.]+\s+', '', translated_text)
@@ -130,13 +129,10 @@ def fetch_real_dictionary_sentence(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 預設備用句
-    fallback_sent = f"They often discuss {w_clean} in everyday life."
-    
     try:
         dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_clean)}"
         req = urllib.request.Request(dict_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=4) as response:
+        with urllib.request.urlopen(req, timeout=3) as response:
             dict_data = json.loads(response.read().decode('utf-8'))
             if isinstance(dict_data, list) and len(dict_data) > 0:
                 meanings = dict_data[0].get('meanings', [])
@@ -146,20 +142,17 @@ def fetch_real_dictionary_sentence(word):
                         for d_obj in definitions:
                             if 'example' in d_obj and d_obj['example']:
                                 ex = d_obj['example'].strip()
-                                # 確保例句包含該單字
                                 if w_lower in ex.lower():
                                     return ex
     except Exception:
         pass
         
-    return fallback_sent
+    return f"People frequently use {w_clean} in daily conversation."
 
 def get_word_record_data(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     translated_zh = auto_translate_english_to_chinese(w_clean)
-    
-    # 💡 直接從免費字典 API 抓取官方真實例句
     real_sent = fetch_real_dictionary_sentence(w_clean)
     
     return {
@@ -224,14 +217,6 @@ def get_vocab_by_db(db_name):
     if 'unit_tag' not in df.columns:
         df['unit_tag'] = '國一上 > 第一課'
     df['unit_tag'] = df['unit_tag'].fillna('國一上 > 第一課')
-    
-    # 💡 資料庫防護：如果資料庫裡剛好有舊的空例句或假例句，自動幫它去免費字典補抓真實例句
-    for idx, row in df.iterrows():
-        b_s = clean_sentence(row.get('basic_sentence', ''))
-        w = str(row['word']).strip()
-        if not b_s or w.lower() not in b_s.lower():
-            df.at[idx, 'basic_sentence'] = fetch_real_dictionary_sentence(w)
-            
     return df
 
 @st.cache_data(show_spinner=False)
@@ -277,7 +262,7 @@ if main_menu == "✨ 智慧單字新增":
             unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "Review 1", "Review 2", "核心單字總覽"])
         
     current_unit_tag = f"{semester} > {unit}"
-    st.info(f"📌 目前新增的單字將歸類至：**{current_unit_tag}**（新增時會自動去免費字典抓取真實例句）")
+    st.info(f"📌 目前新增的單字將歸類至：**{current_unit_tag}**")
     st.markdown("---")
 
     col_input1, col_input2 = st.columns(2, gap="large")
@@ -292,7 +277,7 @@ if main_menu == "✨ 智慧單字新增":
                 word_data = get_word_record_data(single_word.strip())
                 if word_data:
                     if upsert_word_to_db(word_data, current_db_name, current_unit_tag):
-                        st.success(f"🎉 成功新增單字：{single_word}（已從字典抓取真實例句）至 【{current_unit_tag}】")
+                        st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】")
                         st.json(word_data)
                     else:
                         st.error("❌ 寫入資料庫失敗！")
@@ -304,7 +289,7 @@ if main_menu == "✨ 智慧單字新增":
             uploaded_docxs = st.file_uploader("上傳 Word 講義檔案", type=["docx"], accept_multiple_files=True)
             if uploaded_docxs:
                 st.info(f"📁 已載入 {len(uploaded_docxs)} 個檔案，確認匯入單元為：**{current_unit_tag}**")
-                if st.button("📖 解析所有 Word 並從字典批次抓取例句匯入", use_container_width=True):
+                if st.button("📖 解析所有 Word 並智慧批次匯入", use_container_width=True):
                     total_success_count = 0
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
@@ -326,7 +311,7 @@ if main_menu == "✨ 智慧單字新增":
                         except Exception:
                             if os.path.exists(temp_path):
                                 os.remove(temp_path)
-                    st.success(f"🎊 批次匯入完成！成功匯入 {total_success_count} 個單字（皆已從免費字典帶入真實例句）。")
+                    st.success(f"🎊 批次匯入完成！成功匯入 {total_success_count} 個單字。")
 
 elif main_menu == "📖 字庫管理與搜尋":
     df_vocab = get_vocab_by_db(current_db_name)
@@ -359,7 +344,7 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
             
-        with st.expander("💡 詳細釋義與字典真實例句", expanded=True):
+        with st.expander("💡 詳細釋義與例句", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
             display_sent = clean_sentence(row.get('basic_sentence', ''))
             if not display_sent:
@@ -412,7 +397,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if "current_game_item" not in st.session_state:
                     row = available_df.sample(1).iloc[0]
                     w = str(row['word']).strip()
-                    b_s = str(row['basic_sentence']).strip()
+                    b_s = clean_sentence(row.get('basic_sentence', ''))
                     
                     if not b_s or w.lower() not in b_s.lower():
                         b_s = fetch_real_dictionary_sentence(w)
