@@ -92,7 +92,8 @@ OFFLINE_DICT = {
     "grade": {"word": "grade", "phonetic": "/ɡreɪd/", "part_of_speech": "n.", "definition": "成績；年級", "basic_sentence": "She got a good grade on the test.", "advanced_sentence": "He is in the eighth grade.", "collocations": "get a grade"},
     "class": {"word": "class", "phonetic": "/klæs/", "part_of_speech": "n.", "definition": "班級；課", "basic_sentence": "Our class has thirty students.", "advanced_sentence": "We have an English class.", "collocations": "in class"},
     "test": {"word": "test", "phonetic": "/test/", "part_of_speech": "n. / v.", "definition": "考試；測試", "basic_sentence": "We will have a math test tomorrow.", "advanced_sentence": "The teacher tested our knowledge.", "collocations": "take a test"},
-    "study": {"word": "study", "phonetic": "/ˈstʌdi/", "part_of_speech": "v. / n.", "definition": "讀書；學習", "basic_sentence": "She studies English every day.", "advanced_sentence": "His study on behavior was published.", "collocations": "study hard"}
+    "study": {"word": "study", "phonetic": "/ˈstʌdi/", "part_of_speech": "v. / n.", "definition": "讀書；學習", "basic_sentence": "She studies English every day.", "advanced_sentence": "His study on behavior was published.", "collocations": "study hard"},
+    "each other": {"word": "each other", "phonetic": "/iːtʃ ˈʌðər/", "part_of_speech": "pron.", "definition": "互相；彼此", "basic_sentence": "They looked at each other and smiled.", "advanced_sentence": "Good friends should help each other.", "collocations": "talk to each other"}
 }
 
 def init_db(db_name):
@@ -144,7 +145,7 @@ init_db(current_db_name)
 clean_legacy_data(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式
+# 3. 核心工具函式（串接真實字典 API 與自然例句）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
@@ -170,6 +171,67 @@ def auto_translate_english_to_chinese(word):
             return translated_text
     except Exception:
         return "(待補充中文)"
+
+def fetch_real_dictionary_data(word):
+    w_clean = word.strip()
+    w_lower = w_clean.lower()
+    
+    if w_lower in OFFLINE_DICT:
+        return OFFLINE_DICT[w_lower]
+
+    translated_zh = auto_translate_english_to_chinese(w_clean)
+    
+    # 💡 利用開源線上字典 API 抓取真實英文例句
+    real_basic = f"We can see {w_clean} used in everyday communication."
+    real_adv = f"It is essential to understand how {w_clean} functions in context."
+    
+    try:
+        dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_clean)}"
+        req = urllib.request.Request(dict_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            dict_data = json.loads(response.read().decode('utf-8'))
+            if isinstance(dict_data, list) and len(dict_data) > 0:
+                meanings = dict_data[0].get('meanings', [])
+                if meanings:
+                    first_meaning = meanings[0]
+                    pos = first_meaning.get('partOfSpeech', 'n.')
+                    definitions = first_meaning.get('definitions', [])
+                    if definitions:
+                        for d_obj in definitions:
+                            if 'example' in d_obj and d_obj['example']:
+                                real_basic = d_obj['example']
+                                break
+                        if len(definitions) > 1 and 'example' in definitions[1] and definitions[1]['example']:
+                            real_adv = definitions[1]['example']
+                    
+                    phonetics = dict_data[0].get('phonetics', [])
+                    phonetic_text = f"/{w_lower}/"
+                    for p in phonetics:
+                        if 'text' in p:
+                            phonetic_text = p['text']
+                            break
+                            
+                    return {
+                        "word": w_clean,
+                        "phonetic": phonetic_text,
+                        "part_of_speech": f"{pos}.",
+                        "definition": simple_s2t_convert(translated_zh),
+                        "basic_sentence": real_basic,
+                        "advanced_sentence": real_adv,
+                        "collocations": f"common {w_clean}"
+                    }
+    except Exception:
+        pass
+
+    return {
+        "word": w_clean,
+        "phonetic": f"/{w_lower}/",
+        "part_of_speech": "n. / v.",
+        "definition": simple_s2t_convert(translated_zh),
+        "basic_sentence": f"They often talk about {w_clean} in daily life.",
+        "advanced_sentence": f"Understanding {w_clean} is very helpful for learners.",
+        "collocations": f"practice {w_clean}"
+    }
 
 def update_single_word_in_db(db_name, word_id, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
     conn = sqlite3.connect(db_name)
@@ -250,51 +312,12 @@ def get_vocab_by_db(db_name):
     df['unit_tag'] = df['unit_tag'].fillna('國一上 > 第一課')
     return df
 
-def generate_vocab_info(word):
-    w_clean = word.strip()
-    w_lower = w_clean.lower()
-    
-    if w_lower in OFFLINE_DICT:
-        return OFFLINE_DICT[w_lower], None
-
-    translated_definition = auto_translate_english_to_chinese(w_clean)
-
-    fallback_data = {
-        "word": w_clean,
-        "phonetic": f"/{w_lower}/",
-        "part_of_speech": "n. / v. / adj.",
-        "definition": simple_s2t_convert(translated_definition),
-        "basic_sentence": f"It is widely known that {w_clean} plays a significant role in our daily studies.",
-        "advanced_sentence": f"Students should carefully examine how {w_clean} is applied in practical contexts.",
-        "collocations": f"common {w_clean}"
-    }
-    return fallback_data, None
-
 @st.cache_data(show_spinner=False)
 def generate_audio_bytes(text, lang='en'):
     tts = gTTS(text=text, lang=lang)
     fp = io.BytesIO()
     tts.write_to_fp(fp)
     return fp.getvalue()
-
-# 💡 純英文的自然克漏字句型產生器（完全無中文，文法流暢自然）
-def get_pure_english_sentence(word):
-    sentence_pool = [
-        f"Many experts suggest that we should pay more attention to {word} in modern society.",
-        f"It is quite fascinating to observe how {word} influences our daily routine.",
-        f"Teachers always encourage students to practice using {word} in proper contexts.",
-        f"Everyone agrees that understanding {word} is essential for language learners.",
-        f"The main purpose of this exercise is to help you master {word} effectively."
-    ]
-    return random.choice(sentence_pool)
-
-def get_pure_english_advanced_definition(word):
-    definition_pool = [
-        f"An important English vocabulary concept directly associated with {word}.",
-        f"A contextual framework used by native speakers when discussing {word}.",
-        f"A standard linguistic expression designed to illustrate the meaning of {word}."
-    ]
-    return random.choice(definition_pool)
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -344,15 +367,13 @@ if main_menu == "✨ 智慧單字新增":
             if not single_word:
                 st.warning("請先輸入單字！")
             else:
-                word_data, error_msg = generate_vocab_info(single_word.strip())
+                word_data = fetch_real_dictionary_data(single_word.strip())
                 if word_data:
                     if upsert_word_to_db(word_data, current_db_name, current_unit_tag):
                         st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】")
                         st.json(word_data)
                     else:
                         st.error("❌ 寫入資料庫失敗！")
-                else:
-                    st.error(f"❌ 解析失敗，原因: {error_msg}")
 
     with col_input2:
         st.subheader("📂 檔案與智慧匯入（支援多檔案複選）")
@@ -378,13 +399,13 @@ if main_menu == "✨ 智慧單字新增":
                             
                             def is_valid_vocab(text):
                                 t = text.strip()
-                                if not t or len(t) > 30:
+                                if not t or len(t) > 35:
                                     return False
                                 if re.search(r'[\u4e00-\u9fa5]', t):
                                     return False
                                 if t.lower() in ['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'phr.', 'vi.', 'vt.']:
                                     return False
-                                if not re.match(r'^[a-zA-Z\s\-\']+$', t):
+                                if not re.match(r'^[a-zA-Z\s\-\'\.]+$', t):
                                     return False
                                 return True
 
@@ -412,10 +433,10 @@ if main_menu == "✨ 智慧單字新增":
                                 os.remove(temp_path)
 
                     if len(all_extracted_words) > 0:
-                        st.success(f"✅ 解析成功！所有檔案共萃取出 {len(all_extracted_words)} 個不重複單字，開始批次翻譯並建檔...")
+                        st.success(f"✅ 解析成功！所有檔案共萃取出 {len(all_extracted_words)} 個不重複單字，開始批次串接字典並建檔...")
                         for i, w in enumerate(all_extracted_words):
-                            status_text.text(f"⏳ 正在處理與自動翻譯 ({i+1}/{len(all_extracted_words)}): {w}")
-                            w_data, err_msg = generate_vocab_info(w)
+                            status_text.text(f"⏳ 正在串接線上字典與自動翻譯 ({i+1}/{len(all_extracted_words)}): {w}")
+                            w_data = fetch_real_dictionary_data(w)
                             if w_data:
                                 if upsert_word_to_db(w_data, current_db_name, current_unit_tag):
                                     total_success_count += 1
@@ -441,7 +462,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_top_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 重新整理與自動修復中文", type="primary", use_container_width=True):
+            if st.button("🔄 重新整理與自動修復中文與例句", type="primary", use_container_width=True):
                 conn = sqlite3.connect(current_db_name)
                 c = conn.cursor()
                 c.execute("SELECT id, word, definition FROM vocab")
@@ -454,23 +475,23 @@ elif main_menu == "📖 字庫管理與搜尋":
                         missing_or_bad.append((r_id, r_word))
                 
                 if not missing_or_bad:
-                    st.success("✅ 檢查完畢，清單已重新整理，所有單字的中文釋義都很健康！")
+                    st.success("✅ 檢查完畢，清單已重新整理，所有單字的資料都很健康！")
                     time.sleep(0.8)
                     st.rerun()
                 else:
-                    conn = sqlite3.connect(current_db_name)
-                    c = conn.cursor()
                     progress_bar = st.progress(0)
                     status = st.empty()
                     for i, row in enumerate(missing_or_bad):
                         word_id, w_text = row
-                        status.text(f"⏳ 正在重新翻譯與轉繁體: {w_text} ...")
-                        new_zh = auto_translate_english_to_chinese(w_text)
-                        c.execute("UPDATE vocab SET definition = ? WHERE id = ?", (new_zh, word_id))
-                        conn.commit()
+                        status.text(f"⏳ 正在重新串接字典與翻譯: {w_text} ...")
+                        w_data = fetch_real_dictionary_data(w_text)
+                        update_single_word_in_db(
+                            current_db_name, word_id, w_text, 
+                            w_data['phonetic'], w_data['part_of_speech'], w_data['definition'], 
+                            w_data['basic_sentence'], w_data['advanced_sentence'], w_data['collocations']
+                        )
                         progress_bar.progress((i + 1) / len(missing_or_bad))
                         time.sleep(0.3)
-                    conn.close()
                     status.empty()
                     st.success(f"🎊 重新整理與修復完成！已成功更新 {len(missing_or_bad)} 個單字！")
                     time.sleep(1)
@@ -617,29 +638,26 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽英文語境提示 + 打單字)"], horizontal=True)
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (真實字典克漏字 + 發音)", "🔴 進階盲拼挑戰 (聽真實字典英文解釋 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 絕對嚴格鎖定：確保每次抽出的當前題目與純英文例句完全對應
+            # 💡 絕對嚴格鎖定：確保每次抽出的當前題目、真實字典例句、單字完全對應
             if "game_word_lock" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
                 w = str(row['word']).strip()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                if not db_b or w.lower() not in db_b.lower() or any(b in db_b for b in ["example sentence using", "Please write down", "We use the word", "the blank word", "means"]):
-                    active_b = get_pure_english_sentence(w)
+                # 如果資料庫裡剛好沒有有效例句，現場即時呼叫真實字典補充
+                if not db_b or w.lower() not in db_b.lower():
+                    fresh_data = fetch_real_dictionary_data(w)
+                    active_b = fresh_data['basic_sentence']
+                    active_a = fresh_data['advanced_sentence']
                 else:
                     active_b = db_b
-
-                db_a = clean_sentence(row.get('advanced_sentence', ''))
-                if not db_a or w.lower() not in db_a.lower() or any(b in db_a for b in ["example sentence using", "Please write down", "We use the word", "the blank word", "means"]):
-                    active_a = get_pure_english_advanced_definition(w)
-                else:
-                    masked = re.sub(re.escape(w), 'the blank word', db_a, flags=re.IGNORECASE)
-                    active_a = f"A vocabulary term used in context: {masked}"
+                    active_a = clean_sentence(row.get('advanced_sentence', f"Context for {w}."))
 
                 st.session_state.game_word_lock = w
                 st.session_state.game_row_lock = row
@@ -653,10 +671,15 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
                 
-                # 模式一：經典單字挑戰 (純英文克漏字 + 單字發音，完全無中文)
+                # 模式一：經典單字挑戰 (真實字典克漏字 + 發音)
                 if "經典" in game_mode:
+                    # 使用正規表達式不分大小寫將句子中的單字挖空
                     masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.game_basic_lock, flags=re.IGNORECASE)
-                    st.markdown(f"**📖 Context Clue Sentence：** {masked_basic_game}")
+                    if masked_basic_game == st.session_state.game_basic_lock:
+                        # 若句子剛好沒直接包含該字串（例如時態變化），則直接顯示該句並在下方提示
+                        masked_basic_game = f"{st.session_state.game_basic_lock} (Target word meaning: {target.get('definition', '')})"
+                        
+                    st.markdown(f"**📖 Dictionary Context Sentence：** {masked_basic_game}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
@@ -668,10 +691,10 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         except Exception:
                             st.warning("發音載入失敗，請確認網路連線。")
                             
-                # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
+                # 模式二：進階盲拼挑戰 (聽真實字典英文解釋 + 打單字)
                 else:
-                    st.markdown("### 🎧 Listen to the English definition and spell the word!")
-                    st.markdown(f"**📌 English Context Hint：** {st.session_state.game_adv_lock}")
+                    st.markdown("### 🎧 Listen to the dictionary definition and spell the word!")
+                    st.markdown(f"**📌 Dictionary Explanation：** {st.session_state.game_adv_lock}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
