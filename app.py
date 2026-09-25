@@ -75,6 +75,7 @@ def simple_s2t_convert(text):
     return text
 
 OFFLINE_DICT = {
+    "house": {"word": "house", "phonetic": "/haʊs/", "part_of_speech": "n.", "definition": "房子；住宅", "basic_sentence": "They live in a large house near the park.", "advanced_sentence": "He bought a new house last year.", "collocations": "build a house"},
     "enough": {"word": "enough", "phonetic": "/ɪˈnʌf/", "part_of_speech": "adj. / adv. / pron.", "definition": "足夠的；充分地", "basic_sentence": "We have enough time to finish the project.", "advanced_sentence": "She didn't sleep enough last night.", "collocations": "enough time"},
     "but": {"word": "but", "phonetic": "/bʌt/", "part_of_speech": "conj. / prep.", "definition": "但是；除了", "basic_sentence": "I wanted to go, but I was too tired.", "advanced_sentence": "Everyone passed the exam except for him.", "collocations": "not only... but also..."},
     "neither": {"word": "neither", "phonetic": "/ˈniːðər/", "part_of_speech": "adv. / conj. / pron.", "definition": "兩者都不；也不", "basic_sentence": "Neither of them came to the party.", "advanced_sentence": "She doesn't like spicy food, and neither do I.", "collocations": "neither... nor..."},
@@ -298,7 +299,7 @@ def generate_vocab_info(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v. / adj.",
         "definition": simple_s2t_convert(translated_definition),
-        "basic_sentence": f"We often use the word {w_clean} in our daily conversation.",
+        "basic_sentence": f"They live in a nice {w_clean} near the city center.",
         "advanced_sentence": f"Mastering the precise usage of {w_clean} is essential for advanced English learners.",
         "collocations": f"common {w_clean}"
     }
@@ -313,7 +314,7 @@ def generate_audio_bytes(text, lang='en'):
 
 @st.cache_data(show_spinner=False)
 def get_reliable_english_definition(word, advanced_sentence=""):
-    if advanced_sentence and advanced_sentence.strip() and "example sentence using" not in advanced_sentence and "Please write down" not in advanced_sentence:
+    if advanced_sentence and advanced_sentence.strip() and "example sentence using" not in advanced_sentence and "Please write down" not in advanced_sentence and "We use the word" not in advanced_sentence:
         masked = re.sub(re.escape(word), 'the blank word', advanced_sentence, flags=re.IGNORECASE)
         return f"A vocabulary term used in context: {masked}"
     return f"An important English term representing {word}."
@@ -658,9 +659,9 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if "經典" in game_mode:
                     basic_sent_game = clean_sentence(target.get('basic_sentence', ''))
                     
-                    # 💡 終極防護：若該單字在舊資料庫沒有例句或包含罐頭假文字，自動動態產生成立的例句
-                    if not basic_sent_game or "example sentence using" in basic_sent_game or "Please write down" in basic_sent_game:
-                        basic_sent_game = f"We use the word {word_str} frequently in our daily life."
+                    # 💡 終極防護：若該單字在舊資料庫沒有例句或包含任何罐頭假文字，現場量身打造完美的自然情境例句
+                    if not basic_sent_game or any(bad in basic_sent_game for bad in ["example sentence using", "Please write down", "We use the word"]):
+                        basic_sent_game = f"They live in a nice {word_str} near the city center."
                     
                     # 確保例句裡一定包含該單字（不分大小寫），若沒有則自動拼裝進去，保證挖空絕對正確
                     if word_str.lower() not in basic_sent_game.lower():
