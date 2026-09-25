@@ -14,18 +14,25 @@ import urllib.parse
 from gtts import gTTS
 import io
 
+# 嘗試載入 Gemini 套件
+try:
+    import google.generativeai as genai
+    HAS_GEMINI = True
+except ImportError:
+    HAS_GEMINI = False
+
 # -------------------------------------------------------------------------
 # 0. 頁面全域設定
 # -------------------------------------------------------------------------
 st.set_page_config(
-    page_title="我愛背單字",
+    page_title="我愛背單字 (AI 強化版)",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # -------------------------------------------------------------------------
-# 1. 側邊欄導覽與級別切換
+# 1. 側邊欄導覽與設定
 # -------------------------------------------------------------------------
 st.sidebar.markdown("<h2 style='font-size: 24px;'>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
 
@@ -36,6 +43,19 @@ main_menu = st.sidebar.radio(
     ["✨ 智慧單字新增", "📖 字庫管理與搜尋", "🎯 沉浸式閃卡複習", "🎮 拼字王挑戰遊戲"],
     label_visibility="collapsed"
 )
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("<h3 style='font-size: 20px;'>🤖 AI 例句生成引擎 (Gemini)</h3>", unsafe_allow_html=True)
+if HAS_GEMINI:
+    gemini_key = st.sidebar.text_input("輸入 Gemini API Key (選填)", type="password", value=st.session_state.get("gemini_api_key", ""))
+    st.session_state.gemini_api_key = gemini_key
+    if gemini_key:
+        st.sidebar.success("✅ AI 引擎已啟用！將為您生成完美例句。")
+    else:
+        st.sidebar.info("💡 貼上 API Key 即可啟動 AI 自動造句，否則將使用免費字典。")
+else:
+    st.sidebar.warning("⚠️ 請在終端機輸入 `pip install google-generativeai` 來啟用 Gemini AI 造句功能！")
+
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("<h3 style='font-size: 20px;'>📂 學習階段 / 級別分類</h3>", unsafe_allow_html=True)
@@ -60,7 +80,7 @@ st.sidebar.info(f"💡 目前模式：專注於 {selected_level} 單字訓練（
 # -------------------------------------------------------------------------
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
-    "软件": "软體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
+    "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
     "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
     "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
     "默认": "預設", "句": "句", "词": "詞", "语法": "語法"
@@ -100,13 +120,12 @@ def init_db(db_name):
 init_db(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式（嚴格過濾與真實字典串接）
+# 3. 核心工具函式（Gemini AI + 字典 API 雙引擎）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
         return ""
     text = re.sub(r'\s*\(.*?\)', '', str(text)).strip()
-    # 嚴格殺死所有舊的假罐頭句
     bad_phrases = ["example sentence using", "we can easily see how", "people frequently use", "this is an example"]
     if any(bp in text.lower() for bp in bad_phrases):
         return ""
@@ -127,13 +146,26 @@ def auto_translate_english_to_chinese(word):
     except Exception:
         return "(待補充中文)"
 
-def fetch_real_dictionary_sentence(word):
+def fetch_sentence(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
-    
-    # 取得字根 (為了容錯過去式或複數型態，取前4-5個字母作為搜尋特徵)
     search_root = w_lower[:4] if len(w_lower) >= 4 else w_lower
-    
+
+    # 1. 嘗試使用 Gemini API (如果有輸入 Key)
+    if HAS_GEMINI and st.session_state.get('gemini_api_key'):
+        try:
+            genai.configure(api_key=st.session_state.gemini_api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            prompt = f"Write a single, practical, everyday English sentence using the word '{w_clean}'. Return ONLY the English sentence. Do not include quotes, translations, or any other text."
+            response = model.generate_content(prompt)
+            if response.text:
+                clean_res = response.text.strip().replace('"', '').replace('\n', '')
+                if search_root in clean_res.lower():
+                    return clean_res
+        except Exception as e:
+            pass # 如果 Gemini 失敗或逾時，默默掉下去用免費字典
+
+    # 2. 備用方案：免費字典 API
     try:
         dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_clean)}"
         req = urllib.request.Request(dict_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -147,27 +179,26 @@ def fetch_real_dictionary_sentence(word):
                         for d_obj in definitions:
                             if 'example' in d_obj and d_obj['example']:
                                 ex = d_obj['example'].strip()
-                                # 確保例句中真的有包含該單字或其字根變化
                                 if search_root in ex.lower():
                                     return ex
     except Exception:
         pass
     
-    # 💡 絕對不回傳假句子，找不到就回傳空白
+    # 3. 如果連免費字典都找不到，就真的回傳空白，絕不生假句子
     return ""
 
 def get_word_record_data(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     translated_zh = auto_translate_english_to_chinese(w_clean)
-    real_sent = fetch_real_dictionary_sentence(w_clean)
+    real_sent = fetch_sentence(w_clean)
     
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": real_sent, # 可能是空白，這是正常的
+        "basic_sentence": real_sent,
         "advanced_sentence": "",
         "collocations": f"practice {w_clean}"
     }
@@ -201,10 +232,9 @@ def upsert_word_to_db(data, db_name, unit_tag):
             clean_def = auto_translate_english_to_chinese(word)
 
         b_sent = clean_sentence(data.get('basic_sentence'))
-        # 嚴格驗證：如果送進來的句子沒有包含單字，就去字典抓抓看
         search_root = word.lower()[:4] if len(word) >= 4 else word.lower()
         if not b_sent or search_root not in b_sent.lower():
-            b_sent = fetch_real_dictionary_sentence(word)
+            b_sent = fetch_sentence(word)
 
         c.execute("SELECT id FROM vocab WHERE word = ?", (word,))
         row = c.fetchone()
@@ -262,7 +292,7 @@ def generate_audio_bytes(text, lang='en'):
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
 # -------------------------------------------------------------------------
-st.title("📚 我愛背單字")
+st.title("📚 我愛背單字 (AI 強化版)")
 
 df_vocab = get_vocab_by_db(current_db_name)
 total_words = len(df_vocab)
@@ -311,7 +341,7 @@ if main_menu == "✨ 智慧單字新增":
                 if word_data:
                     if upsert_word_to_db(word_data, current_db_name, current_unit_tag):
                         if word_data['basic_sentence']:
-                            st.success(f"🎉 成功新增單字：{single_word}（已從字典抓取真實例句）至 【{current_unit_tag}】")
+                            st.success(f"🎉 成功新增單字：{single_word}（已自動產生真實例句）至 【{current_unit_tag}】")
                         else:
                             st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】 (字典無例句，維持空白)")
                     else:
@@ -360,8 +390,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            # 💡 一鍵刷新：清理假例句，並補抓缺失的翻譯
-            if st.button("🔄 掃描並清除假例句 / 補抓翻譯", type="primary", use_container_width=True):
+            if st.button("🔄 掃描清除假例句 / 透過 AI 補抓翻譯與例句", type="primary", use_container_width=True):
                 conn = sqlite3.connect(current_db_name)
                 c = conn.cursor()
                 c.execute("SELECT id, word, definition, basic_sentence FROM vocab")
@@ -377,16 +406,20 @@ elif main_menu == "📖 字庫管理與搜尋":
                     needs_update = False
                     
                     clean_s = clean_sentence(r_sent)
-                    if clean_s != r_sent:
-                        needs_update = True
-                        
+                    search_root = r_word.lower()[:4] if len(r_word) >= 4 else r_word.lower()
+                    
+                    if not clean_s or search_root not in clean_s.lower():
+                        clean_s = fetch_sentence(r_word)
+                        if clean_s:
+                            needs_update = True
+                            
                     new_def = r_def
                     if not r_def or "(待補充" in r_def:
                         new_def = auto_translate_english_to_chinese(r_word)
                         if new_def != r_def:
                             needs_update = True
                             
-                    if needs_update:
+                    if needs_update or clean_sentence(r_sent) != r_sent:
                         status_text.text(f"⏳ 正在修復: {r_word} ...")
                         update_single_word_in_db(
                             current_db_name, r_id, r_word, 
@@ -425,7 +458,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
                 st.markdown("#### ✏️ 單字快速編輯修正")
-                st.caption("💡 提示：如果線上字典查不到例句，您可以直接在這裡為單字手動輸入專屬例句。")
+                st.caption("💡 提示：您可以在這裡手動修改任何單字內容。")
                 
                 if not filtered_df.empty:
                     word_options = {f"{row['word']} ({row['definition']})": row for _, row in filtered_df.iterrows()}
@@ -475,13 +508,13 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
             
-        with st.expander("💡 詳細釋義與真實例句", expanded=True):
+        with st.expander("💡 詳細釋義與例句", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
             display_sent = clean_sentence(row.get('basic_sentence', ''))
             if display_sent:
-                st.markdown(f"**真實例句：** {display_sent}")
+                st.markdown(f"**例句：** {display_sent}")
             else:
-                st.info("💡 此單字尚無建立例句，可至字庫管理手動補充。")
+                st.info("💡 此單字尚無有效例句，您可至字庫管理點擊一鍵修復，或手動補充。")
         
         c1, c2 = st.columns(2)
         if c1.button("⬅️ 上一個", use_container_width=True):
@@ -553,13 +586,11 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         b_s = item['basic_sentence']
                         search_root = word_str.lower()[:4] if len(word_str) >= 4 else word_str.lower()
                         
-                        # 💡 判斷例句是否真的能做填空題 (非空，且包含字根)
                         can_cloze = False
                         if b_s and search_root in b_s.lower():
                             can_cloze = True
                             
                         if can_cloze:
-                            # 智慧挖空：使用正則表達式取代單字或其字根變化 (如 crack -> cracked)
                             pattern = re.compile(re.escape(word_str), re.IGNORECASE)
                             if pattern.search(b_s):
                                 masked_basic = pattern.sub('______', b_s)
@@ -570,8 +601,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                             st.markdown(f"**📖 考卷填空題 (Context Sentence)：**")
                             st.markdown(f"> ### {masked_basic}")
                         else:
-                            # 💡 安全降級：無例句時，絕對不秀破圖或假句子，引導看中文釋義
-                            st.warning("⚠️ 此單字目前無對應的有效例句，請直接依據下方「中文釋義」作答。 (您可至「字庫管理」手動補充例句)")
+                            st.warning("⚠️ 此單字目前無有效例句，請直接依據下方「中文釋義」與「發音」作答。 (您可至「字庫管理」使用一鍵修復)")
                             st.markdown(f"**📌 中文釋義：** `{item['definition']}`")
                         
                         col_a1, col_a2 = st.columns([1, 4])
