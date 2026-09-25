@@ -299,8 +299,8 @@ def generate_vocab_info(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v. / adj.",
         "definition": simple_s2t_convert(translated_definition),
-        "basic_sentence": f"They live in a nice {w_clean} near the city center.",
-        "advanced_sentence": f"Mastering the precise usage of {w_clean} is essential for advanced English learners.",
+        "basic_sentence": f"Students love to learn the new word {w_clean} today.",
+        "advanced_sentence": f"Understanding how to apply {w_clean} correctly in sentences is crucial.",
         "collocations": f"common {w_clean}"
     }
     return fallback_data, None
@@ -312,12 +312,29 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-@st.cache_data(show_spinner=False)
+# 💡 智慧隨機動態例句產生器（確保每次換題都會隨機變出不同的標準英文例句）
+def get_random_dynamic_sentence(word):
+    templates = [
+        f"Many people use the word {word} in their daily conversations.",
+        f"It is essential to understand how {word} works in a sentence.",
+        f"The teacher asked us to write a paragraph using {word}.",
+        f"Can you give me an example of {word} being used correctly?",
+        f"Students should practice {word} regularly to improve their English."
+    ]
+    return random.choice(templates)
+
+# 💡 智慧隨機進階英文定義產生器（確保進階版盲拼也有豐富的隨機提示）
 def get_reliable_english_definition(word, advanced_sentence=""):
-    if advanced_sentence and advanced_sentence.strip() and "example sentence using" not in advanced_sentence and "Please write down" not in advanced_sentence and "We use the word" not in advanced_sentence:
+    if advanced_sentence and advanced_sentence.strip() and not any(bad in advanced_sentence for bad in ["example sentence using", "Please write down", "We use the word"]):
         masked = re.sub(re.escape(word), 'the blank word', advanced_sentence, flags=re.IGNORECASE)
         return f"A vocabulary term used in context: {masked}"
-    return f"An important English term representing {word}."
+    
+    advanced_templates = [
+        f"An important English vocabulary term referring to {word}.",
+        f"A common expression in English represented by {word}.",
+        f"A key concept used in context meaning {word}."
+    ]
+    return random.choice(advanced_templates)
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -655,17 +672,16 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
                 
-                # 模式一：經典單字挑戰 (例句挖空 + 單字發音，完全拿掉中文解釋)
+                # 模式一：經典單字挑戰 (例句挖空 + 單字發音)
                 if "經典" in game_mode:
                     basic_sent_game = clean_sentence(target.get('basic_sentence', ''))
                     
-                    # 💡 終極防護：若該單字在舊資料庫沒有例句或包含任何罐頭假文字，現場量身打造完美的自然情境例句
+                    # 💡 智慧防護：如果資料庫沒有例句或帶有罐頭文字，動態隨機產生成立的英文例句
                     if not basic_sent_game or any(bad in basic_sent_game for bad in ["example sentence using", "Please write down", "We use the word"]):
-                        basic_sent_game = f"They live in a nice {word_str} near the city center."
+                        basic_sent_game = get_random_dynamic_sentence(word_str)
                     
-                    # 確保例句裡一定包含該單字（不分大小寫），若沒有則自動拼裝進去，保證挖空絕對正確
                     if word_str.lower() not in basic_sent_game.lower():
-                        basic_sent_game = f"Students should learn how to use {word_str} correctly in context."
+                        basic_sent_game = f"Students need to master the usage of {word_str} in context."
 
                     masked_basic_game = re.sub(re.escape(word_str), '______', basic_sent_game, flags=re.IGNORECASE)
                     st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
