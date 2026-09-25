@@ -92,42 +92,7 @@ OFFLINE_DICT = {
     "grade": {"word": "grade", "phonetic": "/ɡreɪd/", "part_of_speech": "n.", "definition": "成績；年級", "basic_sentence": "She got a good grade on the test.", "advanced_sentence": "He is in the eighth grade.", "collocations": "get a grade"},
     "class": {"word": "class", "phonetic": "/klæs/", "part_of_speech": "n.", "definition": "班級；課", "basic_sentence": "Our class has thirty students.", "advanced_sentence": "We have an English class.", "collocations": "in class"},
     "test": {"word": "test", "phonetic": "/test/", "part_of_speech": "n. / v.", "definition": "考試；測試", "basic_sentence": "We will have a math test tomorrow.", "advanced_sentence": "The teacher tested our knowledge.", "collocations": "take a test"},
-    "study": {"word": "study", "phonetic": "/ˈstʌdi/", "part_of_speech": "v. / n.", "definition": "讀書；學習", "basic_sentence": "She studies English every day.", "advanced_sentence": "His study on behavior was published.", "collocations": "study hard"},
-    "years old": {"word": "years old", "phonetic": "/jɪrz oʊld/", "part_of_speech": "adj.", "definition": "……歲的", "basic_sentence": "She is ten years old.", "advanced_sentence": "He started playing piano when he was five years old.", "collocations": "years old"},
-    "husband": {"word": "husband", "phonetic": "/ˈhʌzbənd/", "part_of_speech": "n.", "definition": "丈夫", "basic_sentence": "Her husband is a doctor.", "advanced_sentence": "They celebrated their tenth wedding anniversary.", "collocations": "husband and wife"},
-    "too": {"word": "too", "phonetic": "/tuː/", "part_of_speech": "adv.", "definition": "也；太", "basic_sentence": "I want to go to the park too.", "advanced_sentence": "The box is too heavy for me to lift.", "collocations": "too... to..."},
-    "their": {"word": "their", "phonetic": "/ðer/", "part_of_speech": "pron.", "definition": "他們的", "basic_sentence": "The students are doing their homework.", "advanced_sentence": "They brought their children to the museum.", "collocations": "their own"},
-    "determiner": {"word": "determiner", "phonetic": "/dɪˈtɜːrmɪnər/", "part_of_speech": "n.", "definition": "限定詞", "basic_sentence": "Words like 'the' and 'this' can function as determiners.", "advanced_sentence": "A determiner specifies the grammatical reference.", "collocations": "noun determiner"},
-    "writer": {"word": "writer", "phonetic": "/ˈraɪtər/", "part_of_speech": "n.", "definition": "作家；作者", "basic_sentence": "She is a famous writer.", "advanced_sentence": "The writer published her first novel last year.", "collocations": "famous writer"},
-    "son": {"word": "son", "phonetic": "/sʌn/", "part_of_speech": "n.", "definition": "兒子", "basic_sentence": "They have one son and two daughters.", "advanced_sentence": "His son plans to study engineering in college.", "collocations": "son and daughter"},
-    "classmate": {"word": "classmate", "phonetic": "/ˈklæsmeɪt/", "part_of_speech": "n.", "definition": "同班同學", "basic_sentence": "He is my classmate in English class.", "advanced_sentence": "She often studies with her classmates after school.", "collocations": "high school classmate"},
-    "junior high school": {"word": "junior high school", "phonetic": "/ˈdʒuːniər haɪ skuːl/", "part_of_speech": "n.", "definition": "國民中學", "basic_sentence": "He is a student at junior high school.", "advanced_sentence": "Students learn many new subjects in junior high school.", "collocations": "attend junior high school"},
-    "cousin": {"word": "cousin", "phonetic": "/ˈkʌzn/", "part_of_speech": "n.", "definition": "堂兄弟姊妹；表兄弟姊妹", "basic_sentence": "I visited my cousin during the weekend.", "advanced_sentence": "My cousin lives in another city.", "collocations": "first cousin"},
-    "woman": {"word": "woman", "phonetic": "/ˈwʊmən/", "part_of_speech": "n.", "definition": "女人；婦女", "basic_sentence": "The woman is reading a book.", "advanced_sentence": "She is a successful businesswoman.", "collocations": "young woman"},
-    "daughter": {"word": "daughter", "phonetic": "/ˈdɔːtər/", "part_of_speech": "n.", "definition": "女兒", "basic_sentence": "They have a lovely daughter.", "advanced_sentence": "Her daughter wants to be a musician.", "collocations": "mother and daughter"},
-    "wife": {"word": "wife", "phonetic": "/waɪf/", "part_of_speech": "n.", "definition": "妻子", "basic_sentence": "His wife is an English teacher.", "advanced_sentence": "He bought a nice gift for his wife.", "collocations": "husband and wife"},
-    "aunt": {"word": "aunt", "phonetic": "/ænt/", "part_of_speech": "n.", "definition": "姑姑；阿姨；舅媽", "basic_sentence": "My aunt lives in Taipei.", "advanced_sentence": "We are going to visit my aunt this weekend.", "collocations": "my aunt"},
-    "baby": {"word": "baby", "phonetic": "/ˈbeɪbi/", "part_of_speech": "n.", "definition": "嬰兒", "basic_sentence": "The baby is sleeping peacefully.", "advanced_sentence": "She takes care of her baby sister.", "collocations": "baby boy"},
-    "family": {"word": "family", "phonetic": "/ˈfæməli/", "part_of_speech": "n.", "definition": "家庭；家族", "basic_sentence": "I love my family very much.", "advanced_sentence": "They spent a wonderful weekend with their family.", "collocations": "family member"},
-    "housewife": {"word": "housewife", "phonetic": "/ˈhaʊswaɪf/", "part_of_speech": "n.", "definition": "家庭主婦", "basic_sentence": "Her mother is a dedicated housewife.", "advanced_sentence": "Being a housewife requires managing a busy household.", "collocations": "full-time housewife"},
-    "elementary school": {"word": "elementary school", "phonetic": "/ˌelɪˈmentəri skuːl/", "part_of_speech": "n.", "definition": "國民小學", "basic_sentence": "Children go to elementary school at age six.", "advanced_sentence": "He teaches music at a local elementary school.", "collocations": "elementary school student"},
-    "young": {"word": "young", "phonetic": "/jʌŋ/", "part_of_speech": "adj.", "definition": "年輕的", "basic_sentence": "She is a young and talented artist.", "advanced_sentence": "When I was young, I dreamed of traveling the world.", "collocations": "young people"},
-    "nice to meet you": {"word": "nice to meet you", "phonetic": "/naɪs tuː miːt juː/", "part_of_speech": "phr.", "definition": "很高興認識你", "basic_sentence": "Hello, my name is John. Nice to meet you.", "advanced_sentence": "It is a pleasure to meet you as well.", "collocations": "nice to meet you too"},
-    "i see": {"word": "I see", "phonetic": "/aɪ siː/", "part_of_speech": "phr.", "definition": "我明白了；原來如此", "basic_sentence": "Ah, I see. Thank you for explaining.", "advanced_sentence": "I see what you mean by that.", "collocations": "now I see"},
-    "our": {"word": "our", "phonetic": "/aʊər/", "part_of_speech": "pron.", "definition": "我們的", "basic_sentence": "This is our new classroom.", "advanced_sentence": "We should protect our environment.", "collocations": "our school"},
-    "coach": {"word": "coach", "phonetic": "/koʊtʃ/", "part_of_speech": "n. / v.", "definition": "教練；指導", "basic_sentence": "He is our basketball coach.", "advanced_sentence": "She coaches the track team after school.", "collocations": "head coach"},
-    "new": {"word": "new", "phonetic": "/nuː/", "part_of_speech": "adj.", "definition": "新的", "basic_sentence": "I bought a new computer yesterday.", "advanced_sentence": "They moved into a new apartment last week.", "collocations": "brand new"},
-    "singer": {"word": "singer", "phonetic": "/ˈsɪŋər/", "part_of_speech": "n.", "definition": "歌手", "basic_sentence": "She is a popular pop singer.", "advanced_sentence": "The famous singer will perform at the concert.", "collocations": "lead singer"},
-    "uncle": {"word": "uncle", "phonetic": "/ˈʌŋkl/", "part_of_speech": "n.", "definition": "叔叔；伯伯；舅舅", "basic_sentence": "My uncle lives in Taipei.", "advanced_sentence": "He visited his uncle during the summer vacation.", "collocations": "uncle and aunt"},
-    "really": {"word": "really", "phonetic": "/ˈriːəli/", "part_of_speech": "adv.", "definition": "真地；非常", "basic_sentence": "I am really tired today.", "advanced_sentence": "She really enjoyed the concert last night.", "collocations": "really good"},
-    "beautiful": {"word": "beautiful", "phonetic": "/ˈbjuːtɪfl/", "part_of_speech": "adj.", "definition": "美麗的；漂亮的", "basic_sentence": "The flowers are very beautiful.", "advanced_sentence": "She wore a beautiful dress to the party.", "collocations": "beautiful girl"},
-    "handsome": {"word": "handsome", "phonetic": "/ˈhænsəm/", "part_of_speech": "adj.", "definition": "英俊的", "basic_sentence": "He is a tall and handsome man.", "advanced_sentence": "The actor looks handsome in his new movie.", "collocations": "handsome boy"},
-    "dear": {"word": "dear", "phonetic": "/dɪr/", "part_of_speech": "adj. / n.", "definition": "親愛的", "basic_sentence": "Oh dear, I lost my keys.", "advanced_sentence": "My dear friend, thank you for your help.", "collocations": "dear friend"},
-    "police officer": {"word": "police officer", "phonetic": "/pəˈliːs ˈɔːfɪsər/", "part_of_speech": "n.", "definition": "警察", "basic_sentence": "The police officer helped the lost child.", "advanced_sentence": "He wants to be a police officer when he grows up.", "collocations": "call a police officer"},
-    "office worker": {"word": "office worker", "phonetic": "/ˈɔːfɪs ˈwɜːrkər/", "part_of_speech": "n.", "definition": "上班族；辦公室職員", "basic_sentence": "My brother is an office worker.", "advanced_sentence": "Many office workers take the subway to work.", "collocations": "busy office worker"},
-    "very": {"word": "very", "phonetic": "/ˈveri/", "part_of_speech": "adv.", "definition": "非常；很", "basic_sentence": "Thank you very much.", "advanced_sentence": "The weather is very hot today.", "collocations": "very good"},
-    "cookie": {"word": "cookie", "phonetic": "/ˈkʊki/", "part_of_speech": "n.", "definition": "餅乾", "basic_sentence": "She baked a chocolate chip cookie.", "advanced_sentence": "Would you like a cookie with your tea?", "collocations": "chocolate cookie"},
-    "magic": {"word": "magic", "phonetic": "/ˈmædʒɪk/", "part_of_speech": "n. / adj.", "definition": "魔法；奇妙的", "basic_sentence": "The magician performed a magic trick.", "advanced_sentence": "It felt like magic when the lights went on.", "collocations": "magic show"}
+    "study": {"word": "study", "phonetic": "/ˈstʌdi/", "part_of_speech": "v. / n.", "definition": "讀書；學習", "basic_sentence": "She studies English every day.", "advanced_sentence": "His study on behavior was published.", "collocations": "study hard"}
 }
 
 def init_db(db_name):
@@ -299,8 +264,8 @@ def generate_vocab_info(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v. / adj.",
         "definition": simple_s2t_convert(translated_definition),
-        "basic_sentence": f"Students love to learn the new word {w_clean} today.",
-        "advanced_sentence": f"Understanding how to apply {w_clean} correctly in sentences is crucial.",
+        "basic_sentence": f"We often talk about {w_clean} in our daily life.",
+        "advanced_sentence": f"Understanding the concept of {w_clean} is very important.",
         "collocations": f"common {w_clean}"
     }
     return fallback_data, None
@@ -312,25 +277,12 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# 💡 多變且絕對包含單字的動態基礎例句庫
-def get_dynamic_basic_sentence(word):
-    pool = [
-        f"Everyone knows that {word} plays an important role in our lives.",
-        f"We often talk about {word} during our weekly English class.",
-        f"It is quite interesting to see how {word} is used by native speakers.",
-        f"Can you tell me more details about {word}?",
-        f"Many students find it helpful to study {word} every single day."
-    ]
-    return random.choice(pool)
+# 💡 絕對精準的單字動態包裝產生器（保證例句內一定含有該單字本身）
+def get_safe_game_sentence(word, definition):
+    return f"In our daily life, people often use the word '{word}', which means '{definition}'."
 
-# 💡 多變且絕對包含單字的動態進階定義庫
-def get_dynamic_advanced_definition(word):
-    pool = [
-        f"A valuable context where speakers discuss the meaning and usage of {word}.",
-        f"An essential linguistic expression designed to illustrate {word}.",
-        f"A helpful sentence structure that incorporates the term {word}."
-    ]
-    return random.choice(pool)
+def get_safe_advanced_definition(word, definition):
+    return f"English definition context for '{word}' (meaning: {definition})."
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -658,40 +610,42 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 確保每次切換單元或剛進來時，初始化隨機題目狀態
-            if "active_game_word" not in st.session_state or st.session_state.get("active_game_scope") != selected_game_unit:
-                st.session_state.active_game_scope = selected_game_unit
+            # 💡 絕對嚴格鎖定：確保每次抽出的當前題目、例句、拼字提示皆屬於同一個單字物件
+            if "game_word_lock" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
+                st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
-                w = str(row['word'])
+                w = str(row['word']).strip()
+                d = str(row['definition']).strip()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
                 if not db_b or w.lower() not in db_b.lower() or any(b in db_b for b in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
-                    active_b = get_dynamic_basic_sentence(w)
+                    active_b = get_safe_game_sentence(w, d)
                 else:
                     active_b = db_b
 
                 db_a = clean_sentence(row.get('advanced_sentence', ''))
                 if not db_a or w.lower() not in db_a.lower() or any(b in db_a for b in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
-                    active_a = get_dynamic_advanced_definition(w)
+                    active_a = get_safe_advanced_definition(w, d)
                 else:
                     masked = re.sub(re.escape(w), 'the blank word', db_a, flags=re.IGNORECASE)
                     active_a = f"A vocabulary term used in context: {masked}"
 
-                st.session_state.active_game_word = w
-                st.session_state.active_game_row = row
-                st.session_state.active_game_basic = active_b
-                st.session_state.active_game_adv = active_a
+                st.session_state.game_word_lock = w
+                st.session_state.game_row_lock = row
+                st.session_state.game_basic_lock = active_b
+                st.session_state.game_adv_lock = active_a
 
-            target = st.session_state.active_game_row
-            word_str = st.session_state.active_game_word
+            target = st.session_state.game_row_lock
+            word_str = st.session_state.game_word_lock
             hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
             
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
+                st.markdown(f"**📌 中文釋義提示：** `{target.get('definition', '')}`")
                 
                 # 模式一：經典單字挑戰 (例句挖空 + 單字發音)
                 if "經典" in game_mode:
-                    masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.active_game_basic, flags=re.IGNORECASE)
+                    masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.game_basic_lock, flags=re.IGNORECASE)
                     st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
@@ -707,21 +661,20 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
                     st.markdown("### 🎧 Listen to the English definition and spell the word!")
-                    st.markdown(f"**📌 Definition：** {st.session_state.active_game_adv}")
+                    st.markdown(f"**📌 Definition：** {st.session_state.game_adv_lock}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
                         st.markdown("<div style='margin-top: 15px;'>**🔊 發音提示：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            audio_bytes = generate_audio_bytes(st.session_state.active_game_adv, lang='en')
+                            audio_bytes = generate_audio_bytes(st.session_state.game_adv_lock, lang='en')
                             st.audio(audio_bytes, format="audio/mp3")
                         except Exception:
                             st.warning("發音載入失敗，請確認網路連線。")
 
                 st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (字數：{len(word_str)} 個字母)")
 
-            # 💡 完全不使用 st.form，改用獨立輸入框與按鈕，徹底解決換題無效的問題
             user_guess = st.text_input("請輸入你的拼寫答案：", key="game_input_box").strip().lower()
             
             col_g1, col_g2 = st.columns(2)
@@ -734,7 +687,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if user_guess == word_str.lower():
                     st.success(f"🎉 答對了！太棒了！單字就是 **{word_str}**")
                     time.sleep(0.8)
-                    for k in ['active_game_word', 'active_game_row', 'active_game_basic', 'active_game_adv']:
+                    for k in ['game_word_lock', 'game_row_lock', 'game_basic_lock', 'game_adv_lock']:
                         if k in st.session_state:
                             del st.session_state[k]
                     st.rerun()
@@ -743,7 +696,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     st.error("❌ 答錯囉！累積答錯次數 +1，再試一次，加油！")
 
             if skip_question:
-                for k in ['active_game_word', 'active_game_row', 'active_game_basic', 'active_game_adv']:
+                for k in ['game_word_lock', 'game_row_lock', 'game_basic_lock', 'game_adv_lock']:
                     if k in st.session_state:
                         del st.session_state[k]
                 st.rerun()
