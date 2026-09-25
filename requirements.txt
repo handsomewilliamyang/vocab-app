@@ -1,7 +1,5 @@
 streamlit
 pandas
+gtts
 python-docx
-Pillow
-gspread
-google-auth
-gTTS
+google-generativeai
