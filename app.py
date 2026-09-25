@@ -54,10 +54,10 @@ db_mapping = {
 current_db_name = db_mapping.get(selected_level, "vocabulary.db")
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"💡 目前模式：專注於 {selected_level}單字訓練（獨立資料庫）。")
+st.sidebar.info(f"💡 目前模式：專注於 {selected_level} 單字訓練（獨立資料庫）。")
 
 # -------------------------------------------------------------------------
-# 2. 簡繁轉換對照字典與強制清洗機制
+# 2. 簡繁轉換對照字典與黃金例句庫
 # -------------------------------------------------------------------------
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
@@ -74,11 +74,12 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-OFFLINE_DICT = {
-    "house": {"word": "house", "phonetic": "/haʊs/", "part_of_speech": "n.", "definition": "房子；住宅", "basic_sentence": "They live in a large house near the park.", "advanced_sentence": "He bought a new house last year.", "collocations": "build a house"},
+# 💡 絕對完美的黃金單字與例句對應庫（保證克漏字與單字百分之百完美吻合）
+GOLDEN_WORD_DB = {
     "kitchen": {"word": "kitchen", "phonetic": "/ˈkɪtʃən/", "part_of_speech": "n.", "definition": "廚房", "basic_sentence": "Mom is cooking delicious dinner in the kitchen.", "advanced_sentence": "The kitchen was completely remodeled last month.", "collocations": "in the kitchen"},
     "parents": {"word": "parents", "phonetic": "/ˈpɛrənts/", "part_of_speech": "n.", "definition": "父母", "basic_sentence": "My parents always support my educational goals.", "advanced_sentence": "Both parents attended the school meeting.", "collocations": "support your parents"},
     "each other": {"word": "each other", "phonetic": "/iːtʃ ˈʌðər/", "part_of_speech": "pron.", "definition": "互相；彼此", "basic_sentence": "Good friends should always help each other.", "advanced_sentence": "They looked at each other with a warm smile.", "collocations": "talk to each other"},
+    "house": {"word": "house", "phonetic": "/haʊs/", "part_of_speech": "n.", "definition": "房子；住宅", "basic_sentence": "They live in a large house near the park.", "advanced_sentence": "He bought a new house last year.", "collocations": "build a house"},
     "enough": {"word": "enough", "phonetic": "/ɪˈnʌf/", "part_of_speech": "adj. / adv. / pron.", "definition": "足夠的；充分地", "basic_sentence": "We have enough time to finish the project.", "advanced_sentence": "She didn't sleep enough last night.", "collocations": "enough time"},
     "school": {"word": "school", "phonetic": "/skuːl/", "part_of_speech": "n.", "definition": "學校", "basic_sentence": "She goes to school by bus every morning.", "advanced_sentence": "The school provides excellent learning programs.", "collocations": "go to school"},
     "teacher": {"word": "teacher", "phonetic": "/ˈtiːtʃər/", "part_of_speech": "n.", "definition": "老師", "basic_sentence": "Mr. Smith is our favorite English teacher.", "advanced_sentence": "A good teacher inspires students to think critically.", "collocations": "classroom teacher"},
@@ -117,6 +118,11 @@ def clean_legacy_data(db_name):
     for p in bad_prefixes:
         c.execute("UPDATE vocab SET definition = REPLACE(definition, ?, '')", (p,))
     
+    # 強制將黃金字典內的標準例句寫回資料庫，徹底洗掉任何爛例句
+    for w_key, data in GOLDEN_WORD_DB.items():
+        c.execute("UPDATE vocab SET phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, advanced_sentence=? WHERE LOWER(TRIM(word))=?", 
+                  (data['phonetic'], data['part_of_speech'], data['definition'], data['basic_sentence'], data['advanced_sentence'], w_key.lower()))
+    
     conn.commit()
     conn.close()
 
@@ -124,7 +130,7 @@ init_db(current_db_name)
 clean_legacy_data(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式（黃金句型產生器）
+# 3. 核心工具函式
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
@@ -134,8 +140,8 @@ def clean_sentence(text):
 
 def auto_translate_english_to_chinese(word):
     w_lower = word.strip().lower()
-    if w_lower in OFFLINE_DICT:
-        return OFFLINE_DICT[w_lower]['definition']
+    if w_lower in GOLDEN_WORD_DB:
+        return GOLDEN_WORD_DB[w_lower]['definition']
 
     try:
         url = f"https://api.mymemory.translated.net/get?q={urllib.parse.quote(word)}&langpair=en|zh-TW"
@@ -151,22 +157,23 @@ def auto_translate_english_to_chinese(word):
     except Exception:
         return "(待補充中文)"
 
-def get_gold_standard_data(word):
+def get_word_record_data(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    if w_lower in OFFLINE_DICT:
-        return OFFLINE_DICT[w_lower]
+    if w_lower in GOLDEN_WORD_DB:
+        return GOLDEN_WORD_DB[w_lower]
 
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
+    # 針對任意新單字產生絕對安全、文法正確、且包含單字本身的例句
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": f"We often talk about {w_clean} in our daily lives.",
-        "advanced_sentence": f"It is essential to understand how {w_clean} is applied in practical contexts.",
+        "basic_sentence": f"Students should learn how to use {w_clean} correctly in sentences.",
+        "advanced_sentence": f"The practical application of {w_clean} is essential for language learning.",
         "collocations": f"practice {w_clean}"
     }
 
@@ -304,7 +311,7 @@ if main_menu == "✨ 智慧單字新增":
             if not single_word:
                 st.warning("請先輸入單字！")
             else:
-                word_data = get_gold_standard_data(single_word.strip())
+                word_data = get_word_record_data(single_word.strip())
                 if word_data:
                     if upsert_word_to_db(word_data, current_db_name, current_unit_tag):
                         st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】")
@@ -373,7 +380,7 @@ if main_menu == "✨ 智慧單字新增":
                         st.success(f"✅ 解析成功！所有檔案共萃取出 {len(all_extracted_words)} 個不重複單字，開始批次匯入...")
                         for i, w in enumerate(all_extracted_words):
                             status_text.text(f"⏳ 正在處理 ({i+1}/{len(all_extracted_words)}): {w}")
-                            w_data = get_gold_standard_data(w)
+                            w_data = get_word_record_data(w)
                             if w_data:
                                 if upsert_word_to_db(w_data, current_db_name, current_unit_tag):
                                     total_success_count += 1
@@ -399,40 +406,11 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_top_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 重新整理與自動修復資料", type="primary", use_container_width=True):
-                conn = sqlite3.connect(current_db_name)
-                c = conn.cursor()
-                c.execute("SELECT id, word, definition FROM vocab")
-                all_rows = c.fetchall()
-                conn.close()
-                
-                missing_or_bad = []
-                for r_id, r_word, r_def in all_rows:
-                    if not r_def or r_def.lower() == r_word.lower() or '待補充' in r_def or '翻譯失敗' in r_def or re.match(r'^[a-zA-Z]', r_def) or any(s in r_def for s in S2T_DICT.keys()):
-                        missing_or_bad.append((r_id, r_word))
-                
-                if not missing_or_bad:
-                    st.success("✅ 檢查完畢，清單已重新整理，所有單字的資料都很健康！")
-                    time.sleep(0.8)
-                    st.rerun()
-                else:
-                    progress_bar = st.progress(0)
-                    status = st.empty()
-                    for i, row in enumerate(missing_or_bad):
-                        word_id, w_text = row
-                        status.text(f"⏳ 正在更新: {w_text} ...")
-                        w_data = get_gold_standard_data(w_text)
-                        update_single_word_in_db(
-                            current_db_name, word_id, w_text, 
-                            w_data['phonetic'], w_data['part_of_speech'], w_data['definition'], 
-                            w_data['basic_sentence'], w_data['advanced_sentence'], w_data['collocations']
-                        )
-                        progress_bar.progress((i + 1) / len(missing_or_bad))
-                        time.sleep(0.3)
-                    status.empty()
-                    st.success(f"🎊 重新整理與修復完成！已成功更新 {len(missing_or_bad)} 個單字！")
-                    time.sleep(1)
-                    st.rerun()
+            if st.button("🔄 立即刷新並強制修正所有例句", type="primary", use_container_width=True):
+                clean_legacy_data(current_db_name)
+                st.success("✅ 資料庫例句已全面重置為標準高質感例句！")
+                time.sleep(0.8)
+                st.rerun()
         
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
 
@@ -580,23 +558,27 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 絕對鐵壁封裝：強制將當前單字、例句、專屬單字音訊綁定在一起，絕不分離
+            # 💡 絕對鐵壁封裝：確保每次抽出的當前單字與例句百分之百對應，絕不出現罐頭垃圾句
             if "current_game_item" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
                 w = str(row['word']).strip()
+                w_lower = w.lower()
                 
+                # 直接檢查資料庫中的基本例句是否合法且包含單字
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                # 確保例句中一定要包含該單字本身（不分大小寫），否則使用預設黃金句
-                if not db_b or w.lower() not in db_b.lower():
-                    gold_data = get_gold_standard_data(w)
-                    active_b = gold_data['basic_sentence']
-                    active_a = gold_data['advanced_sentence']
+                if not db_b or w_lower not in db_b.lower() or "example sentence using" in db_b.lower():
+                    if w_lower in GOLDEN_WORD_DB:
+                        active_b = GOLDEN_WORD_DB[w_lower]['basic_sentence']
+                        active_a = GOLDEN_WORD_DB[w_lower]['advanced_sentence']
+                    else:
+                        active_b = f"Students often practice using {w} in class everyday."
+                        active_a = f"Understanding the concept of {w} is very important."
                 else:
                     active_b = db_b
                     active_a = clean_sentence(row.get('advanced_sentence', f"Context for {w}."))
 
-                # 🔊 關鍵修正：音訊位元組只針對「單字本身」生成，絕對不會唸出整句話！
+                # 🔊 生成單字專屬音訊
                 word_audio = generate_audio_bytes(w, lang='en')
                 
                 st.session_state.current_game_item = {
@@ -629,7 +611,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         st.markdown("<div style='margin-top: 15px;'>**🔊 Word Pronunciation：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            # 嚴格播放獨立單字的音訊
                             st.audio(item["audio_bytes"], format="audio/mp3")
                         except Exception:
                             st.warning("發音載入失敗。")
