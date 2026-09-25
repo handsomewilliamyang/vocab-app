@@ -11,7 +11,6 @@ import docx
 import urllib.request
 import urllib.parse
 
-# 導入發音所需套件
 from gtts import gTTS
 import io
 
@@ -26,7 +25,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------------------------------
-# 1. 側邊欄導覽與級別切換（字體放大優化）
+# 1. 側邊欄導覽與級別切換
 # -------------------------------------------------------------------------
 st.sidebar.markdown("<h2 style='font-size: 24px;'>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
 
@@ -57,7 +56,7 @@ st.sidebar.markdown("---")
 st.sidebar.info(f"💡 目前模式：專注於 {selected_level} 單字訓練（獨立資料庫）。")
 
 # -------------------------------------------------------------------------
-# 2. 簡繁轉換對照字典與黃金例句庫
+# 2. 簡繁轉換與核心單字庫
 # -------------------------------------------------------------------------
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
@@ -74,17 +73,16 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 💡 絕對完美的黃金單字與例句對應庫（保證克漏字與單字百分之百完美吻合）
 GOLDEN_WORD_DB = {
-    "kitchen": {"word": "kitchen", "phonetic": "/ˈkɪtʃən/", "part_of_speech": "n.", "definition": "廚房", "basic_sentence": "Mom is cooking delicious dinner in the kitchen.", "advanced_sentence": "The kitchen was completely remodeled last month.", "collocations": "in the kitchen"},
-    "parents": {"word": "parents", "phonetic": "/ˈpɛrənts/", "part_of_speech": "n.", "definition": "父母", "basic_sentence": "My parents always support my educational goals.", "advanced_sentence": "Both parents attended the school meeting.", "collocations": "support your parents"},
-    "each other": {"word": "each other", "phonetic": "/iːtʃ ˈʌðər/", "part_of_speech": "pron.", "definition": "互相；彼此", "basic_sentence": "Good friends should always help each other.", "advanced_sentence": "They looked at each other with a warm smile.", "collocations": "talk to each other"},
-    "house": {"word": "house", "phonetic": "/haʊs/", "part_of_speech": "n.", "definition": "房子；住宅", "basic_sentence": "They live in a large house near the park.", "advanced_sentence": "He bought a new house last year.", "collocations": "build a house"},
-    "enough": {"word": "enough", "phonetic": "/ɪˈnʌf/", "part_of_speech": "adj. / adv. / pron.", "definition": "足夠的；充分地", "basic_sentence": "We have enough time to finish the project.", "advanced_sentence": "She didn't sleep enough last night.", "collocations": "enough time"},
-    "school": {"word": "school", "phonetic": "/skuːl/", "part_of_speech": "n.", "definition": "學校", "basic_sentence": "She goes to school by bus every morning.", "advanced_sentence": "The school provides excellent learning programs.", "collocations": "go to school"},
-    "teacher": {"word": "teacher", "phonetic": "/ˈtiːtʃər/", "part_of_speech": "n.", "definition": "老師", "basic_sentence": "Mr. Smith is our favorite English teacher.", "advanced_sentence": "A good teacher inspires students to think critically.", "collocations": "classroom teacher"},
-    "student": {"word": "student", "phonetic": "/ˈstuːdnt/", "part_of_speech": "n.", "definition": "學生", "basic_sentence": "He is a very hard-working student.", "advanced_sentence": "University students often work part-time.", "collocations": "exchange student"},
-    "friend": {"word": "friend", "phonetic": "/frend/", "part_of_speech": "n.", "definition": "朋友", "basic_sentence": "She is my best friend at school.", "advanced_sentence": "A true friend stands by you in hard times.", "collocations": "close friend"}
+    "kitchen": {"word": "kitchen", "phonetic": "/ˈkɪtʃən/", "part_of_speech": "n.", "definition": "廚房", "basic_sentence": "Mom is cooking delicious dinner in the kitchen.", "advanced_sentence": "The kitchen was completely remodeled last month."},
+    "parents": {"word": "parents", "phonetic": "/ˈpɛrənts/", "part_of_speech": "n.", "definition": "父母", "basic_sentence": "My parents always support my educational goals.", "advanced_sentence": "Both parents attended the school meeting."},
+    "each other": {"word": "each other", "phonetic": "/iːtʃ ˈʌðər/", "part_of_speech": "pron.", "definition": "互相；彼此", "basic_sentence": "Good friends should always help each other.", "advanced_sentence": "They looked at each other with a warm smile."},
+    "house": {"word": "house", "phonetic": "/haʊs/", "part_of_speech": "n.", "definition": "房子；住宅", "basic_sentence": "They live in a large house near the park.", "advanced_sentence": "He bought a new house last year."},
+    "enough": {"word": "enough", "phonetic": "/ɪˈnʌf/", "part_of_speech": "adj. / adv. / pron.", "definition": "足夠的；充分地", "basic_sentence": "We have enough time to finish the project.", "advanced_sentence": "She didn't sleep enough last night."},
+    "school": {"word": "school", "phonetic": "/skuːl/", "part_of_speech": "n.", "definition": "學校", "basic_sentence": "She goes to school by bus every morning.", "advanced_sentence": "The school provides excellent learning programs."},
+    "teacher": {"word": "teacher", "phonetic": "/ˈtiːtʃər/", "part_of_speech": "n.", "definition": "老師", "basic_sentence": "Mr. Smith is our favorite English teacher.", "advanced_sentence": "A good teacher inspires students to think critically."},
+    "student": {"word": "student", "phonetic": "/ˈstuːdnt/", "part_of_speech": "n.", "definition": "學生", "basic_sentence": "He is a very hard-working student.", "advanced_sentence": "University students often work part-time."},
+    "friend": {"word": "friend", "phonetic": "/frend/", "part_of_speech": "n.", "definition": "朋友", "basic_sentence": "She is my best friend at school.", "advanced_sentence": "A true friend stands by you in hard times."}
 }
 
 def init_db(db_name):
@@ -114,15 +112,9 @@ def init_db(db_name):
 def clean_legacy_data(db_name):
     conn = sqlite3.connect(db_name)
     c = conn.cursor()
-    bad_prefixes = ['實用單字： ', '核心單字： ', '實用字彙： ', '核心字彙： ', '實用單字：', '核心單字：', '實用字彙：', '核心字彙：', '實用單字: ', '核心單字: ', '實用單字:', '核心單字:']
+    bad_prefixes = ['實用單字： ', '核心單字： ', '實用字彙： ', '核心字彙： ']
     for p in bad_prefixes:
         c.execute("UPDATE vocab SET definition = REPLACE(definition, ?, '')", (p,))
-    
-    # 強制將黃金字典內的標準例句寫回資料庫，徹底洗掉任何爛例句
-    for w_key, data in GOLDEN_WORD_DB.items():
-        c.execute("UPDATE vocab SET phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, advanced_sentence=? WHERE LOWER(TRIM(word))=?", 
-                  (data['phonetic'], data['part_of_speech'], data['definition'], data['basic_sentence'], data['advanced_sentence'], w_key.lower()))
-    
     conn.commit()
     conn.close()
 
@@ -166,14 +158,13 @@ def get_word_record_data(word):
 
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
-    # 針對任意新單字產生絕對安全、文法正確、且包含單字本身的例句
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": f"Students should learn how to use {w_clean} correctly in sentences.",
-        "advanced_sentence": f"The practical application of {w_clean} is essential for language learning.",
+        "basic_sentence": f"This sentence helps practice the word {w_clean}.",
+        "advanced_sentence": f"Advanced context for using {w_clean}.",
         "collocations": f"practice {w_clean}"
     }
 
@@ -181,10 +172,6 @@ def update_single_word_in_db(db_name, word_id, new_word, new_phonetic, new_pos, 
     conn = sqlite3.connect(db_name)
     c = conn.cursor()
     try:
-        c.execute("SELECT id FROM vocab WHERE LOWER(TRIM(word)) = LOWER(TRIM(?)) AND id != ?", (new_word, word_id))
-        if c.fetchone():
-            return False, "該英文單字已存在於資料庫中，請勿重複建立！"
-
         c.execute('''
             UPDATE vocab 
             SET word=?, phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, advanced_sentence=?, collocations=?
@@ -320,265 +307,109 @@ if main_menu == "✨ 智慧單字新增":
                         st.error("❌ 寫入資料庫失敗！")
 
     with col_input2:
-        st.subheader("📂 檔案與智慧匯入（支援多檔案複選）")
+        st.subheader("📂 檔案與智慧匯入")
         import_mode = st.radio("選擇匯入來源：", ["CSV 檔案", "Word 檔案 (.docx)"], horizontal=True)
-        
         if import_mode == "Word 檔案 (.docx)":
-            uploaded_docxs = st.file_uploader("上傳 Word 講義檔案（可同時選取多個）", type=["docx"], accept_multiple_files=True)
+            uploaded_docxs = st.file_uploader("上傳 Word 講義檔案", type=["docx"], accept_multiple_files=True)
             if uploaded_docxs:
                 st.info(f"📁 已載入 {len(uploaded_docxs)} 個檔案，確認匯入單元為：**{current_unit_tag}**")
                 if st.button("📖 解析所有 Word 並智慧批次匯入", use_container_width=True):
                     total_success_count = 0
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    all_extracted_words = []
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
                             with open(temp_path, "wb") as f:
                                 f.write(uploaded_docx.getbuffer())
-                                
                             doc = docx.Document(temp_path)
-                            
-                            def is_valid_vocab(text):
-                                t = text.strip()
-                                if not t or len(t) > 35:
-                                    return False
-                                if re.search(r'[\u4e00-\u9fa5]', t):
-                                    return False
-                                if t.lower() in ['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'phr.', 'vi.', 'vt.']:
-                                    return False
-                                if not re.match(r'^[a-zA-Z\s\-\'\.]+$', t):
-                                    return False
-                                return True
-
                             for table in doc.tables:
                                 for row in table.rows:
                                     for cell in row.cells:
-                                        text = cell.text.strip()
-                                        if text:
-                                            for line in text.split('\n'):
-                                                cleaned = re.sub(r'^\d+[\.、\s]*', '', line).strip()
-                                                if is_valid_vocab(cleaned) and cleaned not in all_extracted_words:
-                                                    all_extracted_words.append(cleaned)
-                                                    
-                            for para in doc.paragraphs:
-                                text = para.text.strip()
-                                if text:
-                                    cleaned = re.sub(r'^\d+[\.、\s]*', '', text).strip()
-                                    if is_valid_vocab(cleaned) and cleaned not in all_extracted_words:
-                                        all_extracted_words.append(cleaned)
-                                        
+                                        for line in cell.text.strip().split('\n'):
+                                            cleaned = re.sub(r'^\d+[\.、\s]*', '', line).strip()
+                                            if cleaned and len(cleaned) < 35 and not re.search(r'[\u4e00-\u9fa5]', cleaned):
+                                                w_data = get_word_record_data(cleaned)
+                                                if upsert_word_to_db(w_data, current_db_name, current_unit_tag):
+                                                    total_success_count += 1
                             if os.path.exists(temp_path):
                                 os.remove(temp_path)
-                        except Exception as e:
+                        except Exception:
                             if os.path.exists(temp_path):
                                 os.remove(temp_path)
-
-                    if len(all_extracted_words) > 0:
-                        st.success(f"✅ 解析成功！所有檔案共萃取出 {len(all_extracted_words)} 個不重複單字，開始批次匯入...")
-                        for i, w in enumerate(all_extracted_words):
-                            status_text.text(f"⏳ 正在處理 ({i+1}/{len(all_extracted_words)}): {w}")
-                            w_data = get_word_record_data(w)
-                            if w_data:
-                                if upsert_word_to_db(w_data, current_db_name, current_unit_tag):
-                                    total_success_count += 1
-                            progress_bar.progress((i + 1) / len(all_extracted_words))
-                            time.sleep(0.3)
-                            
-                        status_text.empty()
-                        st.success(f"🎊 多檔案批次匯入大功告成！成功匯入 {total_success_count} 個單字至 【{current_unit_tag}】。")
-                    else:
-                        st.warning("⚠️ 上傳的 Word 檔案中沒有找到可辨識的英文單字。")
+                    st.success(f"🎊 批次匯入完成！成功匯入 {total_success_count} 個單字。")
 
 elif main_menu == "📖 字庫管理與搜尋":
     df_vocab = get_vocab_by_db(current_db_name)
-    
     if df_vocab.empty:
-        st.info("📭 目前尚無單字，請至側邊欄「✨ 智慧單字新增」分頁新增！")
+        st.info("📭 目前尚無單字，請至側邊欄新增！")
     else:
-        unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist())
-        unit_list.append("全部單字")
-        
-        col_top_f1, col_top_f2 = st.columns([1.5, 1])
-        with col_top_f1:
-            selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
-        with col_top_f2:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 立即刷新並強制修正所有例句", type="primary", use_container_width=True):
-                clean_legacy_data(current_db_name)
-                st.success("✅ 資料庫例句已全面重置為標準高質感例句！")
-                time.sleep(0.8)
-                st.rerun()
-        
+        unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) + ["全部單字"]
+        selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
-
-        col_s1, col_s2 = st.columns([2, 1])
-        with col_s1:
-            search_query = st.text_input("🔍 搜尋單字或釋義：", placeholder="輸入關鍵字...")
-        with col_s2:
-            words_to_delete = st.multiselect("🗑️ 勾選要刪除的單字：", filtered_df['word'].tolist(), placeholder="選擇單字...")
-
+        
+        search_query = st.text_input("🔍 搜尋單字或釋義：")
         if search_query:
-            mask = filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)
-            filtered_df = filtered_df[mask]
-            
-        if words_to_delete:
-            if st.button("⚠️ 確認刪除已勾選的單字", type="primary"):
-                delete_words_from_db(current_db_name, words_to_delete)
-                st.success("已成功刪除勾選的單字！")
-                st.rerun()
+            filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
         
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        with st.expander("📋 點擊收合/展開：單字總表與快速編輯區", expanded=True):
-            display_df = filtered_df.copy()
-            display_df.insert(0, '編號', range(1, len(display_df) + 1))
-            display_columns = ['編號', 'word', 'phonetic', 'part_of_speech', 'definition']
-            
-            st.dataframe(
-                display_df[display_columns], 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "編號": st.column_config.NumberColumn(
-                        "編號",
-                        width="small"
-                    )
-                }
-            )
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            with st.container(border=True):
-                st.markdown("#### ✏️ 單字快速編輯修正")
-                st.caption("💡 提示：點擊下方輸入框後，可直接輸入英文單字進行即時搜尋與過濾！")
-                
-                if not filtered_df.empty:
-                    word_options = {f"{row['word']} ({row['definition']})": row for _, row in filtered_df.iterrows()}
-                    
-                    selected_option = st.selectbox("選擇要編輯的單字：", list(word_options.keys()), key="table_edit_select")
-                    
-                    if selected_option:
-                        target_row = word_options[selected_option]
-                        
-                        with st.form(key=f"table_edit_form_{target_row['id']}"):
-                            col_e1, col_e2, col_e3 = st.columns(3)
-                            with col_e1:
-                                edit_word = st.text_input("單字 (Word)", value=target_row['word'], key=f"w_{target_row['id']}")
-                            with col_e2:
-                                edit_phonetic = st.text_input("音標 (Phonetic)", value=target_row.get('phonetic', ''), key=f"p_{target_row['id']}")
-                            with col_e3:
-                                edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''), key=f"pos_{target_row['id']}")
-                                
-                            edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''), key=f"d_{target_row['id']}")
-                            edit_basic = st.text_area("基礎例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''), key=f"bs_{target_row['id']}")
-                            edit_adv = st.text_area("進階例句 (Advanced Sentence)", value=target_row.get('advanced_sentence', ''), key=f"as_{target_row['id']}")
-                            edit_coll = st.text_input("常見搭配詞 (Collocations)", value=target_row.get('collocations', ''), key=f"c_{target_row['id']}")
-                            
-                            submit_table_edit = st.form_submit_button("💾 確認儲存該單字修改", type="primary")
-                            
-                            if submit_table_edit:
-                                success, msg = update_single_word_in_db(
-                                    current_db_name, 
-                                    target_row['id'], 
-                                    edit_word, edit_phonetic, edit_pos, edit_def, edit_basic, edit_adv, edit_coll
-                                )
-                                if success:
-                                    st.success("✅ 單字修改成功！")
-                                    time.sleep(0.5)
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ 修改失敗：{msg}")
+        with st.expander("📋 單字總表與快速編輯", expanded=True):
+            st.dataframe(filtered_df[['word', 'phonetic', 'part_of_speech', 'definition', 'unit_tag']], use_container_width=True, hide_index=True)
 
 elif main_menu == "🎯 沉浸式閃卡複習":
     df_vocab_flash = get_vocab_by_db(current_db_name)
-    
     if df_vocab_flash.empty:
-        st.warning("📭 目前沒有單字可以進行閃卡練習，請先至側邊欄新增單字！")
+        st.warning("📭 目前沒有單字！")
     else:
-        unit_list_flash = ["全部單字"] + sorted(df_vocab_flash['unit_tag'].dropna().unique().tolist())
-        selected_flash_unit = st.selectbox("選擇要複習的單元範圍：", unit_list_flash, key="flash_unit_select")
+        if "flashcard_index" not in st.session_state:
+            st.session_state.flashcard_index = 0
+        total_count = len(df_vocab_flash)
+        st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
+        row = df_vocab_flash.iloc[st.session_state.flashcard_index]
         
-        df_vocab_flash = df_vocab_flash if selected_flash_unit == "全部單字" else df_vocab_flash[df_vocab_flash['unit_tag'] == selected_flash_unit]
-            
-        if df_vocab_flash.empty:
-            st.warning("📭 該分類中沒有單字！")
-        else:
-            if "flashcard_index" not in st.session_state:
-                st.session_state.flashcard_index = 0
-                
-            total_count = len(df_vocab_flash)
-            st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
-            current_idx = st.session_state.flashcard_index
-            
-            row = df_vocab_flash.iloc[current_idx]
-            
-            with st.container(border=True):
-                st.markdown(f"<p style='text-align: right; color: gray;'>CARD {current_idx + 1} OF {total_count} &nbsp;|&nbsp; 🏷️ {row.get('unit_tag', '未分類')}</p>", unsafe_allow_html=True)
-                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin: 10px 0;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
-                st.markdown(f"<p style='text-align: center; color: gray; font-size: 20px;'>{row['phonetic']} &nbsp;|&nbsp; {row['part_of_speech']}</p>", unsafe_allow_html=True)
-            
-            with st.expander("💡 點擊展開詳細釋義與例句解析", expanded=True):
-                st.markdown(f"### 📌 核心釋義：\n> **{row['definition']}**")
-                st.markdown(f"### 📖 基礎例句：\n{clean_sentence(row['basic_sentence'])}")
-                st.markdown(f"### 🌟 進階例句：\n{clean_sentence(row['advanced_sentence'])}")
-                st.markdown(f"### 🔗 常見搭配詞：\n`{row['collocations']}`")
-                
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_prev, col_mid, col_next = st.columns([1, 2, 1])
-            with col_prev:
-                if st.button("⬅️ 上一個單字", use_container_width=True):
-                    st.session_state.flashcard_index = (st.session_state.flashcard_index - 1) % total_count
-                    st.rerun()
-            with col_mid:
-                st.markdown(f"<div style='text-align: center; padding-top: 10px; font-weight: bold;'>學習進度：{current_idx + 1} / {total_count}</div>", unsafe_allow_html=True)
-            with col_next:
-                if st.button("➡️ 下一個單字", use_container_width=True):
-                    st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
-                    st.rerun()
+        with st.container(border=True):
+            st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+        with st.expander("💡 詳細釋義", expanded=True):
+            st.markdown(f"**中文釋義：** {row['definition']}")
+            st.markdown(f"**基礎例句：** {clean_sentence(row['basic_sentence'])}")
+        
+        c1, c2 = st.columns(2)
+        if c1.button("⬅️ 上一個", use_container_width=True):
+            st.session_state.flashcard_index = (st.session_state.flashcard_index - 1) % total_count
+            st.rerun()
+        if c2.button("➡️ 下一個", use_container_width=True):
+            st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
+            st.rerun()
 
 elif main_menu == "🎮 拼字王挑戰遊戲":
     df_vocab_game = get_vocab_by_db(current_db_name)
-    
     if df_vocab_game.empty:
-        st.warning("📭 目前沒有足夠的單字來進行遊戲，請先至側邊欄新增單字！")
+        st.warning("📭 目前沒有足夠的單字來進行遊戲！")
     else:
         unit_list_game = ["全部單字"] + sorted(df_vocab_game['unit_tag'].dropna().unique().tolist())
         selected_game_unit = st.selectbox("選擇遊戲挑戰的單元範圍：", unit_list_game, key="game_unit_select")
-        
         df_vocab_game = df_vocab_game if selected_game_unit == "全部單字" else df_vocab_game[df_vocab_game['unit_tag'] == selected_game_unit]
-            
+        
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽英文語境提示 + 打單字)"], horizontal=True)
-
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 絕對鐵壁封裝：確保每次抽出的當前單字與例句百分之百對應，絕不出現罐頭垃圾句
             if "current_game_item" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
                 row = df_vocab_game.sample(1).iloc[0]
                 w = str(row['word']).strip()
                 w_lower = w.lower()
                 
-                # 直接檢查資料庫中的基本例句是否合法且包含單字
+                # 嚴格過濾：如果資料庫的例句是假的或空的，直接採用純淨單字練習模式，絕不秀假句子
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                if not db_b or w_lower not in db_b.lower() or "example sentence using" in db_b.lower():
+                if not db_b or w_lower not in db_b.lower() or "example sentence using" in db_b.lower() or "this sentence helps" in db_b.lower():
                     if w_lower in GOLDEN_WORD_DB:
                         active_b = GOLDEN_WORD_DB[w_lower]['basic_sentence']
-                        active_a = GOLDEN_WORD_DB[w_lower]['advanced_sentence']
                     else:
-                        active_b = f"Students often practice using {w} in class everyday."
-                        active_a = f"Understanding the concept of {w} is very important."
+                        active_b = "" # 沒好句子就保持空白，直接靠定義與發音猜題！
                 else:
                     active_b = db_b
-                    active_a = clean_sentence(row.get('advanced_sentence', f"Context for {w}."))
 
-                # 🔊 生成單字專屬音訊
                 word_audio = generate_audio_bytes(w, lang='en')
                 
                 st.session_state.current_game_item = {
@@ -586,7 +417,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     "definition": row.get('definition', ''),
                     "unit_tag": row.get('unit_tag', ''),
                     "basic_sentence": active_b,
-                    "advanced_sentence": active_a,
                     "audio_bytes": word_audio
                 }
 
@@ -596,39 +426,23 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {item['unit_tag']}")
+                st.markdown(f"**📌 中文釋義：** `{item['definition']}`")
                 
-                # 模式一：經典單字挑戰 (純英文克漏字 + 單字獨立發音)
-                if "經典" in game_mode:
-                    # 使用正規表達式精準將句子中的目標單字替換為 ______
+                # 如果有真實好例句才顯示克漏字，否則乾脆不秀爛句子，避免干擾
+                if item['basic_sentence']:
                     masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
-                    if masked_basic == item['basic_sentence']:
-                        masked_basic = f"We can easily see ______ in our daily lives."
-                        
                     st.markdown(f"**📖 Context Sentence：** {masked_basic}")
-                    
-                    col_a1, col_a2 = st.columns([1, 4])
-                    with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 Word Pronunciation：**</div>", unsafe_allow_html=True)
-                    with col_a2:
-                        try:
-                            st.audio(item["audio_bytes"], format="audio/mp3")
-                        except Exception:
-                            st.warning("發音載入失敗。")
-                            
-                # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
-                    st.markdown("### 🎧 Listen to the English context hint and spell the word!")
-                    st.markdown(f"**📌 English Context Hint：** {item['advanced_sentence']}")
-                    
-                    col_a1, col_a2 = st.columns([1, 4])
-                    with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 Audio Prompt：**</div>", unsafe_allow_html=True)
-                    with col_a2:
-                        try:
-                            adv_audio = generate_audio_bytes(item['advanced_sentence'], lang='en')
-                            st.audio(adv_audio, format="audio/mp3")
-                        except Exception:
-                            st.warning("發音載入失敗。")
+                    st.markdown(f"**📖 Challenge Mode：** Listen to the pronunciation and spell the word based on its Chinese definition.")
+                
+                col_a1, col_a2 = st.columns([1, 4])
+                with col_a1:
+                    st.markdown("<div style='margin-top: 15px;'>**🔊 Pronunciation：**</div>", unsafe_allow_html=True)
+                with col_a2:
+                    try:
+                        st.audio(item["audio_bytes"], format="audio/mp3")
+                    except Exception:
+                        st.warning("發音載入失敗。")
 
                 st.markdown(f"**🔤 Spelling Hint：** `{hint_masked}` &nbsp;&nbsp; (Length: {len(word_str)} letters)")
 
