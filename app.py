@@ -60,7 +60,7 @@ st.sidebar.info(f"💡 目前模式：專注於 {selected_level} 單字訓練（
 # -------------------------------------------------------------------------
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
-    "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
+    "软件": "软體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
     "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
     "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
     "默认": "預設", "句": "句", "词": "詞", "语法": "語法"
@@ -100,13 +100,15 @@ def init_db(db_name):
 init_db(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式（真實字典與翻譯串接）
+# 3. 核心工具函式（嚴格過濾與真實字典串接）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
         return ""
     text = re.sub(r'\s*\(.*?\)', '', str(text)).strip()
-    if "example sentence using" in text.lower() or "we can easily see how" in text.lower():
+    # 嚴格殺死所有舊的假罐頭句
+    bad_phrases = ["example sentence using", "we can easily see how", "people frequently use", "this is an example"]
+    if any(bp in text.lower() for bp in bad_phrases):
         return ""
     return text
 
@@ -128,6 +130,10 @@ def auto_translate_english_to_chinese(word):
 def fetch_real_dictionary_sentence(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
+    
+    # 取得字根 (為了容錯過去式或複數型態，取前4-5個字母作為搜尋特徵)
+    search_root = w_lower[:4] if len(w_lower) >= 4 else w_lower
+    
     try:
         dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_clean)}"
         req = urllib.request.Request(dict_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -141,11 +147,14 @@ def fetch_real_dictionary_sentence(word):
                         for d_obj in definitions:
                             if 'example' in d_obj and d_obj['example']:
                                 ex = d_obj['example'].strip()
-                                if w_lower in ex.lower():
+                                # 確保例句中真的有包含該單字或其字根變化
+                                if search_root in ex.lower():
                                     return ex
     except Exception:
         pass
-    return f"People frequently use {w_clean} in daily conversation."
+    
+    # 💡 絕對不回傳假句子，找不到就回傳空白
+    return ""
 
 def get_word_record_data(word):
     w_clean = word.strip()
@@ -158,8 +167,8 @@ def get_word_record_data(word):
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": real_sent,
-        "advanced_sentence": f"Advanced context for understanding {w_clean}.",
+        "basic_sentence": real_sent, # 可能是空白，這是正常的
+        "advanced_sentence": "",
         "collocations": f"practice {w_clean}"
     }
 
@@ -168,9 +177,6 @@ def update_single_word_in_db(db_name, word_id, new_word, new_phonetic, new_pos, 
     c = conn.cursor()
     try:
         b_sent = clean_sentence(new_basic)
-        if not b_sent or new_word.lower() not in b_sent.lower():
-            b_sent = fetch_real_dictionary_sentence(new_word)
-            
         c.execute('''
             UPDATE vocab 
             SET word=?, phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, advanced_sentence=?, collocations=?
@@ -195,10 +201,10 @@ def upsert_word_to_db(data, db_name, unit_tag):
             clean_def = auto_translate_english_to_chinese(word)
 
         b_sent = clean_sentence(data.get('basic_sentence'))
-        if not b_sent or word.lower() not in b_sent.lower():
+        # 嚴格驗證：如果送進來的句子沒有包含單字，就去字典抓抓看
+        search_root = word.lower()[:4] if len(word) >= 4 else word.lower()
+        if not b_sent or search_root not in b_sent.lower():
             b_sent = fetch_real_dictionary_sentence(word)
-            
-        a_sent = clean_sentence(data.get('advanced_sentence'))
 
         c.execute("SELECT id FROM vocab WHERE word = ?", (word,))
         row = c.fetchone()
@@ -206,19 +212,19 @@ def upsert_word_to_db(data, db_name, unit_tag):
         if row:
             c.execute('''
                 UPDATE vocab 
-                SET phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, advanced_sentence=?, collocations=?, unit_tag=?
+                SET phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, collocations=?, unit_tag=?
                 WHERE word=?
             ''', (
                 data.get('phonetic'), data.get('part_of_speech'), clean_def,
-                b_sent, a_sent, data.get('collocations'), unit_tag, word
+                b_sent, data.get('collocations'), unit_tag, word
             ))
         else:
             c.execute('''
-                INSERT INTO vocab (word, phonetic, part_of_speech, definition, basic_sentence, advanced_sentence, collocations, unit_tag)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO vocab (word, phonetic, part_of_speech, definition, basic_sentence, collocations, unit_tag)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
                 word, data.get('phonetic'), data.get('part_of_speech'), clean_def,
-                b_sent, a_sent, data.get('collocations'), unit_tag
+                b_sent, data.get('collocations'), unit_tag
             ))
         conn.commit()
         success = True
@@ -304,8 +310,10 @@ if main_menu == "✨ 智慧單字新增":
                 word_data = get_word_record_data(single_word.strip())
                 if word_data:
                     if upsert_word_to_db(word_data, current_db_name, current_unit_tag):
-                        st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】")
-                        st.json(word_data)
+                        if word_data['basic_sentence']:
+                            st.success(f"🎉 成功新增單字：{single_word}（已從字典抓取真實例句）至 【{current_unit_tag}】")
+                        else:
+                            st.success(f"🎉 成功新增單字：{single_word} 至 【{current_unit_tag}】 (字典無例句，維持空白)")
                     else:
                         st.error("❌ 寫入資料庫失敗！")
 
@@ -316,7 +324,7 @@ if main_menu == "✨ 智慧單字新增":
             uploaded_docxs = st.file_uploader("上傳 Word 講義檔案", type=["docx"], accept_multiple_files=True)
             if uploaded_docxs:
                 st.info(f"📁 已載入 {len(uploaded_docxs)} 個檔案，確認匯入單元為：**{current_unit_tag}**")
-                if st.button("📖 解析所有 Word 並智慧批次匯入", use_container_width=True):
+                if st.button("📖 解析所有 Word 並匯入", use_container_width=True):
                     total_success_count = 0
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
@@ -352,8 +360,8 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            # 💡 一鍵刷新修復按鈕：自動把資料庫中沒有真實例句或翻譯卡住的單字全部重新抓取更新！
-            if st.button("🔄 一鍵修復與更新所有單字例句與翻譯", type="primary", use_container_width=True):
+            # 💡 一鍵刷新：清理假例句，並補抓缺失的翻譯
+            if st.button("🔄 掃描並清除假例句 / 補抓翻譯", type="primary", use_container_width=True):
                 conn = sqlite3.connect(current_db_name)
                 c = conn.cursor()
                 c.execute("SELECT id, word, definition, basic_sentence FROM vocab")
@@ -366,22 +374,31 @@ elif main_menu == "📖 字庫管理與搜尋":
                 
                 for idx, row_item in enumerate(all_rows):
                     r_id, r_word, r_def, r_sent = row_item
+                    needs_update = False
+                    
                     clean_s = clean_sentence(r_sent)
-                    if not clean_s or r_word.lower() not in clean_s.lower() or not r_def or "(待補充" in r_def:
-                        status_text.text(f"⏳ 正在修復更新: {r_word} ...")
-                        new_data = get_word_record_data(r_word)
+                    if clean_s != r_sent:
+                        needs_update = True
+                        
+                    new_def = r_def
+                    if not r_def or "(待補充" in r_def:
+                        new_def = auto_translate_english_to_chinese(r_word)
+                        if new_def != r_def:
+                            needs_update = True
+                            
+                    if needs_update:
+                        status_text.text(f"⏳ 正在修復: {r_word} ...")
                         update_single_word_in_db(
                             current_db_name, r_id, r_word, 
-                            new_data['phonetic'], new_data['part_of_speech'], 
-                            new_data['definition'] if (not r_def or "(待補充" in r_def) else r_def, 
-                            new_data['basic_sentence'], new_data['advanced_sentence'], new_data['collocations']
+                            "", "", new_def, clean_s, "", ""
                         )
                         updated_count += 1
+                        
                     progress_bar.progress((idx + 1) / len(all_rows))
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                 
                 status_text.empty()
-                st.success(f"🎊 修復完成！已成功為 {updated_count} 個單字重新抓取真實例句與中文翻譯！")
+                st.success(f"🎊 掃描完成！已清理與修復 {updated_count} 筆資料。")
                 time.sleep(1)
                 st.rerun()
 
@@ -408,7 +425,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
                 st.markdown("#### ✏️ 單字快速編輯修正")
-                st.caption("💡 提示：選擇下方單字後，可直接修改中文釋義、例句或其他欄位並儲存！")
+                st.caption("💡 提示：如果線上字典查不到例句，您可以直接在這裡為單字手動輸入專屬例句。")
                 
                 if not filtered_df.empty:
                     word_options = {f"{row['word']} ({row['definition']})": row for _, row in filtered_df.iterrows()}
@@ -427,8 +444,6 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 
                             edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''), key=f"d_{target_row['id']}")
                             edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''), key=f"bs_{target_row['id']}")
-                            edit_adv = st.text_area("進階例句 (Advanced Sentence)", value=target_row.get('advanced_sentence', ''), key=f"as_{target_row['id']}")
-                            edit_coll = st.text_input("常見搭配詞 (Collocations)", value=target_row.get('collocations', ''), key=f"c_{target_row['id']}")
                             
                             submit_table_edit = st.form_submit_button("💾 確認儲存該單字修改", type="primary")
                             
@@ -436,7 +451,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 success, msg = update_single_word_in_db(
                                     current_db_name, 
                                     target_row['id'], 
-                                    edit_word, edit_phonetic, edit_pos, edit_def, edit_basic, edit_adv, edit_coll
+                                    edit_word, edit_phonetic, edit_pos, edit_def, edit_basic, "", ""
                                 )
                                 if success:
                                     st.success("✅ 單字修改成功！")
@@ -463,9 +478,10 @@ elif main_menu == "🎯 沉浸式閃卡複習":
         with st.expander("💡 詳細釋義與真實例句", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
             display_sent = clean_sentence(row.get('basic_sentence', ''))
-            if not display_sent:
-                display_sent = fetch_real_dictionary_sentence(row['word'])
-            st.markdown(f"**真實例句：** {display_sent}")
+            if display_sent:
+                st.markdown(f"**真實例句：** {display_sent}")
+            else:
+                st.info("💡 此單字尚無建立例句，可至字庫管理手動補充。")
         
         c1, c2 = st.columns(2)
         if c1.button("⬅️ 上一個", use_container_width=True):
@@ -515,9 +531,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     w = str(row['word']).strip()
                     b_s = clean_sentence(row.get('basic_sentence', ''))
                     
-                    if not b_s or w.lower() not in b_s.lower():
-                        b_s = fetch_real_dictionary_sentence(w)
-
                     word_audio = generate_audio_bytes(w, lang='en')
                     
                     st.session_state.current_game_item = {
@@ -537,10 +550,29 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     
                     # 模式一：經典單字挑戰 (考卷填空克漏字)
                     if "經典" in game_mode:
-                        masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
+                        b_s = item['basic_sentence']
+                        search_root = word_str.lower()[:4] if len(word_str) >= 4 else word_str.lower()
                         
-                        st.markdown(f"**📖 考卷填空題 (Context Sentence)：**")
-                        st.markdown(f"> ### {masked_basic}")
+                        # 💡 判斷例句是否真的能做填空題 (非空，且包含字根)
+                        can_cloze = False
+                        if b_s and search_root in b_s.lower():
+                            can_cloze = True
+                            
+                        if can_cloze:
+                            # 智慧挖空：使用正則表達式取代單字或其字根變化 (如 crack -> cracked)
+                            pattern = re.compile(re.escape(word_str), re.IGNORECASE)
+                            if pattern.search(b_s):
+                                masked_basic = pattern.sub('______', b_s)
+                            else:
+                                root_pattern = re.compile(re.escape(search_root) + r'\w*', re.IGNORECASE)
+                                masked_basic = root_pattern.sub('______', b_s)
+                                
+                            st.markdown(f"**📖 考卷填空題 (Context Sentence)：**")
+                            st.markdown(f"> ### {masked_basic}")
+                        else:
+                            # 💡 安全降級：無例句時，絕對不秀破圖或假句子，引導看中文釋義
+                            st.warning("⚠️ 此單字目前無對應的有效例句，請直接依據下方「中文釋義」作答。 (您可至「字庫管理」手動補充例句)")
+                            st.markdown(f"**📌 中文釋義：** `{item['definition']}`")
                         
                         col_a1, col_a2 = st.columns([1, 4])
                         with col_a1:
