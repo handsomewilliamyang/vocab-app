@@ -100,7 +100,7 @@ def init_db(db_name):
 init_db(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式（安全且非阻塞的字典串接）
+# 3. 核心工具函式（真實字典與翻譯串接）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
@@ -128,7 +128,6 @@ def auto_translate_english_to_chinese(word):
 def fetch_real_dictionary_sentence(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
-    
     try:
         dict_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_clean)}"
         req = urllib.request.Request(dict_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -146,7 +145,6 @@ def fetch_real_dictionary_sentence(word):
                                     return ex
     except Exception:
         pass
-        
     return f"People frequently use {w_clean} in daily conversation."
 
 def get_word_record_data(word):
@@ -165,6 +163,26 @@ def get_word_record_data(word):
         "collocations": f"practice {w_clean}"
     }
 
+def update_single_word_in_db(db_name, word_id, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
+    conn = sqlite3.connect(db_name)
+    c = conn.cursor()
+    try:
+        b_sent = clean_sentence(new_basic)
+        if not b_sent or new_word.lower() not in b_sent.lower():
+            b_sent = fetch_real_dictionary_sentence(new_word)
+            
+        c.execute('''
+            UPDATE vocab 
+            SET word=?, phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, advanced_sentence=?, collocations=?
+            WHERE id=?
+        ''', (new_word, new_phonetic, new_pos, simple_s2t_convert(new_def), b_sent, new_adv, new_coll, word_id))
+        conn.commit()
+        return True, "成功"
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
 def upsert_word_to_db(data, db_name, unit_tag):
     conn = sqlite3.connect(db_name)
     c = conn.cursor()
@@ -174,7 +192,7 @@ def upsert_word_to_db(data, db_name, unit_tag):
         clean_def = re.sub(r'^[a-zA-Z\s\-\,\.]+\s+', '', raw_def)
         clean_def = simple_s2t_convert(clean_def)
         if not re.search(r'[\u4e00-\u9fa5]', clean_def):
-            clean_def = "(待補充中文)"
+            clean_def = auto_translate_english_to_chinese(word)
 
         b_sent = clean_sentence(data.get('basic_sentence'))
         if not b_sent or word.lower() not in b_sent.lower():
@@ -209,6 +227,15 @@ def upsert_word_to_db(data, db_name, unit_tag):
     finally:
         conn.close()
     return success
+
+def delete_words_from_db(db_name, word_list):
+    if not word_list:
+        return
+    conn = sqlite3.connect(db_name)
+    c = conn.cursor()
+    c.executemany("DELETE FROM vocab WHERE word = ?", [(w,) for w in word_list])
+    conn.commit()
+    conn.close()
 
 def get_vocab_by_db(db_name):
     conn = sqlite3.connect(db_name)
@@ -319,15 +346,104 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.info("📭 目前尚無單字，請至側邊欄新增！")
     else:
         unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) + ["全部單字"]
-        selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
+        
+        col_f1, col_f2 = st.columns([1.5, 1])
+        with col_f1:
+            selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
+        with col_f2:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            # 💡 一鍵刷新修復按鈕：自動把資料庫中沒有真實例句或翻譯卡住的單字全部重新抓取更新！
+            if st.button("🔄 一鍵修復與更新所有單字例句與翻譯", type="primary", use_container_width=True):
+                conn = sqlite3.connect(current_db_name)
+                c = conn.cursor()
+                c.execute("SELECT id, word, definition, basic_sentence FROM vocab")
+                all_rows = c.fetchall()
+                conn.close()
+                
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                updated_count = 0
+                
+                for idx, row_item in enumerate(all_rows):
+                    r_id, r_word, r_def, r_sent = row_item
+                    clean_s = clean_sentence(r_sent)
+                    if not clean_s or r_word.lower() not in clean_s.lower() or not r_def or "(待補充" in r_def:
+                        status_text.text(f"⏳ 正在修復更新: {r_word} ...")
+                        new_data = get_word_record_data(r_word)
+                        update_single_word_in_db(
+                            current_db_name, r_id, r_word, 
+                            new_data['phonetic'], new_data['part_of_speech'], 
+                            new_data['definition'] if (not r_def or "(待補充" in r_def) else r_def, 
+                            new_data['basic_sentence'], new_data['advanced_sentence'], new_data['collocations']
+                        )
+                        updated_count += 1
+                    progress_bar.progress((idx + 1) / len(all_rows))
+                    time.sleep(0.1)
+                
+                status_text.empty()
+                st.success(f"🎊 修復完成！已成功為 {updated_count} 個單字重新抓取真實例句與中文翻譯！")
+                time.sleep(1)
+                st.rerun()
+
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
-        search_query = st.text_input("🔍 搜尋單字或釋義：")
+        col_s1, col_s2 = st.columns([2, 1])
+        with col_s1:
+            search_query = st.text_input("🔍 搜尋單字或釋義：")
+        with col_s2:
+            words_to_delete = st.multiselect("🗑️ 勾選要刪除的單字：", filtered_df['word'].tolist(), placeholder="選擇要刪除的單字...")
+
         if search_query:
             filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
         
+        if words_to_delete:
+            if st.button("⚠️ 確認刪除已勾選的單字", type="primary"):
+                delete_words_from_db(current_db_name, words_to_delete)
+                st.success("已成功刪除勾選的單字！")
+                st.rerun()
+
         with st.expander("📋 單字總表與快速編輯", expanded=True):
             st.dataframe(filtered_df[['word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'unit_tag']], use_container_width=True, hide_index=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown("#### ✏️ 單字快速編輯修正")
+                st.caption("💡 提示：選擇下方單字後，可直接修改中文釋義、例句或其他欄位並儲存！")
+                
+                if not filtered_df.empty:
+                    word_options = {f"{row['word']} ({row['definition']})": row for _, row in filtered_df.iterrows()}
+                    selected_option = st.selectbox("選擇要編輯的單字：", list(word_options.keys()), key="table_edit_select")
+                    
+                    if selected_option:
+                        target_row = word_options[selected_option]
+                        with st.form(key=f"table_edit_form_{target_row['id']}"):
+                            col_e1, col_e2, col_e3 = st.columns(3)
+                            with col_e1:
+                                edit_word = st.text_input("單字 (Word)", value=target_row['word'], key=f"w_{target_row['id']}")
+                            with col_e2:
+                                edit_phonetic = st.text_input("音標 (Phonetic)", value=target_row.get('phonetic', ''), key=f"p_{target_row['id']}")
+                            with col_e3:
+                                edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''), key=f"pos_{target_row['id']}")
+                                
+                            edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''), key=f"d_{target_row['id']}")
+                            edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''), key=f"bs_{target_row['id']}")
+                            edit_adv = st.text_area("進階例句 (Advanced Sentence)", value=target_row.get('advanced_sentence', ''), key=f"as_{target_row['id']}")
+                            edit_coll = st.text_input("常見搭配詞 (Collocations)", value=target_row.get('collocations', ''), key=f"c_{target_row['id']}")
+                            
+                            submit_table_edit = st.form_submit_button("💾 確認儲存該單字修改", type="primary")
+                            
+                            if submit_table_edit:
+                                success, msg = update_single_word_in_db(
+                                    current_db_name, 
+                                    target_row['id'], 
+                                    edit_word, edit_phonetic, edit_pos, edit_def, edit_basic, edit_adv, edit_coll
+                                )
+                                if success:
+                                    st.success("✅ 單字修改成功！")
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ 修改失敗：{msg}")
 
 elif main_menu == "🎯 沉浸式閃卡複習":
     df_vocab_flash = get_vocab_by_db(current_db_name)
@@ -344,7 +460,7 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
             
-        with st.expander("💡 詳細釋義與例句", expanded=True):
+        with st.expander("💡 詳細釋義與真實例句", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
             display_sent = clean_sentence(row.get('basic_sentence', ''))
             if not display_sent:
