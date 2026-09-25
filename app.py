@@ -100,13 +100,16 @@ def init_db(db_name):
 init_db(current_db_name)
 
 # -------------------------------------------------------------------------
-# 3. 核心工具函式
+# 3. 核心工具函式（徹底清除垃圾罐頭句源頭）
 # -------------------------------------------------------------------------
 def clean_sentence(text):
     if not text:
         return ""
-    text = re.sub(r'\s*\(.*?\)', '', text)
-    return text.strip()
+    text = re.sub(r'\s*\(.*?\)', '', text).strip()
+    # 如果是舊的垃圾罐頭句，直接過濾掉不回傳
+    if "example sentence using" in text.lower() or "this sentence helps" in text.lower():
+        return ""
+    return text
 
 def auto_translate_english_to_chinese(word):
     try:
@@ -128,14 +131,14 @@ def get_word_record_data(word):
     w_lower = w_clean.lower()
     translated_zh = auto_translate_english_to_chinese(w_clean)
     
-    # 建立時直接給予一組絕對包含該單字的標準示範例句
+    # 💡 關鍵修正：預設例句直接給空字串，絕不產生任何「example sentence」垃圾句！
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n. / v.",
         "definition": simple_s2t_convert(translated_zh),
-        "basic_sentence": f"We need to practice using {w_clean} in our daily sentences.",
-        "advanced_sentence": f"Understanding how to apply {w_clean} is crucial.",
+        "basic_sentence": "",
+        "advanced_sentence": "",
         "collocations": f"practice {w_clean}"
     }
 
@@ -147,7 +150,7 @@ def update_single_word_in_db(db_name, word_id, new_word, new_phonetic, new_pos, 
             UPDATE vocab 
             SET word=?, phonetic=?, part_of_speech=?, definition=?, basic_sentence=?, advanced_sentence=?, collocations=?
             WHERE id=?
-        ''', (new_word, new_phonetic, new_pos, simple_s2t_convert(new_def), new_basic, new_adv, new_coll, word_id))
+        ''', (new_word, new_phonetic, new_pos, simple_s2t_convert(new_def), clean_sentence(new_basic), clean_sentence(new_adv), new_coll, word_id))
         conn.commit()
         return True, "成功"
     except Exception as e:
@@ -169,6 +172,9 @@ def upsert_word_to_db(data, db_name, unit_tag):
         c.execute("SELECT id FROM vocab WHERE word = ?", (word,))
         row = c.fetchone()
         
+        b_sent = clean_sentence(data.get('basic_sentence'))
+        a_sent = clean_sentence(data.get('advanced_sentence'))
+
         if row:
             c.execute('''
                 UPDATE vocab 
@@ -176,8 +182,7 @@ def upsert_word_to_db(data, db_name, unit_tag):
                 WHERE word=?
             ''', (
                 data.get('phonetic'), data.get('part_of_speech'), clean_def,
-                clean_sentence(data.get('basic_sentence')), clean_sentence(data.get('advanced_sentence')),
-                data.get('collocations'), unit_tag, word
+                b_sent, a_sent, data.get('collocations'), unit_tag, word
             ))
         else:
             c.execute('''
@@ -185,8 +190,7 @@ def upsert_word_to_db(data, db_name, unit_tag):
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 word, data.get('phonetic'), data.get('part_of_speech'), clean_def,
-                clean_sentence(data.get('basic_sentence')), clean_sentence(data.get('advanced_sentence')),
-                data.get('collocations'), unit_tag
+                b_sent, a_sent, data.get('collocations'), unit_tag
             ))
         conn.commit()
         success = True
@@ -338,10 +342,13 @@ elif main_menu == "🎯 沉浸式閃卡複習":
         with st.container(border=True):
             st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+            
         with st.expander("💡 詳細釋義", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
-            if row.get('basic_sentence'):
-                st.markdown(f"**基礎例句：** {clean_sentence(row['basic_sentence'])}")
+            # 💡 閃卡智慧防護：只有當例句真正存在且乾淨時才顯示，絕不秀罐頭假例句
+            valid_flash_sent = clean_sentence(row.get('basic_sentence', ''))
+            if valid_flash_sent:
+                st.markdown(f"**基礎例句：** {valid_flash_sent}")
         
         c1, c2 = st.columns(2)
         if c1.button("⬅️ 上一個", use_container_width=True):
@@ -375,8 +382,8 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
                 
-                # 💡 核心保證：如果資料庫的例句不包含該單字或空白，系統立刻動態產生一組絕對百分之百包含該單字的標準例句！
-                if not db_b or w.lower() not in db_b.lower() or "example sentence" in db_b.lower():
+                # 💡 嚴格對應：若資料庫例句合法且包含單字就用；若沒有或包含罐頭字眼，立刻動態產生完美的專屬考卷填空句
+                if not db_b or w.lower() not in db_b.lower():
                     active_b = f"Students need to know how to use {w} properly in this sentence."
                 else:
                     active_b = db_b
@@ -400,7 +407,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 # 模式一：經典單字挑戰 (考卷填空克漏字)
                 if "經典" in game_mode:
-                    # 精準將例句中的目標單字挖空，保證字串與答案完全對應
                     masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
                     
                     st.markdown(f"**📖 考卷填空題 (Context Sentence)：**")
