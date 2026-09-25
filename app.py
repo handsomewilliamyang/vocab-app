@@ -345,96 +345,119 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
     else:
         unit_list_game = ["全部單字"] + sorted(df_vocab_game['unit_tag'].dropna().unique().tolist())
         selected_game_unit = st.selectbox("選擇遊戲挑戰的單元範圍：", unit_list_game, key="game_unit_select")
-        df_vocab_game = df_vocab_game if selected_game_unit == "全部單字" else df_vocab_game[df_vocab_game['unit_tag'] == selected_game_unit]
         
-        if df_vocab_game.empty:
+        # 篩選特定單元
+        df_filtered_game = df_vocab_game if selected_game_unit == "全部單字" else df_vocab_game[df_vocab_game['unit_tag'] == selected_game_unit]
+        
+        if df_filtered_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
             game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (考卷填空克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽中文定義發音 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
-
-            if "current_game_item" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
+            
+            # 💡 確保不重複出題的記憶體狀態初始化
+            if "completed_words" not in st.session_state or st.session_state.get("game_scope_lock") != selected_game_unit:
                 st.session_state.game_scope_lock = selected_game_unit
-                row = df_vocab_game.sample(1).iloc[0]
-                w = str(row['word']).strip()
-                
-                db_b = clean_sentence(row.get('basic_sentence', ''))
-                if not db_b or w.lower() not in db_b.lower():
-                    active_b = get_or_generate_sentence(w)
-                else:
-                    active_b = db_b
+                st.session_state.completed_words = []
+                if "current_game_item" in st.session_state:
+                    del st.session_state["current_game_item"]
 
-                word_audio = generate_audio_bytes(w, lang='en')
-                
-                st.session_state.current_game_item = {
-                    "word": w,
-                    "definition": row.get('definition', ''),
-                    "unit_tag": row.get('unit_tag', ''),
-                    "basic_sentence": active_b,
-                    "audio_bytes": word_audio
-                }
-
-            item = st.session_state.current_game_item
-            word_str = item["word"]
-            hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
+            # 檢查是否該範圍的單字已經全部考完一輪
+            available_df = df_filtered_game[~df_filtered_game['word'].isin(st.session_state.completed_words)]
             
-            with st.container(border=True):
-                st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {item['unit_tag']}")
-                
-                # 模式一：經典單字挑戰 (考卷填空克漏字)
-                if "經典" in game_mode:
-                    masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
-                    
-                    st.markdown(f"**📖 考卷填空題 (Context Sentence)：**")
-                    st.markdown(f"> ### {masked_basic}")
-                    
-                    col_a1, col_a2 = st.columns([1, 4])
-                    with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 單字發音 (Pronunciation)：**</div>", unsafe_allow_html=True)
-                    with col_a2:
-                        try:
-                            st.audio(item["audio_bytes"], format="audio/mp3")
-                        except Exception:
-                            st.warning("發音載入失敗。")
-                            
-                # 模式二：進階盲拼挑戰
-                else:
-                    st.markdown("### 🎧 Listen to the pronunciation and spell the word based on its definition!")
-                    st.markdown(f"**📌 中文釋義提示：** `{item['definition']}`")
-                    
-                    col_a1, col_a2 = st.columns([1, 4])
-                    with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 Audio Prompt：**</div>", unsafe_allow_html=True)
-                    with col_a2:
-                        try:
-                            st.audio(item["audio_bytes"], format="audio/mp3")
-                        except Exception:
-                            st.warning("發音載入失敗。")
-
-                st.markdown(f"**🔤 拼字提示 (Spelling Hint)：** `{hint_masked}` &nbsp;&nbsp; (Length: {len(word_str)} letters)")
-
-            user_guess = st.text_input("Enter your spelling answer:", key="game_input_box").strip().lower()
-            
-            col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                submit_guess = st.button("🚀 Submit Answer", type="primary", use_container_width=True)
-            with col_g2:
-                skip_question = st.button("🔄 Next Question", use_container_width=True)
-
-            if submit_guess:
-                if user_guess == word_str.lower():
-                    st.success(f"🎉 Correct! Excellent job! The word is **{word_str}**")
-                    time.sleep(0.8)
+            if available_df.empty:
+                st.balloons()
+                st.success(f"🎉 太棒了！您已經把 【{selected_game_unit}】 裡的單字全部練習過一輪了！")
+                if st.button("🔄 重新挑戰本單元", type="primary"):
+                    st.session_state.completed_words = []
                     if "current_game_item" in st.session_state:
                         del st.session_state["current_game_item"]
                     st.rerun()
-                else:
-                    st.session_state.game_errors += 1
-                    st.error("❌ Incorrect! Try again, you can do it!")
+            else:
+                if "current_game_item" not in st.session_state:
+                    row = available_df.sample(1).iloc[0]
+                    w = str(row['word']).strip()
+                    
+                    db_b = clean_sentence(row.get('basic_sentence', ''))
+                    if not db_b or w.lower() not in db_b.lower():
+                        active_b = get_or_generate_sentence(w)
+                    else:
+                        active_b = db_b
 
-            if skip_question:
-                if "current_game_item" in st.session_state:
-                    del st.session_state["current_game_item"]
-                st.rerun()
+                    word_audio = generate_audio_bytes(w, lang='en')
+                    
+                    st.session_state.current_game_item = {
+                        "word": w,
+                        "definition": row.get('definition', ''),
+                        "unit_tag": row.get('unit_tag', ''),
+                        "basic_sentence": active_b,
+                        "audio_bytes": word_audio
+                    }
+
+                item = st.session_state.current_game_item
+                word_str = item["word"]
+                hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
+                
+                with st.container(border=True):
+                    st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {item['unit_tag']} &nbsp;|&nbsp; 📊 本輪剩餘：`{len(available_df)} 題`")
+                    
+                    # 模式一：經典單字挑戰 (考卷填空克漏字)
+                    if "經典" in game_mode:
+                        masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
+                        
+                        st.markdown(f"**📖 考卷填空題 (Context Sentence)：**")
+                        st.markdown(f"> ### {masked_basic}")
+                        
+                        col_a1, col_a2 = st.columns([1, 4])
+                        with col_a1:
+                            st.markdown("<div style='margin-top: 15px;'>**🔊 單字發音 (Pronunciation)：**</div>", unsafe_allow_html=True)
+                        with col_a2:
+                            try:
+                                st.audio(item["audio_bytes"], format="audio/mp3")
+                            except Exception:
+                                st.warning("發音載入失敗。")
+                                
+                    # 模式二：進階盲拼挑戰
+                    else:
+                        st.markdown("### 🎧 Listen to the pronunciation and spell the word based on its definition!")
+                        st.markdown(f"**📌 中文釋義提示：** `{item['definition']}`")
+                        
+                        col_a1, col_a2 = st.columns([1, 4])
+                        with col_a1:
+                            st.markdown("<div style='margin-top: 15px;'>**🔊 Audio Prompt：**</div>", unsafe_allow_html=True)
+                        with col_a2:
+                            try:
+                                st.audio(item["audio_bytes"], format="audio/mp3")
+                            except Exception:
+                                st.warning("發音載入失敗。")
+
+                    st.markdown(f"**🔤 拼字提示 (Spelling Hint)：** `{hint_masked}` &nbsp;&nbsp; (Length: {len(word_str)} letters)")
+
+                user_guess = st.text_input("Enter your spelling answer:", key="game_input_box").strip().lower()
+                
+                col_g1, col_g2 = st.columns(2)
+                with col_g1:
+                    submit_guess = st.button("🚀 Submit Answer", type="primary", use_container_width=True)
+                with col_g2:
+                    skip_question = st.button("🔄 Next Question", use_container_width=True)
+
+                if submit_guess:
+                    if user_guess == word_str.lower():
+                        st.success(f"🎉 Correct! Excellent job! The word is **{word_str}**")
+                        # 💡 答對後將該單字加入已完成名單，下一題絕對不會重複出現
+                        if word_str not in st.session_state.completed_words:
+                            st.session_state.completed_words.append(word_str)
+                        time.sleep(0.8)
+                        if "current_game_item" in st.session_state:
+                            del st.session_state["current_game_item"]
+                        st.rerun()
+                    else:
+                        st.session_state.game_errors += 1
+                        st.error("❌ Incorrect! Try again, you can do it!")
+
+                if skip_question:
+                    if "current_game_item" in st.session_state:
+                        del st.session_state["current_game_item"]
+                    st.rerun()
