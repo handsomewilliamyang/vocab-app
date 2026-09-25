@@ -11,6 +11,10 @@ import docx
 import urllib.request
 import urllib.parse
 
+# 導入發音所需套件
+from gtts import gTTS
+import io
+
 # -------------------------------------------------------------------------
 # 0. 頁面全域設定
 # -------------------------------------------------------------------------
@@ -298,6 +302,14 @@ def generate_vocab_info(word):
         "collocations": f"common {w_clean}"
     }
     return fallback_data, None
+
+# 💡 建立快取函式：將文字轉換成語音的二進位檔，避免重複讀取卡頓
+@st.cache_data(show_spinner=False)
+def generate_audio_bytes(text, lang='en'):
+    tts = gTTS(text=text, lang=lang)
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    return fp.getvalue()
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -588,23 +600,15 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             
             row = df_vocab_flash.iloc[current_idx]
             
-            # 【關鍵修復 1】針對閃卡例句加入精確挖空邏輯
-            word_str = str(row['word'])
-            basic_sent = clean_sentence(row['basic_sentence'])
-            adv_sent = clean_sentence(row['advanced_sentence'])
-            
-            masked_basic = re.sub(re.escape(word_str), '______', basic_sent, flags=re.IGNORECASE) if basic_sent else ""
-            masked_adv = re.sub(re.escape(word_str), '______', adv_sent, flags=re.IGNORECASE) if adv_sent else ""
-            
             with st.container(border=True):
                 st.markdown(f"<p style='text-align: right; color: gray;'>CARD {current_idx + 1} OF {total_count} &nbsp;|&nbsp; 🏷️ {row.get('unit_tag', '未分類')}</p>", unsafe_allow_html=True)
-                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin: 10px 0;'>🔤 {word_str}</h1>", unsafe_allow_html=True)
+                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin: 10px 0;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray; font-size: 20px;'>{row['phonetic']} &nbsp;|&nbsp; {row['part_of_speech']}</p>", unsafe_allow_html=True)
             
             with st.expander("💡 點擊展開詳細釋義與例句解析", expanded=True):
                 st.markdown(f"### 📌 核心釋義：\n> **{row['definition']}**")
-                st.markdown(f"### 📖 基礎例句：\n{masked_basic}")
-                st.markdown(f"### 🌟 進階例句：\n{masked_adv}")
+                st.markdown(f"### 📖 基礎例句：\n{clean_sentence(row['basic_sentence'])}")
+                st.markdown(f"### 🌟 進階例句：\n{clean_sentence(row['advanced_sentence'])}")
                 st.markdown(f"### 🔗 常見搭配詞：\n`{row['collocations']}`")
                 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -620,6 +624,8 @@ elif main_menu == "🎯 沉浸式閃卡複習":
                     st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
                     st.rerun()
 
+
+# ⬇️ 這是本次針對「拼字王」全新強化的核心區塊
 elif main_menu == "🎮 拼字王挑戰遊戲":
     df_vocab_game = get_vocab_by_db(current_db_name)
     
@@ -634,27 +640,62 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
+            # 💡 雙模式選擇
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (例句挖空 + 單字發音)", "🔴 進階盲拼挑戰 (聽中文解釋發音 + 打單字)"], horizontal=True)
+
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
             if "game_word_target" not in st.session_state:
                 st.session_state.game_word_target = df_vocab_game.sample(1).iloc[0]
 
             target = st.session_state.game_word_target
-            
             word_str = str(target['word'])
             
-            # 【關鍵修復 2】完美處理 years old 等帶空白鍵的片語空格提示，且不打亂原本字元判斷
+            # 修正帶有空白的片語空格提示，且不影響純字母判斷 (例如 years old)
             hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
-            
-            # 遊戲例句挖空
-            basic_sent_game = clean_sentence(target.get('basic_sentence', ''))
-            masked_basic_game = re.sub(re.escape(word_str), '______', basic_sent_game, flags=re.IGNORECASE) if basic_sent_game else ""
             
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
-                st.markdown(f"**📌 中文釋義：** {target['definition']}")
-                st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
-                st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (字數：{len(word_str)} 個字元)")
+                
+                # 模式一：給句子，挖空格，旁邊有單字發音
+                if "經典" in game_mode:
+                    st.markdown(f"**📌 中文釋義：** {target['definition']}")
+                    
+                    basic_sent_game = clean_sentence(target.get('basic_sentence', ''))
+                    # 嚴謹的 re.escape 確保 years old 中間的空白不會報錯
+                    masked_basic_game = re.sub(re.escape(word_str), '______', basic_sent_game, flags=re.IGNORECASE) if basic_sent_game else "(無例句)"
+                    st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
+                    
+                    # 排版讓喇叭在文字旁邊
+                    col_a1, col_a2 = st.columns([1, 4])
+                    with col_a1:
+                        st.markdown("<div style='margin-top: 15px;'>**🔊 單字發音：**</div>", unsafe_allow_html=True)
+                    with col_a2:
+                        try:
+                            audio_bytes = generate_audio_bytes(word_str, lang='en')
+                            st.audio(audio_bytes, format="audio/mp3")
+                        except Exception:
+                            st.warning("發音載入失敗，請確認網路連線。")
+                            
+                # 模式二：給解釋，發音讀出解釋，盲拼單字
+                else:
+                    st.markdown("### 🎧 聽取中文解釋，拼出正確英文單字！")
+                    st.markdown(f"**📌 中文解釋文字：** {target['definition']}")
+                    
+                    col_a1, col_a2 = st.columns([1, 4])
+                    with col_a1:
+                        st.markdown("<div style='margin-top: 15px;'>**🔊 聽解釋發音：**</div>", unsafe_allow_html=True)
+                    with col_a2:
+                        try:
+                            def_text = target.get('definition', '').strip()
+                            if not def_text or "(待補充" in def_text:
+                                def_text = "請先至字庫補充中文解釋"
+                            audio_bytes = generate_audio_bytes(def_text, lang='zh-TW')
+                            st.audio(audio_bytes, format="audio/mp3")
+                        except Exception:
+                            st.warning("發音載入失敗，請確認網路連線。")
+
+                st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (字數：{len(word_str)} 個字母)")
 
             with st.form(key="game_form"):
                 user_guess = st.text_input("請輸入你的拼寫答案（輸入完可直接按 Enter 發送）：", key="game_input_box").strip().lower()
