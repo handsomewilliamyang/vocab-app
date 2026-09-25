@@ -312,28 +312,25 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# 💡 絕對隨機且多變的動態基礎例句產生器（每次呼叫保證從多個真實英文句型中隨機挑選）
-def get_guaranteed_basic_sentence(word):
-    sentence_pool = [
-        f"Many people use the word {word} in their daily conversations.",
-        f"It is essential to understand how {word} works in a sentence.",
-        f"The teacher asked us to write a paragraph using {word}.",
-        f"Can you give me an example of {word} being used correctly?",
-        f"Students should practice {word} regularly to improve their English.",
-        f"We can easily find a {word} in our daily life.",
-        f"It is very important for us to know about {word}."
+# 💡 多變且絕對包含單字的動態基礎例句庫
+def get_dynamic_basic_sentence(word):
+    pool = [
+        f"Everyone knows that {word} plays an important role in our lives.",
+        f"We often talk about {word} during our weekly English class.",
+        f"It is quite interesting to see how {word} is used by native speakers.",
+        f"Can you tell me more details about {word}?",
+        f"Many students find it helpful to study {word} every single day."
     ]
-    return random.choice(sentence_pool)
+    return random.choice(pool)
 
-# 💡 絕對隨機且多變的動態進階英文定義產生器
-def get_guaranteed_advanced_definition(word):
-    definition_pool = [
-        f"An essential English concept directly related to the term {word}.",
-        f"A common context where speakers talk about {word}.",
-        f"A meaningful expression used to describe {word} in sentences.",
-        f"An important vocabulary item in English representing {word}."
+# 💡 多變且絕對包含單字的動態進階定義庫
+def get_dynamic_advanced_definition(word):
+    pool = [
+        f"A valuable context where speakers discuss the meaning and usage of {word}.",
+        f"An essential linguistic expression designed to illustrate {word}.",
+        f"A helpful sentence structure that incorporates the term {word}."
     ]
-    return random.choice(definition_pool)
+    return random.choice(pool)
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -661,32 +658,32 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
 
-            # 💡 嚴格狀態機鎖定：確保每次抽題或換題時，題目物件與隨機動態例句被寫入 session_state，點擊換題時才會確實改變
-            if "current_game_target_word" not in st.session_state or st.session_state.get("current_game_unit_scope") != selected_game_unit:
-                st.session_state.current_game_unit_scope = selected_game_unit
-                sampled_row = df_vocab_game.sample(1).iloc[0]
-                w_str = str(sampled_row['word'])
+            # 💡 確保每次切換單元或剛進來時，初始化隨機題目狀態
+            if "active_game_word" not in st.session_state or st.session_state.get("active_game_scope") != selected_game_unit:
+                st.session_state.active_game_scope = selected_game_unit
+                row = df_vocab_game.sample(1).iloc[0]
+                w = str(row['word'])
                 
-                db_basic = clean_sentence(sampled_row.get('basic_sentence', ''))
-                if not db_basic or w_str.lower() not in db_basic.lower() or any(bad in db_basic for bad in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
-                    active_basic = get_guaranteed_basic_sentence(w_str)
+                db_b = clean_sentence(row.get('basic_sentence', ''))
+                if not db_b or w.lower() not in db_b.lower() or any(b in db_b for b in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
+                    active_b = get_dynamic_basic_sentence(w)
                 else:
-                    active_basic = db_basic
+                    active_b = db_b
 
-                db_adv = clean_sentence(sampled_row.get('advanced_sentence', ''))
-                if not db_adv or w_str.lower() not in db_adv.lower() or any(bad in db_adv for bad in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
-                    active_adv = get_guaranteed_advanced_definition(w_str)
+                db_a = clean_sentence(row.get('advanced_sentence', ''))
+                if not db_a or w.lower() not in db_a.lower() or any(b in db_a for b in ["example sentence using", "Please write down", "We use the word", "the blank word"]):
+                    active_a = get_dynamic_advanced_definition(w)
                 else:
-                    masked = re.sub(re.escape(w_str), 'the blank word', db_adv, flags=re.IGNORECASE)
-                    active_adv = f"A vocabulary term used in context: {masked}"
+                    masked = re.sub(re.escape(w), 'the blank word', db_a, flags=re.IGNORECASE)
+                    active_a = f"A vocabulary term used in context: {masked}"
 
-                st.session_state.current_game_target_word = w_str
-                st.session_state.current_game_row = sampled_row
-                st.session_state.current_active_basic = active_basic
-                st.session_state.current_active_adv = active_adv
+                st.session_state.active_game_word = w
+                st.session_state.active_game_row = row
+                st.session_state.active_game_basic = active_b
+                st.session_state.active_game_adv = active_a
 
-            target = st.session_state.current_game_row
-            word_str = st.session_state.current_game_target_word
+            target = st.session_state.active_game_row
+            word_str = st.session_state.active_game_word
             hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
             
             with st.container(border=True):
@@ -694,7 +691,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 # 模式一：經典單字挑戰 (例句挖空 + 單字發音)
                 if "經典" in game_mode:
-                    masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.current_active_basic, flags=re.IGNORECASE)
+                    masked_basic_game = re.sub(re.escape(word_str), '______', st.session_state.active_game_basic, flags=re.IGNORECASE)
                     st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
@@ -710,47 +707,43 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
                     st.markdown("### 🎧 Listen to the English definition and spell the word!")
-                    st.markdown(f"**📌 Definition：** {st.session_state.current_active_adv}")
+                    st.markdown(f"**📌 Definition：** {st.session_state.active_game_adv}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
                         st.markdown("<div style='margin-top: 15px;'>**🔊 發音提示：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            audio_bytes = generate_audio_bytes(st.session_state.current_active_adv, lang='en')
+                            audio_bytes = generate_audio_bytes(st.session_state.active_game_adv, lang='en')
                             st.audio(audio_bytes, format="audio/mp3")
                         except Exception:
                             st.warning("發音載入失敗，請確認網路連線。")
 
                 st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (字數：{len(word_str)} 個字母)")
 
-            with st.form(key="game_form"):
-                user_guess = st.text_input("請輸入你的拼寫答案（輸入完可直接按 Enter 發送）：", key="game_input_box").strip().lower()
-                
-                col_g1, col_g2 = st.columns(2)
-                with col_g1:
-                    submit_guess = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
-                with col_g2:
-                    skip_question = st.form_submit_button("🔄 換一題", use_container_width=True)
+            # 💡 完全不使用 st.form，改用獨立輸入框與按鈕，徹底解決換題無效的問題
+            user_guess = st.text_input("請輸入你的拼寫答案：", key="game_input_box").strip().lower()
+            
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                submit_guess = st.button("🚀 送出答案", type="primary", use_container_width=True)
+            with col_g2:
+                skip_question = st.button("🔄 換一題", use_container_width=True)
 
             if submit_guess:
                 if user_guess == word_str.lower():
                     st.success(f"🎉 答對了！太棒了！單字就是 **{word_str}**")
                     time.sleep(0.8)
-                    # 答對時強制洗掉當前題目狀態，以便下次重新抽新題
-                    for key in ['current_game_target_word', 'current_game_row', 'current_active_basic', 'current_active_adv']:
-                        if key in st.session_state:
-                            del st.session_state[key]
+                    for k in ['active_game_word', 'active_game_row', 'active_game_basic', 'active_game_adv']:
+                        if k in st.session_state:
+                            del st.session_state[k]
                     st.rerun()
                 else:
                     st.session_state.game_errors += 1
                     st.error("❌ 答錯囉！累積答錯次數 +1，再試一次，加油！")
-                    time.sleep(0.8)
-                    st.rerun()
 
             if skip_question:
-                # 換一題時強制洗掉當前題目狀態，強迫重新抽選新單字與新隨機句型
-                for key in ['current_game_target_word', 'current_game_row', 'current_active_basic', 'current_active_adv']:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                for k in ['active_game_word', 'active_game_row', 'active_game_basic', 'active_game_adv']:
+                    if k in st.session_state:
+                        del st.session_state[k]
                 st.rerun()
