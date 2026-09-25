@@ -362,7 +362,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            # 🟢 雙模式選擇器完整保留
             game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (純英文克漏字 + 單字發音)", "🔴 進階盲拼挑戰 (聽中文定義發音 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
@@ -374,7 +373,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 w = str(row['word']).strip()
                 
                 db_b = clean_sentence(row.get('basic_sentence', ''))
-                # 獨立確保：若有合法例句就用，沒有就留空，絕不塞爛句子
                 active_b = db_b if (db_b and w.lower() in db_b.lower() and "example sentence" not in db_b.lower()) else ""
 
                 word_audio = generate_audio_bytes(w, lang='en')
@@ -400,7 +398,8 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         masked_basic = re.sub(re.escape(word_str), '______', item['basic_sentence'], flags=re.IGNORECASE)
                         st.markdown(f"**📖 Context Sentence：** {masked_basic}")
                     else:
-                        st.markdown(f"**📌 中文釋義：** `{item['definition']}` (此單字無現成例句，請依發音與定義挑戰)")
+                        st.markdown(f"**📌 中文釋義：** `{item['definition']}`")
+                        st.info("💡 提示：此單字無現成例句，請依據發音與上方中文釋義進行挑戰！")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
