@@ -303,13 +303,27 @@ def generate_vocab_info(word):
     }
     return fallback_data, None
 
-# 💡 建立快取函式：將文字轉換成語音的二進位檔，避免重複讀取卡頓
+# 💡 建立快取函式：將文字轉換成語音的二進位檔
 @st.cache_data(show_spinner=False)
 def generate_audio_bytes(text, lang='en'):
     tts = gTTS(text=text, lang=lang)
     fp = io.BytesIO()
     tts.write_to_fp(fp)
     return fp.getvalue()
+
+# 💡 建立快取函式：即時抓取免費英英字典 API 的英文解釋
+@st.cache_data(show_spinner=False)
+def get_english_definition(word, fallback_sentence=""):
+    try:
+        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(word)}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            return data[0]['meanings'][0]['definitions'][0]['definition']
+    except Exception:
+        if fallback_sentence:
+            return re.sub(re.escape(word), '______', fallback_sentence, flags=re.IGNORECASE)
+        return f"An important English vocabulary word representing {word}."
 
 # -------------------------------------------------------------------------
 # 4. 主畫面佈局
@@ -319,7 +333,6 @@ st.title("📚 我愛背單字")
 df_vocab = get_vocab_by_db(current_db_name)
 total_words = len(df_vocab)
 
-# 根據目前選單名稱去除表情符號，組合成「功能名稱 (級別)」
 clean_menu_name = re.sub(r'[^\w\s]', '', main_menu).strip()
 top_right_display = f"{clean_menu_name} ({selected_level})"
 
@@ -331,7 +344,6 @@ with col_m2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- 根據側邊欄選單分派畫面 ---
 if main_menu == "✨ 智慧單字新增":
     col_u1, col_u2 = st.columns(2)
     with col_u1:
@@ -453,7 +465,6 @@ elif main_menu == "📖 字庫管理與搜尋":
         unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist())
         unit_list.append("全部單字")
         
-        # 篩選下拉選單與重新整理按鈕放在同一排
         col_top_f1, col_top_f2 = st.columns([1.5, 1])
         with col_top_f1:
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
@@ -514,9 +525,6 @@ elif main_menu == "📖 字庫管理與搜尋":
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # -------------------------------------------------------------
-        # 最下方：單字總表與快速編輯區 (預設直接展開)
-        # -------------------------------------------------------------
         with st.expander("📋 點擊收合/展開：單字總表與快速編輯區", expanded=True):
             display_df = filtered_df.copy()
             display_df.insert(0, '編號', range(1, len(display_df) + 1))
@@ -624,8 +632,6 @@ elif main_menu == "🎯 沉浸式閃卡複習":
                     st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
                     st.rerun()
 
-
-# ⬇️ 這是本次針對「拼字王」全新強化的核心區塊
 elif main_menu == "🎮 拼字王挑戰遊戲":
     df_vocab_game = get_vocab_by_db(current_db_name)
     
@@ -640,8 +646,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_vocab_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            # 💡 雙模式選擇
-            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (例句挖空 + 單字發音)", "🔴 進階盲拼挑戰 (聽中文解釋發音 + 打單字)"], horizontal=True)
+            game_mode = st.radio("選擇挑戰模式：", ["🟢 經典單字挑戰 (例句挖空 + 單字發音)", "🔴 進階盲拼挑戰 (聽英文解釋發音 + 打單字)"], horizontal=True)
 
             if "game_errors" not in st.session_state:
                 st.session_state.game_errors = 0
@@ -651,22 +656,19 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             target = st.session_state.game_word_target
             word_str = str(target['word'])
             
-            # 修正帶有空白的片語空格提示，且不影響純字母判斷 (例如 years old)
             hint_masked = "".join([" _ " if c.isalpha() else "   " for c in word_str])
             
             with st.container(border=True):
                 st.markdown(f"### ❌ 累積答錯題數：`{st.session_state.game_errors} 次` &nbsp;|&nbsp; 🏷️ {target.get('unit_tag', '')}")
                 
-                # 模式一：給句子，挖空格，旁邊有單字發音
+                # 模式一：經典單字挑戰 (例句挖空 + 單字發音)
                 if "經典" in game_mode:
                     st.markdown(f"**📌 中文釋義：** {target['definition']}")
                     
                     basic_sent_game = clean_sentence(target.get('basic_sentence', ''))
-                    # 嚴謹的 re.escape 確保 years old 中間的空白不會報錯
                     masked_basic_game = re.sub(re.escape(word_str), '______', basic_sent_game, flags=re.IGNORECASE) if basic_sent_game else "(無例句)"
                     st.markdown(f"**📖 基礎例句：** {masked_basic_game}")
                     
-                    # 排版讓喇叭在文字旁邊
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
                         st.markdown("<div style='margin-top: 15px;'>**🔊 單字發音：**</div>", unsafe_allow_html=True)
@@ -677,20 +679,20 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         except Exception:
                             st.warning("發音載入失敗，請確認網路連線。")
                             
-                # 模式二：給解釋，發音讀出解釋，盲拼單字
+                # 模式二：進階盲拼挑戰 (聽英文解釋發音 + 打單字)
                 else:
-                    st.markdown("### 🎧 聽取中文解釋，拼出正確英文單字！")
-                    st.markdown(f"**📌 中文解釋文字：** {target['definition']}")
+                    st.markdown("### 🎧 Listen to the English definition and spell the word!")
+                    
+                    eng_def = get_english_definition(word_str, clean_sentence(target.get('basic_sentence', '')))
+                    
+                    st.markdown(f"**📌 Definition：** {eng_def}")
                     
                     col_a1, col_a2 = st.columns([1, 4])
                     with col_a1:
-                        st.markdown("<div style='margin-top: 15px;'>**🔊 聽解釋發音：**</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='margin-top: 15px;'>**🔊 發音提示：**</div>", unsafe_allow_html=True)
                     with col_a2:
                         try:
-                            def_text = target.get('definition', '').strip()
-                            if not def_text or "(待補充" in def_text:
-                                def_text = "請先至字庫補充中文解釋"
-                            audio_bytes = generate_audio_bytes(def_text, lang='zh-TW')
+                            audio_bytes = generate_audio_bytes(eng_def, lang='en')
                             st.audio(audio_bytes, format="audio/mp3")
                         except Exception:
                             st.warning("發音載入失敗，請確認網路連線。")
