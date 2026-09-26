@@ -28,11 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-LOCAL_RICH_VOCAB_DB = {
-    "piece": {"pos": "n.", "def": "件；片；零件", "sentence": "He cut a large piece of cake for his younger sister."},
-    "sentence": {"pos": "n. / v.", "def": "句子；宣判", "sentence": "Please write a complete sentence using this new vocabulary word."},
-}
-
 @st.cache_resource
 def init_gsheets_client():
     scopes = [
@@ -68,7 +63,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.warning("⚠️ 未輸入 API Key (將使用智慧動態句型引擎)")
+    st.sidebar.warning("⚠️ 未輸入 API Key (將使用智慧動態引擎)")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -128,15 +123,14 @@ def get_vocab_from_sheets(_worksheet):
     df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
     df_temp = df_temp[df_temp['word'].notna()]
     
-    # 🌟 安全防護網版動態生成引擎：絕不覆蓋原有正常資料，僅針對真正空白或機器人呆板舊句進行修復
+    # 🌟 絕對安全防護過濾：絕不覆蓋使用者的中文，僅針對真正呆板或空白的例句進行動態美化
     for idx, row in df_temp.iterrows():
         w_clean = str(row['word']).strip()
-        w_lower = w_clean.lower()
         r_sent = str(row['basic_sentence']).strip()
         r_def = str(row['definition']).strip()
         
-        # 嚴格界定：只有當例句完全空白，或包含明顯舊的呆板字串時才處理
-        is_truly_blank_or_bad = (
+        # 判斷例句是否為呆板罐頭句或空白
+        is_bad_sentence = (
             not r_sent or 
             r_sent == "nan" or
             "This is an example" in r_sent or 
@@ -145,26 +139,21 @@ def get_vocab_from_sheets(_worksheet):
             "Everyone in the classroom" in r_sent
         )
         
-        if is_truly_blank_or_bad:
-            if w_lower in LOCAL_RICH_VOCAB_DB:
-                df_temp.at[idx, 'definition'] = LOCAL_RICH_VOCAB_DB[w_lower]['def']
-                df_temp.at[idx, 'part_of_speech'] = LOCAL_RICH_VOCAB_DB[w_lower]['pos']
-                df_temp.at[idx, 'basic_sentence'] = LOCAL_RICH_VOCAB_DB[w_lower]['sentence']
-            else:
-                # 若原本中文釋義也是空白或待補，才給予預設值，保留使用者辛苦建檔的中文！
-                if not r_def or r_def == "nan" or "中文釋義待補" in r_def:
-                    df_temp.at[idx, 'definition'] = f"{w_clean} (請自訂釋義)"
-                
-                smart_templates = [
-                    f"She mentioned that learning how to use '{w_clean}' correctly is vital for daily communication.",
-                    f"The teacher emphasized the importance of remembering '{w_clean}' for the upcoming exam.",
-                    f"We spent some extra time reviewing the meaning and usage of '{w_clean}' in class.",
-                    f"It is always helpful to practice writing sentences containing '{w_clean}'.",
-                    f"He tried to recall where he had first encountered the expression '{w_clean}'."
-                ]
-                random.seed(len(w_clean) + ord(w_clean[0]))
-                df_temp.at[idx, 'basic_sentence'] = random.choice(smart_templates)
-                random.seed()
+        if is_bad_sentence:
+            smart_templates = [
+                f"She mentioned that learning how to use '{w_clean}' correctly is vital for daily communication.",
+                f"The teacher emphasized the importance of remembering '{w_clean}' for the upcoming exam.",
+                f"We spent some extra time reviewing the meaning and usage of '{w_clean}' in class.",
+                f"It is always helpful to practice writing sentences containing '{w_clean}'.",
+                f"He tried to recall where he had first encountered the expression '{w_clean}'."
+            ]
+            random.seed(len(w_clean) + ord(w_clean[0]))
+            df_temp.at[idx, 'basic_sentence'] = random.choice(smart_templates)
+            random.seed()
+
+        # 確保中文釋義如果完全空白才給予基本提示，絕不覆蓋您原有的中文
+        if not r_def or r_def == "nan" or r_def.strip() == "":
+            df_temp.at[idx, 'definition'] = f"請補充 {w_clean} 的中文釋義"
 
     return df_temp
 
@@ -186,15 +175,7 @@ def get_word_record_data(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    if w_lower in LOCAL_RICH_VOCAB_DB:
-        entry = LOCAL_RICH_VOCAB_DB[w_lower]
-        return {
-            "word": w_clean, "phonetic": f"/{w_lower}/", "part_of_speech": entry["pos"],
-            "definition": entry["def"], "basic_sentence": entry["sentence"],
-            "advanced_sentence": "", "collocations": f"common {w_clean}"
-        }
-        
-    pos_res, def_res = "n. / v.", f"{w_clean} (請自訂釋義)"
+    pos_res, def_res = "n. / v.", f"請補充 {w_clean} 的中文釋義"
     sent_res = f"The teacher emphasized the importance of remembering '{w_clean}' for the upcoming exam."
             
     return {
@@ -347,7 +328,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
                 get_vocab_from_sheets.clear()
-                st.success("✅ 快取已清除，已恢復原有正常字義與安全防護！")
+                st.success("✅ 快取已清除，已完美恢復您的原始中文釋義！")
                 time.sleep(0.5)
                 st.rerun()
 
