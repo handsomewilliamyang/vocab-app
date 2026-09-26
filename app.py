@@ -22,16 +22,55 @@ except ImportError:
     HAS_GEMINI = False
 
 st.set_page_config(
-    page_title="我愛背單字 (內建離線字典與雲端同步版)",
+    page_title="我愛背單字 (大容量離線+AI雙效版)",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # -------------------------------------------------------------------------
-# 0. 內建高品質離線字典庫 (確保國高中常用單字 100% 精準、不出錯)
+# 0. 擴充版離線字典庫 (涵蓋國中、高中及多益常用單字)
 # -------------------------------------------------------------------------
 OFFLINE_DICT = {
+    "crack": {"pos": "n. / v.", "def": "破裂；裂痕", "sentence": "There is a small crack in the windshield."},
+    "maybe": {"pos": "adv.", "def": "也許", "sentence": "Maybe we can go to the movies tomorrow."},
+    "person": {"pos": "n.", "def": "人物；人", "sentence": "She is a very kind and helpful person."},
+    "but": {"pos": "conj. / prep.", "def": "但是；除了", "sentence": "I wanted to go, but I was too tired."},
+    "marker": {"pos": "n.", "def": "標記；麥克筆", "sentence": "He used a red marker to highlight the important words."},
+    "brush": {"pos": "n. / v.", "def": "筆刷；刷子", "sentence": "She brushed her hair before going out."},
+    "right": {"pos": "adj. / adv. / n.", "def": "右；正確的", "sentence": "Turn right at the corner of the street."},
+    "above": {"pos": "prep. / adv.", "def": "在...上方", "sentence": "A plane flew high above the clouds."},
+    "between": {"pos": "prep.", "def": "在...之間", "sentence": "The bank is between the post office and the park."},
+    "in front of": {"pos": "prep. phr.", "def": "在...前方", "sentence": "A black car was parked in front of our house."},
+    "behind": {"pos": "prep. / adv.", "def": "在...後方", "sentence": "The cat is hiding behind the sofa."},
+    "living room": {"pos": "n.", "def": "客廳", "sentence": "We watch TV together in the living room every evening."},
+    "kitchen": {"pos": "n.", "def": "廚房", "sentence": "Mom is cooking dinner in the kitchen."},
+    "each other": {"pos": "pron.", "def": "彼此；互相", "sentence": "Good friends should help and support each other."},
+    "i think so": {"pos": "phr.", "def": "我認為是這樣", "sentence": "Will it rain this afternoon? I think so."},
+    "house": {"pos": "n.", "def": "住家；房子", "sentence": "They live in a beautiful house near the mountains."},
+    "favorite": {"pos": "adj. / n.", "def": "最喜愛的", "sentence": "Science is my favorite subject at school."},
+    "table": {"pos": "n.", "def": "桌子；表格", "sentence": "Please put the books on the desk."},
+    "brown": {"pos": "adj. / n.", "def": "褐色；棕色", "sentence": "He has short brown hair and dark eyes."},
+    "mummy": {"pos": "n.", "def": "木乃伊", "sentence": "We saw an ancient Egyptian mummy at the museum."},
+    "sofa": {"pos": "n.", "def": "沙發", "sentence": "The dog fell asleep on the comfortable sofa."},
+    "bathroom": {"pos": "n.", "def": "浴室；廁所", "sentence": "Please wash your hands in the bathroom."},
+    "gray": {"pos": "adj. / n.", "def": "灰色", "sentence": "The sky is gray, and it looks like it's going to rain."},
+    "parents": {"pos": "n.", "def": "父母親", "sentence": "My parents always support my dreams."},
+    "wall": {"pos": "n.", "def": "牆壁", "sentence": "She hung a nice painting on the white wall."},
+    "special": {"pos": "adj.", "def": "特別的", "sentence": "Today is a very special day for our family."},
+    "gift": {"pos": "n.", "def": "禮物", "sentence": "Thank you so much for the wonderful birthday gift."},
+    "notebook": {"pos": "n.", "def": "筆記本", "sentence": "I wrote down the teacher's instructions in my notebook."},
+    "purple": {"pos": "adj. / n.", "def": "紫色", "sentence": "She wore a gorgeous purple dress to the party."},
+    "mouse": {"pos": "n.", "def": "老鼠；滑鼠", "sentence": "The cat chased the mouse across the floor."},
+    "mice": {"pos": "n.", "def": "老鼠 (複數)", "sentence": "Several mice were running around the old barn."},
+    "inside": {"pos": "prep. / adv.", "def": "內部；在裡面", "sentence": "It's too cold outside; let's go inside."},
+    "enough": {"pos": "adj. / adv.", "def": "足夠的", "sentence": "We have enough food for the weekend trip."},
+    "pencil box": {"pos": "n.", "def": "鉛筆盒", "sentence": "He keeps his pens and erasers in his pencil box."},
+    "near": {"pos": "prep. / adv.", "def": "接近；在...附近", "sentence": "Our school is near a big supermarket."},
+    "color": {"pos": "n. / v.", "def": "色彩；顏色", "sentence": "What is your favorite color?"},
+    "hungry": {"pos": "adj.", "def": "飢餓的", "sentence": "I missed lunch, so I am very hungry now."},
+    "cookie": {"pos": "n.", "def": "餅乾", "sentence": "She baked a batch of chocolate chip cookies."},
+    "dining room": {"pos": "n.", "def": "餐廳", "sentence": "The family gathered in the dining room for dinner."},
     "crazy": {"pos": "adj.", "def": "瘋狂的", "sentence": "He is crazy about playing video games after school."},
     "diet": {"pos": "n. / v.", "def": "飲食；節食", "sentence": "A balanced diet is important for our health."},
     "habit": {"pos": "n.", "def": "習慣", "sentence": "Reading before bed is a very good habit."},
@@ -77,10 +116,10 @@ st.sidebar.markdown("---")
 user_api_key = st.sidebar.text_input("輸入 Gemini API Key (選填)", type="password", value=st.secrets.get("gemini_api_key", ""))
 if user_api_key:
     st.session_state.gemini_api_key = user_api_key
-    st.sidebar.success("✅ AI 引擎已啟用 (離線+AI雙效模式)")
+    st.sidebar.success("✅ AI 引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 目前使用【內建離線字典】模式")
+    st.sidebar.warning("⚠️ 未輸入 API Key")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -152,12 +191,11 @@ def clean_sentence(text):
     text = re.sub(r'\s*\(.*?\)', '', str(text)).strip()
     return text
 
-# 整合離線字典與 AI 雙重防護的查詢函式
 def get_word_record_data(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 1. 優先從離線字典查詢 (絕對精準、絕不出錯)
+    # 1. 優先查閱離線字典庫
     if w_lower in OFFLINE_DICT:
         entry = OFFLINE_DICT[w_lower]
         return {
@@ -170,9 +208,8 @@ def get_word_record_data(word):
             "collocations": f"common {w_clean}"
         }
         
-    # 2. 如果離線字典沒有，且有設定 AI 金鑰，則透過 AI 智慧生成
-    pos_res, def_res, sent_res = "n. / v.", "(待補充中文)", f"I see a {w_clean} here."
-    
+    # 2. 若不在離線字典中，且有開通 AI，則由 Gemini 生成
+    pos_res, def_res, sent_res = "n. / v.", "中文釋義待補", f"People use {w_clean} in daily life."
     if HAS_GEMINI and st.session_state.get('gemini_api_key'):
         try:
             genai.configure(api_key=st.session_state.gemini_api_key)
@@ -250,7 +287,7 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-st.title("📚 我愛背單字 (內建離線字典與雲端同步版)")
+st.title("📚 我愛背單字 (大容量離線+雲端同步版)")
 
 df_vocab = get_vocab_from_sheets(active_worksheet)
 total_words = len(df_vocab)
@@ -336,7 +373,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 透過離線字典與 AI 自動一鍵掃描修復", type="primary", use_container_width=True):
+            if st.button("🔄 一鍵用離線字典完美修復所有呆板例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 updated_count = 0
@@ -344,11 +381,12 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_vocab.iterrows():
                     r_word = str(row['word']).strip()
                     w_lower = r_word.lower()
+                    r_sent = str(row['basic_sentence'])
                     
-                    # 如果在離線字典中，直接用離線字典的高品質資料覆蓋修復
-                    if w_lower in OFFLINE_DICT:
+                    # 只要發現例句含有呆板的 This is an example 或包含亂碼，且在離線字典中，就立刻完美修復
+                    if ("This is an example" in r_sent or "%s" in r_sent or not r_sent) and w_lower in OFFLINE_DICT:
                         entry = OFFLINE_DICT[w_lower]
-                        status_text.text(f"⏳ 正在透過離線字典修復: {r_word} ...")
+                        status_text.text(f"⏳ 正在修復: {r_word} ...")
                         update_single_word_in_sheet(
                             active_worksheet, r_word, r_word, 
                             row['phonetic'], entry["pos"], entry["def"], entry["sentence"], row.get('advanced_sentence',''), row.get('collocations','')
@@ -357,7 +395,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 掃描完成！已透過離線字典成功修復 {updated_count} 筆資料的亂碼與呆板例句。")
+                st.success(f"🎊 修復完成！已透過大容量離線字典成功修正 {updated_count} 筆呆板例句。")
                 time.sleep(1)
                 st.rerun()
 
