@@ -362,7 +362,7 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🔊 採用瀏覽器原生語音合成與極致精簡設計 =================
+# ================= 🔊 採用支援黑暗/亮色模式的自適應按鈕設計 =================
 def play_audio_compact(text_to_speak, label_key="🔊"):
     safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
     html_code = f"""
@@ -380,16 +380,23 @@ def play_audio_compact(text_to_speak, label_key="🔊"):
             width: 100%;
             padding: 0.35rem 0.5rem;
             background-color: transparent;
-            color: inherit;
-            border: 1px solid rgba(128, 128, 128, 0.35);
+            color: canvasText;
+            border: 1px solid rgba(128, 128, 128, 0.4);
             border-radius: 0.4rem;
             font-size: 14px;
+            font-family: inherit;
             cursor: pointer;
             text-align: center;
             transition: all 0.2s ease;
         }}
+        @media (prefers-color-scheme: dark) {{
+            .speak-btn {{
+                color: #ffffff;
+                border-color: rgba(255, 255, 255, 0.3);
+            }}
+        }}
         .speak-btn:hover {{
-            background-color: rgba(128, 128, 128, 0.08);
+            background-color: rgba(128, 128, 128, 0.15);
             border-color: #ff4b4b;
             color: #ff4b4b;
         }}
