@@ -331,14 +331,13 @@ if main_menu == "✨ 智慧單字新增":
         if uploaded_docxs:
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 all_extracted_words = []
-                # 定義詞性與常見雜訊黑名單，絕對不被當成單字抓取
                 POS_BLACKLIST = {
                     'n', 'v', 'adj', 'adv', 'prep', 'conj', 'pron', 'interj', 'aux', 
                     'n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'interj.', 'aux.',
                     'v.n.', 'n.v.', 'adj.adv.', 'phr', 'phr.', 'pl', 'pl.', 'sg', 'sg.'
                 }
                 
-                with st.spinner("🔍 正在精準掃描 Word 文本中的單字（已自動濾除詞性標示）..."):
+                with st.spinner("🔍 正在精準掃描 Word 表格第一欄單字（已自動過濾右側解釋與雜訊）..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -347,12 +346,11 @@ if main_menu == "✨ 智慧單字新增":
                             doc = docx.Document(temp_path)
                             for table in doc.tables:
                                 for row in table.rows:
-                                    for cell in row.cells:
-                                        for line in cell.text.strip().split('\n'):
+                                    if row.cells:
+                                        cell_text = row.cells[0].text.strip()
+                                        for line in cell_text.split('\n'):
                                             cleaned = line.strip().lower()
-                                            # 過濾條件：排除黑名單、空字串、太短或包含中文的雜訊
-                                            if cleaned and cleaned not in POS_BLACKLIST and len(cleaned) < 35 and not any(('\u4e00' <= c <= '\u9fff') for c in cleaned):
-                                                # 還原首字大小寫保留原始外觀
+                                            if cleaned and cleaned not in POS_BLACKLIST and len(cleaned) < 30 and not any(('\u4e00' <= c <= '\u9fff') for c in cleaned) and not any(char in cleaned for char in ['/', '[', ']', '(', ')', '=', '：', ':']):
                                                 original_c = line.strip()
                                                 if original_c not in all_extracted_words:
                                                     all_extracted_words.append(original_c)
@@ -365,7 +363,7 @@ if main_menu == "✨ 智慧單字新增":
                 total_words_to_process = len(all_extracted_words)
                 
                 if total_words_to_process > 0:
-                    st.info(f"📑 文本精準掃描完畢！共過濾雜訊並找到 **{total_words_to_process}** 個有效單字準備匯入。")
+                    st.info(f"📑 文本精準掃描完畢！共鎖定表格第一欄找到 **{total_words_to_process}** 個有效單字準備匯入。")
                     
                     progress_bar = st.progress(0)
                     status_ui = st.empty()
@@ -419,7 +417,7 @@ if main_menu == "✨ 智慧單字新增":
                     time.sleep(2)
                     st.rerun()
                 else:
-                    st.warning("⚠️ 在上傳的 Word 中找不到符合的英文單字。")
+                    st.warning("⚠️ 在上傳的 Word 表格第一欄中找不到符合的英文單字。")
 
 elif main_menu == "📖 字庫管理與搜尋":
     if df_vocab.empty:
@@ -668,7 +666,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         
                 current_wrong_count = len(st.session_state.wrong_answers)
                 if current_wrong_count > 0:
-                    st.markdown(f"<h4 style='color: #E53935;'>🛑 目前累積錯題數：{current_wrong_count} 題</h4>", unsafe_allow_html=True)
+                    st.markdown(f"<h4 style='color: #E53935;>🛑 目前累積錯題數：{current_wrong_count} 題</h4>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<h4 style='color: #757575;'>🛑 目前累積錯題數：0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
                 st.markdown("---")
