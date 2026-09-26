@@ -10,7 +10,6 @@ import re
 from gtts import gTTS
 import io
 import base64
-import streamlit.components.v1 as components
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -362,91 +361,16 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🌟 極簡精緻、和諧美觀的發音按鈕元件 =================
-def custom_audio_button(audio_bytes, label):
+# ================= 🔊 完全使用原生風格與 JS 互動的播放機制 =================
+def play_audio_native(audio_bytes, label_key):
     b64 = base64.b64encode(audio_bytes).decode()
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        html, body {{
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: transparent;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }}
-        
-        /* 🎨 極簡融合風格設計 (無沉重外框、柔和圓角與微光陰影) */
-        :root {{
-            --bg-color: #f8f9fa;
-            --text-color: #374151;
-            --border-color: #e5e7eb;
-            --hover-bg: #f3f4f6;
-            --hover-border: #d1d5db;
-            --hover-text: #2563eb;
-        }}
-        
-        @media (prefers-color-scheme: dark) {{
-            :root {{
-                --bg-color: #1f2937;
-                --text-color: #f3f4f6;
-                --border-color: #374151;
-                --hover-bg: #374151;
-                --hover-border: #4b5563;
-                --hover-text: #60a5fa;
-            }}
-        }}
-
-        button {{
-            width: 100%;
-            height: 100%;
-            box-sizing: border-box;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 500;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }}
-        
-        button:hover {{
-            background-color: var(--hover-bg);
-            border-color: var(--hover-border);
-            color: var(--hover-text);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-            transform: translateY(-1px);
-        }}
-        
-        button:active {{
-            transform: translateY(0);
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-        }}
-    </style>
-    </head>
-    <body>
-        <button onclick="playAudio()">
-            {label}
-        </button>
-        <audio id="myAudio">
+    audio_html = f"""
+        <audio id="audio_{label_key}">
             <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
         </audio>
         <script>
-            function playAudio() {{
-                var audio = document.getElementById("myAudio");
+            function triggerAudio_{label_key}() {{
+                var audio = document.getElementById("audio_{label_key}");
                 audio.pause();
                 audio.currentTime = 0;
                 audio.play().catch(function(error) {{
@@ -454,10 +378,21 @@ def custom_audio_button(audio_bytes, label):
                 }});
             }}
         </script>
-    </body>
-    </html>
+        <button onclick="triggerAudio_{label_key}()" style="
+            width: 100%;
+            background-color: transparent;
+            color: inherit;
+            border: 1px solid rgba(49, 51, 63, 0.2);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-weight: 400;
+            font-size: 14px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        ">🔊 {label_key}</button>
     """
-    components.html(html_code, height=45)
+    st.components.v1.html(audio_html, height=48)
 # =========================================================================
 
 st.title("📚 我愛背單字")
@@ -840,17 +775,17 @@ elif main_menu == "🎯 背誦單字":
                 with ac_col1:
                     try:
                         audio_us = generate_audio_bytes(row['word'], tld='com')
-                        custom_audio_button(audio_us, "🔊 美式發音 (US)")
+                        play_audio_native(audio_us, "美式發音 (US)")
                     except: pass
                 with ac_col2:
                     try:
                         audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
-                        custom_audio_button(audio_uk, "🔊 英式發音 (UK)")
+                        play_audio_native(audio_uk, "英式發音 (UK)")
                     except: pass
                 with ac_col3:
                     try:
                         audio_au = generate_audio_bytes(row['word'], tld='com.au')
-                        custom_audio_button(audio_au, "🔊 澳洲發音 (AU)")
+                        play_audio_native(audio_au, "澳洲發音 (AU)")
                     except: pass
             
             c1, c2 = st.columns(2)
@@ -928,7 +863,7 @@ elif main_menu == "🎮 我是拼字王":
                         
                         try:
                             audio_bytes_to_play = generate_audio_bytes(target_word)
-                            custom_audio_button(audio_bytes_to_play, "🔊 播放發音")
+                            play_audio_native(audio_bytes_to_play, "播放發音")
                         except: pass
 
                     else:
@@ -937,7 +872,7 @@ elif main_menu == "🎮 我是拼字王":
                         
                         try:
                             audio_bytes_to_play = generate_audio_bytes(target_adv_def)
-                            custom_audio_button(audio_bytes_to_play, "🔊 播放英文解釋")
+                            play_audio_native(audio_bytes_to_play, "播放英文解釋")
                         except: pass
 
                 if st.session_state.get("last_feedback"):
