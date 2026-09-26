@@ -59,7 +59,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將透過智慧語意引擎自動生成")
+    st.sidebar.info("💡 未填寫 API Key 時將直接採用講義中的表格中文")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -136,7 +136,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 如果 Word 表格本身已經有提供中文解釋，優先採用表格內的中文！
+    # 核心治本機制：直接採用 Word 表格內抓到的真實中文解釋
     if raw_def and not any(('\u6587' <= c <= '\u9fff' and '核心' in raw_def) for c in raw_def):
         return {
             "word": w_clean,
@@ -146,7 +146,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
             "basic_sentence": f"She knows how to use {w_clean} correctly."
         }
 
-    # 其次嘗試透過 Gemini API 查詢
+    # 備用 AI 查詢
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
@@ -181,7 +181,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
             except Exception:
                 time.sleep(1)
             
-    # 智慧語意預設推導
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
@@ -310,7 +309,6 @@ if main_menu == "✨ 智慧單字新增":
                             for table in doc.tables:
                                 for row in table.rows:
                                     cells = row.cells
-                                    # 如果表格欄位足夠（至少包含英文單字與中文解釋欄位）
                                     if len(cells) >= 3:
                                         raw_word = cells[1].text.strip()
                                         raw_def = cells[2].text.strip()
@@ -323,7 +321,6 @@ if main_menu == "✨ 智慧單字新增":
                                     w_cleaned = raw_word.split('\n')[0].strip()
                                     d_cleaned = raw_def.split('\n')[0].strip()
                                     
-                                    # 驗證單字是否合乎規範（純英文或帶空格片語，排除雜訊）
                                     if (w_cleaned and 
                                         len(w_cleaned) < 35 and 
                                         not any(('\u4e00' <= c <= '\u9fff') for c in w_cleaned) and 
@@ -657,7 +654,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 st.text_input(
                     "📝 請輸入您的拼寫答案 (輸入完畢可直接按 Enter 送出)：", 
                     key="user_spelling_input",
-2                    on_change=process_answer,
+                    on_change=process_answer,
                     kwargs={"is_skip": False}
                 )
                 
