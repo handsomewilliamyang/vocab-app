@@ -362,8 +362,8 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🔊 採用瀏覽器原生語音合成與極致和諧設計 =================
-def play_audio_native(text_to_speak, label_key):
+# ================= 🔊 採用瀏覽器原生語音合成與極致精簡設計 =================
+def play_audio_compact(text_to_speak, label_key="🔊"):
     safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
     html_code = f"""
     <!DOCTYPE html>
@@ -377,15 +377,12 @@ def play_audio_native(text_to_speak, label_key):
             background: transparent;
         }}
         .speak-btn {{
-            width: 100%;
-            padding: 0.55rem 1rem;
+            padding: 0.2rem 0.5rem;
             background-color: transparent;
             color: inherit;
             border: 1px solid rgba(128, 128, 128, 0.35);
-            border-radius: 0.5rem;
+            border-radius: 0.4rem;
             font-size: 14px;
-            font-weight: 400;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             cursor: pointer;
             text-align: center;
             transition: all 0.2s ease;
@@ -398,7 +395,7 @@ def play_audio_native(text_to_speak, label_key):
     </style>
     </head>
     <body>
-        <button class="speak-btn" onclick="speakText()">🔊 {label_key}</button>
+        <button class="speak-btn" onclick="speakText()" title="播放發音">{label_key}</button>
         <script>
             function speakText() {{
                 if ('speechSynthesis' in window) {{
@@ -413,7 +410,7 @@ def play_audio_native(text_to_speak, label_key):
     </body>
     </html>
     """
-    components.html(html_code, height=45)
+    components.html(html_code, height=35)
 # =========================================================================
 
 st.title("📚 我愛背單字")
@@ -795,15 +792,15 @@ elif main_menu == "🎯 背誦單字":
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
                     try:
-                        play_audio_native(row['word'], "美式發音 (US)")
+                        play_audio_compact(row['word'], "🔊 美式發音 (US)")
                     except: pass
                 with ac_col2:
                     try:
-                        play_audio_native(row['word'], "英式發音 (UK)")
+                        play_audio_compact(row['word'], "🔊 英式發音 (UK)")
                     except: pass
                 with ac_col3:
                     try:
-                        play_audio_native(row['word'], "澳洲發音 (AU)")
+                        play_audio_compact(row['word'], "🔊 澳洲發音 (AU)")
                     except: pass
             
             c1, c2 = st.columns(2)
@@ -876,24 +873,24 @@ elif main_menu == "🎮 我是拼字王":
                 total_q_len = len(st.session_state.game_queue)
                 
                 with st.container(border=True):
-                    col_h1, col_h2 = st.columns([4, 1])
+                    col_h1, col_h2, col_h3 = st.columns([5, 1, 1])
                     with col_h1:
                         if game_mode.startswith("標準"):
                             st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<h4 style='color: #2196F3; margin: 0;'>📖 英文解釋：{target_adv_def}</h4>", unsafe_allow_html=True)
                     with col_h2:
-                        st.markdown(f"<p style='text-align: right; color: gray; font-size: 18px; font-weight: bold; margin: 0;'>{current_idx} / {total_q_len}</p>", unsafe_allow_html=True)
+                        try:
+                            if game_mode.startswith("標準"):
+                                play_audio_compact(target_word, "🔊 發音")
+                            else:
+                                play_audio_compact(target_adv_def, "🔊 發音")
+                        except: pass
+                    with col_h3:
+                        st.markdown(f"<p style='text-align: right; color: gray; font-size: 18px; font-weight: bold; margin: 0; padding-top: 5px;'>{current_idx} / {total_q_len}</p>", unsafe_allow_html=True)
                     
                     st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
                     st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                    
-                    try:
-                        if game_mode.startswith("標準"):
-                            play_audio_native(target_word, "播放發音")
-                        else:
-                            play_audio_native(target_adv_def, "播放英文解釋")
-                    except: pass
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
