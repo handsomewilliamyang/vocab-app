@@ -98,7 +98,6 @@ try:
     try:
         active_worksheet = spreadsheet.worksheet(current_sheet_name)
     except Exception:
-        # 如果分頁不存在，自動嘗試建立或抓取第一個分頁
         try:
             active_worksheet = spreadsheet.add_worksheet(title=current_sheet_name, rows="1000", cols="10")
         except Exception:
@@ -155,35 +154,43 @@ def simple_s2t_convert(text):
     return text
 
 def fetch_real_english_definition_and_example(word):
-    """步驟 1：從免費開源字典 API 內抓取英文釋義與例句（強化例外防護）"""
+    """步驟 1：嚴格從免費開源字典 API 內抓取真實英文釋義與例句"""
     w_clean = word.strip().lower()
     real_def = ""
     real_example = ""
 
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
-        res_fd = requests.get(url_fd, timeout=2)
+        res_fd = requests.get(url_fd, timeout=3)
         if res_fd.status_code == 200:
             data = res_fd.json()
             if isinstance(data, list) and len(data) > 0:
-                meanings = data[0].get('meanings', [])
-                if len(meanings) > 0:
-                    definitions = meanings[0].get('definitions', [])
-                    if len(definitions) > 0:
-                        real_def = definitions[0].get('definition', '')
-                        real_example = definitions[0].get('example', '')
+                for meaning in data[0].get('meanings', []):
+                    for definition_obj in meaning.get('definitions', []):
+                        if not real_def:
+                            real_def = definition_obj.get('definition', '')
+                        if not real_example:
+                            real_example = definition_obj.get('example', '')
+                        if real_def and real_example:
+                            break
+                    if real_def and real_example:
+                        break
     except Exception:
         pass
         
     if not real_example or not real_def:
         try:
             url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
-            res_dm = requests.get(url_dm, timeout=2)
+            res_dm = requests.get(url_dm, timeout=3)
             if res_dm.status_code == 200:
                 data = res_dm.json()
                 if isinstance(data, list) and len(data) > 0 and 'defs' in data[0]:
                     for raw_def in data[0]['defs']:
-                        clean_def = raw_def.split('\t', 1)[-1]
+                        if '\t' in raw_def:
+                            parts = raw_def.split('\t', 1)
+                            clean_def = parts[1]
+                        else:
+                            clean_def = raw_def
                         if not real_def:
                             real_def = clean_def.capitalize()
         except Exception:
@@ -191,78 +198,23 @@ def fetch_real_english_definition_and_example(word):
 
     return real_def, real_example
 
-def generate_dynamic_single_sentence(word, definition):
-    """步驟 3：備用方案（動態智慧常模生成例句）"""
+def generate_safe_fallback_sentence(word, definition):
+    """最終備用方案：合乎文法的自然常模（絕不胡亂硬套）"""
     w_clean = word.strip()
-    w_lower = w_clean.lower()
-    d_clean = definition.strip()
-    
-    random.seed(w_lower)
-    
-    if w_lower in ["above", "below", "behind", "under", "between", "beside", "near", "inside", "outside", "across", "along", "through", "with", "without", "about", "from", "into", "onto"]:
-        templates = [
-            f"The adventurous travelers hiked {w_lower} the dense forest to reach the peak.",
-            f"We managed to set up our camp safely right {w_lower} the massive cliff.",
-            f"The secret passage is hidden securely {w_lower} the old stone wall."
-        ]
-        return random.choice(templates)
-        
-    elif w_lower in ["maybe", "perhaps", "actually", "probably", "certainly", "definitely"]:
-        templates = [
-            f"To be honest, I {w_lower} think we should reconsider our original plan.",
-            f"She {w_lower} surprised everyone by finishing the difficult project ahead of schedule."
-        ]
-        return random.choice(templates)
-        
-    elif w_lower in ["usually", "always", "often", "sometimes", "never", "seldom", "rarely"]:
-        return f"Despite her busy schedule, she {w_lower} finds time to read inspirational books."
-        
-    elif w_lower in ["but", "yet", "and", "or", "so"]:
-        return f"The experiment faced several unexpected setbacks, {w_lower} the researchers refused to give up."
-
-    elif any(k in d_clean for k in ["吃", "喝", "做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教"]):
-        return f"It is essential to learn how to {w_clean} effectively in real-world situations."
-
-    elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白"]):
-        return f"The interior designer chose a striking {w_clean} hue to brighten up the living room."
-
-    elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師"]):
-        return f"The dedicated {w_clean} worked tirelessly to ensure the project succeeded."
-        
-    elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "學校", "銀行", "店"]):
-        return f"Locals often gather at this popular {w_clean} to socialize on weekends."
-        
-    elif any(k in d_clean for k in ["筆記本", "書", "紙", "筆"]):
-        return f"She opened her brand new {w_clean} and began jotting down important ideas."
-
-    elif any(k in d_clean for k in ["餅乾", "食物", "水", "蘋果", "麵包", "茶", "咖啡", "肉", "果"]):
-        return f"Having some fresh {w_clean} is a great way to start your energetic morning."
-        
-    elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔"]):
-        return f"Researchers observed how the rare {w_clean} adapts to seasonal environmental shifts."
-        
-    elif any(k in d_clean for k in ["特別", "重要", "好", "壞", "大", "小", "高", "低", "長", "短", "新", "舊"]):
-        return f"She approached the challenge with a remarkably {w_clean} perspective."
-        
-    else:
-        templates = [
-            f"Experts have emphasized the growing significance of {w_clean} in modern studies.",
-            f"We discussed various practical applications of {w_clean} during the workshop."
-        ]
-        return random.choice(templates)
+    return f"We can observe how {w_clean} is applied in our daily life and studies."
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 步驟 1：先從免費開源字典 API 內抓取英文釋義與例句
+    # 步驟 1：優先從免費字典抓取真實釋義與例句
     real_eng_def, real_example = fetch_real_english_definition_and_example(w_clean)
     
     final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
     final_sentence = real_example
 
-    # 步驟 2：如果字典內沒有完整取得，接著啟動 AI 引擎 (Gemini)
+    # 步驟 2：如果字典內沒有例句或釋義，交由 AI 引擎 (Gemini) 精準生成
     if (not final_sentence or not real_eng_def) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
@@ -275,7 +227,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     '    "phonetic": "/音標/",\n'
                     '    "part_of_speech": "詞性",\n'
                     '    "english_definition": "簡明的英文釋義",\n'
-                    '    "sentence": "一句道地的英文例句"\n'
+                    '    "sentence": "一句絕對符合文法且完全針對該單字意義的道地英文例句"\n'
                     "}"
                 )
                 response = model.generate_content(prompt)
@@ -289,15 +241,17 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                 if not real_eng_def:
                     final_eng_def = data.get("english_definition", final_eng_def)
                 if not final_sentence:
-                    final_sentence = data.get("sentence", "")
+                    ai_sent = data.get("sentence", "")
+                    if ai_sent and len(ai_sent) > 5 and w_lower in ai_sent.lower():
+                        final_sentence = ai_sent
                 
                 break
             except Exception:
                 time.sleep(1)
 
-    # 步驟 3：最後防線 - 啟動備用方案（動態智慧常模生成例句）
+    # 步驟 3：最後防線
     if not final_sentence:
-        final_sentence = generate_dynamic_single_sentence(w_clean, cleaned_def)
+        final_sentence = generate_safe_fallback_sentence(w_clean, cleaned_def)
 
     return {
         "word": w_clean,
