@@ -362,7 +362,7 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🚀 支援明亮/黑暗模式的播放按鈕元件 🚀 =================
+# ================= 🚀 完美高對比固定配色按鈕 (適應所有模式) =================
 def custom_audio_button(audio_bytes, label):
     b64 = base64.b64encode(audio_bytes).decode()
     html_code = f"""
@@ -381,46 +381,27 @@ def custom_audio_button(audio_bytes, label):
             justify-content: center;
             align-items: center;
         }}
-        
-        /* 🌞 預設配色 (明亮模式 Light Mode)：使用高對比深灰/黑色字，確保一定看得到文字 */
-        :root {{
-            --btn-bg: #f0f2f6;
-            --btn-text: #262730;
-            --btn-border: #d6d6d6;
-            --btn-hover-border: #ff4b4b;
-            --btn-hover-text: #ff4b4b;
-            --btn-active-bg: rgba(255, 75, 75, 0.1);
-        }}
-        
-        /* 🌙 系統偵測為黑暗模式 (Dark Mode) 時自動切換 */
-        @media (prefers-color-scheme: dark) {{
-            :root {{
-                --btn-bg: rgba(255, 255, 255, 0.05);
-                --btn-text: #fafafa;
-                --btn-border: rgba(250, 250, 250, 0.2);
-            }}
-        }}
-
         button {{
             width: 100%;
             height: 100%;
             box-sizing: border-box;
-            background-color: var(--btn-bg);
-            color: var(--btn-text);
-            border: 1px solid var(--btn-border);
+            background-color: #1e293b; /* 深色沉穩背景，明亮與黑暗模式下皆清晰 */
+            color: #ffffff;             /* 純白文字，絕對不會隱形 */
+            border: 1px solid #334155;
             border-radius: 8px;
             font-size: 15px;
-            font-weight: 500;
+            font-weight: 600;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             cursor: pointer;
             transition: all 0.2s ease;
         }}
         button:hover {{
-            border-color: var(--btn-hover-border);
-            color: var(--btn-hover-text);
+            background-color: #334155;
+            border-color: #ff4b4b;
+            color: #ff4b4b;
         }}
         button:active {{
-            background-color: var(--btn-active-bg);
+            background-color: #0f172a;
         }}
     </style>
     </head>
