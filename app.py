@@ -359,13 +359,17 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# 極致隱藏播放器寫法 (長寬為0，完全不留空間)
 def play_audio_silently(audio_bytes):
     b64 = base64.b64encode(audio_bytes).decode()
+    # 加上隨機時間戳記強迫系統判斷這是一段「全新的 HTML」，確保每次點擊都會重新觸發 autoplay！
+    refresh_trigger = str(time.time())
     md = f"""
         <audio autoplay="true" style="display:none;">
             <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
         </audio>
+        <script>
+            // 觸發刷新: {refresh_trigger}
+        </script>
     """
     components.html(md, width=0, height=0)
 
@@ -843,13 +847,11 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         
-                        # 讓玩家可隨時點擊重聽的按鈕
                         if st.button("🔊 播放發音", key=f"play_std_btn_{st.session_state.game_index}"):
                             try:
                                 audio_bytes_to_play = generate_audio_bytes(target_word)
                             except: pass
                             
-                        # 若這題是第一次載入，則自動播放一次
                         if st.session_state.get(f"auto_played_{st.session_state.game_index}") is None:
                             try:
                                 audio_bytes_to_play = generate_audio_bytes(target_word)
@@ -861,20 +863,17 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         
-                        # 讓玩家可隨時點擊重聽的按鈕
                         if st.button("🔊 播放英文解釋", key=f"play_adv_btn_{st.session_state.game_index}"):
                             try:
                                 audio_bytes_to_play = generate_audio_bytes(target_adv_def)
                             except: pass
                             
-                        # 若這題是第一次載入，則自動播放一次
                         if st.session_state.get(f"auto_played_{st.session_state.game_index}") is None:
                             try:
                                 audio_bytes_to_play = generate_audio_bytes(target_adv_def)
                                 st.session_state[f"auto_played_{st.session_state.game_index}"] = True
                             except: pass
                             
-                # 執行極致隱形播放
                 if audio_bytes_to_play:
                     play_audio_silently(audio_bytes_to_play)
 
