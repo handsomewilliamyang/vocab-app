@@ -872,24 +872,28 @@ elif main_menu == "🎮 我是拼字王":
                 target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or "No English definition provided."
                 hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
                 
-                st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
+                current_idx = st.session_state.game_index + 1
+                total_q_len = len(st.session_state.game_queue)
                 
                 with st.container(border=True):
-                    if game_mode.startswith("標準"):
-                        st.markdown(f"<h2 style='color: #4CAF50;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                        
-                        try:
+                    col_h1, col_h2 = st.columns([4, 1])
+                    with col_h1:
+                        if game_mode.startswith("標準"):
+                            st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<h4 style='color: #2196F3; margin: 0;'>📖 英文解釋：{target_adv_def}</h4>", unsafe_allow_html=True)
+                    with col_h2:
+                        st.markdown(f"<p style='text-align: right; color: gray; font-size: 18px; font-weight: bold; margin: 0;'>{current_idx} / {total_q_len}</p>", unsafe_allow_html=True)
+                    
+                    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+                    st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
+                    
+                    try:
+                        if game_mode.startswith("標準"):
                             play_audio_native(target_word, "播放發音")
-                        except: pass
-
-                    else:
-                        st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
-                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                        
-                        try:
+                        else:
                             play_audio_native(target_adv_def, "播放英文解釋")
-                        except: pass
+                    except: pass
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
