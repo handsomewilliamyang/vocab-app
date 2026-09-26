@@ -5,6 +5,7 @@ import os
 import time
 import docx
 import random
+import requests  # 新增：用來串接免費字典 API
 from gtts import gTTS
 import io
 
@@ -73,7 +74,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用精確情境組合引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用即時免費字典 API")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -145,6 +146,20 @@ def simple_s2t_convert(text):
     for s, t in S2T_DICT.items():
         text = text.replace(s, t)
     return text
+
+def fetch_real_english_definition(word):
+    """串接免費開源字典 API (Free Dictionary API) 獲取真實英文釋義"""
+    try:
+        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word.strip()}"
+        response = requests.get(url, timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            # 提取第一個詞性的第一個釋義
+            real_def = data[0]['meanings'][0]['definitions'][0]['definition']
+            return real_def
+    except Exception:
+        pass
+    return f"A common term referring to {word}."
 
 def generate_dynamic_single_sentence(word, definition):
     w_clean = word.strip()
@@ -294,21 +309,10 @@ def generate_dynamic_single_sentence(word, definition):
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
-    
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 動態智能英文釋義備用庫（當無 API Key 時自動精確對應）
-    fallback_eng_def = f"A term or concept referring to {w_clean}."
-    if w_lower in ["cookie", "food"]:
-        fallback_eng_def = "Something that people eat or provide for nourishment."
-    elif w_lower in ["notebook"]:
-        fallback_eng_def = "A book of blank pages for writing notes in."
-    elif w_lower in ["dining room"]:
-        fallback_eng_def = "A room in a house or hotel where meals are eaten."
-    elif w_lower in ["magic"]:
-        fallback_eng_def = "The power of apparently influencing events by using mysterious or supernatural forces."
-    elif w_lower in ["eat"]:
-        fallback_eng_def = "To put food into the mouth, chew it, and swallow it."
+    # 先行使用免費字典 API 獲取真實的英文解釋
+    real_eng_def = fetch_real_english_definition(w_clean)
 
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
@@ -316,14 +320,14 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                 genai.configure(api_key=st.session_state["gemini_api_key"])
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
-                    f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（中文解釋為：{cleaned_def}，適用級別：{level}），"
-                    "請提供一句簡明扼要的英文釋義（English definition，例如：A book of blank pages for notes.）與一句道地的英文例句。"
-                    "嚴格回傳以下純 JSON 格式，絕對不要包含任何其他文字或標記：\n"
+                    f"你是一個專業的英語字典。請針對英文單字或片語「{w_clean}」（中文解釋：{cleaned_def}），"
+                    "提供一句道地的英文例句，並確認其英文釋義。\n"
+                    "嚴格回傳純 JSON 格式，不含其他文字：\n"
                     "{\n"
                     '    "phonetic": "/音標/",\n'
                     '    "part_of_speech": "詞性",\n'
                     '    "english_definition": "簡明的英文釋義",\n'
-                    '    "sentence": "一句道地的英文例句"\n'
+                    '    "sentence": "道地的英文例句"\n'
                     "}"
                 )
                 response = model.generate_content(prompt)
@@ -335,23 +339,30 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     raw_text = raw_text[start_idx:end_idx]
                     
                 data = json.loads(raw_text)
+                
+                # 如果 AI 沒有給出有效的解釋，就採用免費字典 API 的結果
+                final_eng_def = data.get("english_definition", "")
+                if not final_eng_def or "A term or concept referring to" in final_eng_def:
+                    final_eng_def = real_eng_def
+
                 return {
                     "word": w_clean,
                     "phonetic": data.get("phonetic", f"/{w_lower.replace(' ', '')}/"),
                     "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
                     "definition": cleaned_def,
-                    "advanced_sentence": data.get("english_definition", fallback_eng_def),
+                    "advanced_sentence": final_eng_def,
                     "basic_sentence": data.get("sentence", generate_dynamic_single_sentence(w_clean, cleaned_def))
                 }
             except Exception:
-                time.sleep(1)
+                time.sleep(1) # 如果被限制，稍等一下再試或直接走下方備用方案
             
+    # 如果沒有設定 Gemini，或是上面失敗了，自動使用免費真實字典解釋 + 動態例句組合
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower.replace(' ', '')}/",
         "part_of_speech": "n.",
         "definition": cleaned_def,
-        "advanced_sentence": fallback_eng_def,
+        "advanced_sentence": real_eng_def,
         "basic_sentence": generate_dynamic_single_sentence(w_clean, cleaned_def)
     }
 
@@ -420,7 +431,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在查閱字典並生成中英文解釋與例句中..."):
+                with st.spinner("🤖 正在調用真實字典資料庫與例句生成..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -519,7 +530,7 @@ if main_menu == "✨ 智慧單字新增":
                         
                         status_ui.markdown(
                             f"**⏳ 匯入進度：** `{(i+1)} / {total_words_to_process}`\n\n"
-                            f"👉 目前正在處理： **{word}** (中文: {raw_def})\n\n"
+                            f"👉 目前正在串接真實字典庫處理： **{word}** (中文: {raw_def})\n\n"
                             f"🎯 還剩下 **{remaining_words}** 個單字即可完成！"
                         )
                         
@@ -551,7 +562,7 @@ if main_menu == "✨ 智慧單字新增":
                             
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        time.sleep(0.02)
+                        time.sleep(1) # 免費 API 也需要稍微緩衝一下
                         
                     status_ui.markdown("🔄 **正在將所有資料同步至 Google Sheets，請稍候...**")
                     save_all_vocab_to_sheet(active_worksheet, df_current)
@@ -582,9 +593,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 單字中英文釋義與例句一鍵升級專區")
-            st.warning("點擊下方按鈕，系統將為所有現有單字自動補齊「英文釋義」與道地例句並寫回雲端：")
-            if st.button("🧹 一鍵升級中英文釋義與例句", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 單字真實英文釋義一鍵補齊專區")
+            st.warning("點擊下方按鈕，系統將透過『免費開源字典 API』為所有現有單字補齊最道地的英文解釋：")
+            if st.button("🧹 一鍵補齊真實英文釋義", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -595,18 +606,21 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在為單字補齊中英文釋義 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在從字典資料庫獲取解釋 ({fixed_count+1}/{total_fix}): {w}")
                     
                     new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                     df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
-                    df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
+                    
+                    # 避免洗掉已存在的良好例句
+                    if not row.get('basic_sentence'):
+                        df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
                     fixed_count += 1
                     progress_bar.progress(fixed_count / total_fix)
-                    time.sleep(0.01)
+                    time.sleep(1) # 給免費字典 API 緩衝時間
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成升級！總共更新了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成真實字典釋義補齊！總共更新了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
