@@ -96,7 +96,6 @@ def get_vocab_from_sheets(_worksheet):
         records = []
         
     if not records:
-        # 如果抓不到標題或空的，直接用位置讀取全部資料來建立標準 DataFrame
         all_values = _worksheet.get_all_values()
         if len(all_values) > 1:
             headers = [str(h).strip().lower() for h in all_values[0]]
@@ -107,19 +106,14 @@ def get_vocab_from_sheets(_worksheet):
     else:
         df_temp = pd.DataFrame(records)
         
-    # 自動標準化欄位名稱，防止 Key Error
     df_temp.columns = [str(c).strip().lower() for c in df_temp.columns]
-    
-    # 確保必要欄位存在
     required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage']
     for idx, col in enumerate(required_cols):
         if col not in df_temp.columns:
-            # 如果欄位名稱對不上，嘗試用欄位順序補上
             if idx < len(df_temp.columns):
                 df_temp = df_temp.rename(columns={df_temp.columns[idx]: col})
             else:
                 df_temp[col] = ""
-                
     return df_temp
 
 S2T_DICT = {
@@ -254,38 +248,161 @@ st.markdown("<br>", unsafe_allow_html=True)
 if main_menu == "✨ 智慧單字新增":
     col_u1, col_u2 = st.columns(2)
     with col_u1:
-        semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+        if selected_level == "國中部":
+            semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+        elif selected_level == "高中部":
+            semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+        else:
+            semester = st.selectbox("選擇階段：", ["多益核心", "多益進階", "商用英文"])
+            
     with col_u2:
         unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
         
     current_unit_tag = f"{semester} > {unit}"
     st.info(f"📌 即時同步至 Google Sheets 【{current_sheet_name}】分頁：**{current_unit_tag}**")
-    
-    single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
-    if st.button("🚀 寫入雲端單字庫", type="primary", use_container_width=True):
-        if single_word:
-            data = get_word_record_data(single_word)
-            if upsert_word_to_sheet(data, current_unit_tag, active_worksheet):
-                st.success(f"🎉 成功新增單字：{single_word}")
-                time.sleep(0.5)
+    st.markdown("---")
+
+    col_input1, col_input2 = st.columns(2, gap="large")
+    with col_input1:
+        st.subheader("📝 單筆快速建檔")
+        single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
+        if st.button("🚀 寫入雲端單字庫", type="primary", use_container_width=True):
+            if single_word:
+                data = get_word_record_data(single_word)
+                if upsert_word_to_sheet(data, current_unit_tag, active_worksheet):
+                    st.success(f"🎉 成功新增單字：{single_word}")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error("❌ 寫入失敗")
+
+    with col_input2:
+        st.subheader("📂 Word 檔案智慧匯入")
+        uploaded_docxs = st.file_uploader("上傳 Word 講義檔案 (支援表格解析)", type=["docx"], accept_multiple_files=True)
+        if uploaded_docxs:
+            if st.button("📖 解析 Word 並上傳雲端", use_container_width=True):
+                total_success_count = 0
+                for uploaded_docx in uploaded_docxs:
+                    temp_path = f"temp_{uploaded_docx.name}"
+                    try:
+                        with open(temp_path, "wb") as f:
+                            f.write(uploaded_docx.getbuffer())
+                        doc = docx.Document(temp_path)
+                        for table in doc.tables:
+                            for row in table.rows:
+                                for cell in row.cells:
+                                    for line in cell.text.strip().split('\n'):
+                                        cleaned = re.sub(r'^\d+[\.、\s]*', '', line).strip()
+                                        if cleaned and len(cleaned) < 35 and not re.search(r'[\u4e00-\u9fa5]', cleaned):
+                                            w_data = get_word_record_data(cleaned)
+                                            if upsert_word_to_sheet(w_data, current_unit_tag, active_worksheet):
+                                                total_success_count += 1
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                    except Exception:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                st.success(f"🎊 批次匯入完成！成功解析並匯入 {total_success_count} 個單字。")
+                time.sleep(1)
                 st.rerun()
-            else:
-                st.error("❌ 寫入失敗")
 
 elif main_menu == "📖 字庫管理與搜尋":
     if df_vocab.empty:
         st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
     else:
-        unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
-        selected_unit_filter = st.selectbox("依學習單元篩選：", ["全部單字"] + unit_list)
+        unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else []
+        unit_list = ["全部單字"] + unit_list
+        
+        col_f1, col_f2 = st.columns([1.5, 1])
+        with col_f1:
+            selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
+        with col_f2:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🔄 透過 AI 自動掃描補齊翻譯與例句", type="primary", use_container_width=True):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                updated_count = 0
+                
+                for idx, row in df_vocab.iterrows():
+                    r_word, r_def, r_sent = row['word'], row['definition'], row['basic_sentence']
+                    needs_update = False
+                    
+                    if not r_def or "(待補充" in str(r_def) or not re.search(r'[\u4e00-\u9fa5]', str(r_def)):
+                        new_def = auto_translate_english_to_chinese(str(r_word))
+                        if new_def != r_def: needs_update = True
+                    else:
+                        new_def = r_def
+                        
+                    if needs_update:
+                        status_text.text(f"⏳ 正在修復雲端資料: {r_word} ...")
+                        update_single_word_in_sheet(
+                            active_worksheet, r_word, r_word, 
+                            row['phonetic'], row['part_of_speech'], new_def, r_sent, row.get('advanced_sentence',''), row.get('collocations','')
+                        )
+                        updated_count += 1
+                    progress_bar.progress((idx + 1) / len(df_vocab))
+                
+                status_text.empty()
+                st.success(f"🎊 掃描完成！已透過 AI 補齊 {updated_count} 筆雲端資料。")
+                time.sleep(1)
+                st.rerun()
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
-        search_query = st.text_input("🔍 搜尋單字或釋義：")
+        col_s1, col_s2 = st.columns([2, 1])
+        with col_s1:
+            search_query = st.text_input("🔍 搜尋單字或釋義：")
+        with col_s2:
+            words_to_delete = st.multiselect("🗑️ 勾選要刪除的單字：", filtered_df['word'].tolist(), placeholder="選擇要刪除的單字...")
+
         if search_query:
             filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
+        
+        if words_to_delete:
+            if st.button("⚠️ 確認刪除已勾選的單字 (同步至雲端)", type="primary"):
+                delete_words_from_sheet(active_worksheet, words_to_delete)
+                st.success("已成功刪除勾選的單字！")
+                st.rerun()
 
-        st.dataframe(filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'unit_tag']], use_container_width=True, hide_index=True)
+        with st.expander("📋 單字總表與快速編輯 (點擊展開)", expanded=True):
+            st.dataframe(filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'unit_tag']], use_container_width=True, hide_index=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown("#### ✏️ 雲端單字快速編輯修正")
+                st.caption("💡 提示：您可以在這裡修改任何單字與中文釋義，變更將直接儲存至 Google Sheets。")
+                
+                if not filtered_df.empty:
+                    word_options = {f"{row['word']} ({row['definition']})": row for _, row in filtered_df.iterrows()}
+                    selected_option = st.selectbox("選擇要編輯的單字：", list(word_options.keys()), key="table_edit_select")
+                    
+                    if selected_option:
+                        target_row = word_options[selected_option]
+                        with st.form(key=f"table_edit_form_{target_row['word']}"):
+                            col_e1, col_e2, col_e3 = st.columns(3)
+                            with col_e1:
+                                edit_word = st.text_input("單字 (Word)", value=target_row['word'])
+                            with col_e2:
+                                edit_phonetic = st.text_input("音標 (Phonetic)", value=target_row.get('phonetic', ''))
+                            with col_e3:
+                                edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''))
+                                
+                            edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
+                            edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''))
+                            
+                            submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
+                            
+                            if submit_table_edit:
+                                success, msg = update_single_word_in_sheet(
+                                    active_worksheet, target_row['word'],
+                                    edit_word, edit_phonetic, edit_pos, edit_def, edit_basic, target_row.get('advanced_sentence',''), target_row.get('collocations','')
+                                )
+                                if success:
+                                    st.success("✅ 雲端修改成功！")
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ 修改失敗：{msg}")
 
 elif main_menu == "🎯 沉浸式閃卡複習":
     if df_vocab.empty:
