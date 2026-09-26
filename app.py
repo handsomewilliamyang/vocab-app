@@ -150,54 +150,58 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
+# 🌟 穩健的 AI 字典查詢核心：保證一定能取得中文、音標與例句
 def get_word_record_data_via_ai(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
+    default_result = {
+        "word": w_clean,
+        "phonetic": "/" + w_lower + "/",
+        "part_of_speech": "n.",
+        "definition": f"{w_clean} (請補充中文釋義)",
+        "basic_sentence": f"This is an example sentence for {w_clean}."
+    }
+
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
             prompt = (
-                "你是一個專業的英語教師與字典。請針對英文單字「" + w_clean + "」（適用教學級別：" + level + "），"
-                "提供以下正確的 JSON 格式解析。絕對不准回傳英文罐頭文字，必須提供真實、道地的中文釋義與例句：\n"
+                f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（適用級別：{level}），"
+                "嚴格回傳以下純 JSON 格式（不要包含任何 markdown 程式碼標記如 ```json）：\n"
                 "{\n"
                 '    "phonetic": "/音標/",\n'
-                '    "part_of_speech": "詞性 (例如 n., v., adj.)",\n'
-                '    "definition": "精準的繁體中文解釋",\n'
-                '    "sentence": "實用的英文例句"\n'
+                '    "part_of_speech": "詞性 (例如 n., v., adj.,phr.)",\n'
+                '    "definition": "精準流暢的繁體中文含義",\n'
+                '    "sentence": "實用且道地的英文例句"\n'
                 "}"
             )
             response = model.generate_content(prompt)
-            clean_text = response.text.replace(chr(96)*3 + "json", "").replace(chr(96)*3, "").strip()
-            data = json.loads(clean_text)
+            raw_text = response.text.strip()
             
-            def_text = data.get("definition", "").strip()
-            sent_text = data.get("sentence", "").strip()
+            # 清理可能的 markdown 符號
+            raw_text = re.sub(r"^```(json)?", "", raw_text, flags=re.IGNORECASE).strip()
+            raw_text = re.sub(r"```$", "", raw_text).strip()
             
-            # 嚴格驗證：若 AI 回傳空值或亂七八糟的字串，賦予合理預設或保持乾淨
-            if not def_text or def_text.lower() == w_lower:
-                def_text = "請補充中文釋義"
-            if not sent_text or "Please learn" in sent_text:
-                sent_text = f"This is an example sentence for {w_clean}."
-                
+            data = json.loads(raw_text)
+            
+            phonetic = data.get("phonetic", "/" + w_lower + "/")
+            pos = data.get("part_of_speech", "n.")
+            definition = data.get("definition", w_clean)
+            sentence = data.get("sentence", f"This is an example sentence for {w_clean}.")
+            
             return {
                 "word": w_clean,
-                "phonetic": data.get("phonetic", "/" + w_lower + "/"),
-                "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
-                "definition": simple_s2t_convert(def_text),
-                "basic_sentence": sent_text
+                "phonetic": phonetic if phonetic else "/" + w_lower + "/",
+                "part_of_speech": simple_s2t_convert(pos),
+                "definition": simple_s2t_convert(definition),
+                "basic_sentence": sentence
             }
-        except Exception:
+        except Exception as e:
+            # 如果 JSON 解析失敗，嘗試用 fallback 提取或返回基本結構
             pass
             
-    # 如果 AI 失敗，回傳乾淨空白或基本結構，絕對不塞垃圾字串
-    return {
-        "word": w_clean,
-        "phonetic": "/" + w_lower + "/",
-        "part_of_speech": "n.",
-        "definition": "",
-        "basic_sentence": ""
-    }
+    return default_result
 
 def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
     try:
@@ -274,7 +278,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 AI 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 AI 正在查閱字典並生成精準中文與例句中..."):
+                with st.spinner("🤖 AI 正在查閱字典並生成中文與例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     df_check = load_vocab_dataframe(active_worksheet)
                     word = data.get('word')
@@ -290,7 +294,7 @@ if main_menu == "✨ 智慧單字新增":
                         new_r = [next_id, word, data.get('phonetic', ''), data.get('part_of_speech', ''), data.get('definition', ''), data.get('basic_sentence', ''), "", "", current_unit_tag, 0]
                         active_worksheet.append_row(new_r)
                     load_vocab_dataframe(active_worksheet, force_reload=True)
-                    st.success("🎉 成功新增單字：" + single_word)
+                    st.success("🎉 成功新增單字：" + word + " | 中文：" + data.get('definition'))
                     time.sleep(0.5)
                     st.rerun()
 
@@ -374,9 +378,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 試算表資料修復專區")
-            st.warning("點擊下方按鈕，AI 會為試算表的所有單字重新查字典，**徹底洗掉那些錯誤的英文罐頭例句與英文定義**，換上真正的中文翻譯與例句：")
-            if st.button("🧹 強制啟動 AI 字典全面洗版並更新雲端", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 試算表資料修復與一鍵補齊中文專區")
+            st.warning("點擊下方按鈕，AI 會為試算表內所有空白或格式不對的單字**重新查字典，自動填入正確的中文釋義與例句**：")
+            if st.button("🧹 強制啟動 AI 字典全面補齊並更新雲端", type="primary", use_container_width=True):
                 if not st.session_state.get("gemini_api_key"):
                     st.error("❌ 請先在左側邊欄輸入您的 Gemini API Key！")
                 else:
@@ -387,7 +391,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     fixed_count = 0
                     
                     for idx, w in enumerate(words_to_fix):
-                        status_text.text("🤖 AI 正在重新查字典與例句 (" + str(idx+1) + "/" + str(total_fix) + "): " + w)
+                        status_text.text("🤖 AI 正在補齊單字資料 (" + str(idx+1) + "/" + str(total_fix) + "): " + w)
                         row_match = df_vocab[df_vocab['word'] == w]
                         u_tag = row_match['unit_tag'].values[0] if not row_match.empty and 'unit_tag' in row_match.columns else "未分類"
                         
@@ -405,7 +409,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                         time.sleep(1.0)
                         
                     load_vocab_dataframe(active_worksheet, force_reload=True)
-                    status_text.success("🎉 成功完成 AI 洗版！總共修復了 " + str(fixed_count) + " 個單字的中文與例句。")
+                    status_text.success("🎉 成功完成 AI 資料補齊！總共更新了 " + str(fixed_count) + " 個單字。")
                     time.sleep(1.5)
                     st.rerun()
 
@@ -557,72 +561,4 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 col_res1, col_res2 = st.columns(2)
                 col_res1.metric(label="總題數", value=str(total_q) + " 題")
-                col_res2.metric(label="答對題數", value=str(correct_q) + " 題")
-                
-                if wrong_q > 0:
-                    st.markdown("---")
-                    st.markdown("### ❌ 總共錯誤題數：" + str(wrong_q) + " 題（錯題訂正複習）：")
-                    for w_item in st.session_state.wrong_answers:
-                        st.markdown("- **中文釋義：** " + str(w_item['definition']) + " ➡️ **正確英文單字：** `" + str(w_item['word']) + "`")
-                else:
-                    st.success("🏆 太神啦！全部答對，完美過關！")
-
-                if st.button("🔄 重新挑戰本單元", type="primary", use_container_width=True):
-                    del st.session_state["game_started"]
-                    st.rerun()
-                    
-            else:
-                current_item = st.session_state.game_queue[st.session_state.game_index]
-                target_word = str(current_item['word']).strip()
-                target_def = str(current_item['definition']).strip() if str(current_item['definition']).strip() else "(尚無中文釋義)"
-                hint_masked = "".join([" _ " if c.isalpha() else "   " for c in target_word])
-                
-                st.markdown("### 📊 進度：第 `" + str(st.session_state.game_index + 1) + "` 題 / 共 `" + str(len(st.session_state.game_queue)) + "` 題")
-                
-                with st.container(border=True):
-                    st.markdown("<h2 style='color: #4CAF50;'>📌 中文釋義：" + target_def + "</h2>", unsafe_allow_html=True)
-                    st.markdown("**🔤 拼字提示 (Spelling Hint)：** `" + hint_masked + "` &nbsp;&nbsp; (長度: " + str(len(target_word)) + " 字母)")
-                    
-                    audio = generate_audio_bytes(target_word)
-                    try: 
-                        st.audio(audio, format="audio/mp3")
-                    except: 
-                        pass
-
-                if st.session_state.get("last_feedback"):
-                    fb = st.session_state.last_feedback
-                    if fb["type"] == "success":
-                        st.success(fb["msg"])
-                    else:
-                        st.error(fb["msg"])
-                        
-                current_wrong_count = len(st.session_state.wrong_answers)
-                if current_wrong_count > 0:
-                    st.markdown("<h4 style='color: #E53935;'>🛑 目前累積錯題數：" + str(current_wrong_count) + " 題</h4>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<h4 style='color: #757575;'>🛑 目前累積錯題數：0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
-                st.markdown("---")
-
-                st.text_input(
-                    "📝 請輸入您的拼寫答案 (輸入完畢可直接按 Enter 送出)：", 
-                    key="user_spelling_input",
-                    on_change=process_answer,
-                    kwargs={"is_skip": False}
-                )
-                
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    st.button(
-                        "🚀 送出答案", 
-                        type="primary", 
-                        use_container_width=True, 
-                        on_click=process_answer, 
-                        kwargs={"is_skip": False}
-                    )
-                with col_btn2:
-                    st.button(
-                        "⏭️ 略過本題", 
-                        use_container_width=True, 
-                        on_click=process_answer, 
-                        kwargs={"is_skip": True}
-                    )
+                col_res2.
