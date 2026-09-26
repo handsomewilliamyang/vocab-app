@@ -35,7 +35,6 @@ st.markdown("""
         padding-top: 10px !important;
         padding-bottom: 10px !important;
     }
-    /* 擴大表格外框與捲動區塊，提供最寬敞的閱讀空間 */
     div[data-testid="stDataFrame"] {
         width: 100% !important;
     }
@@ -78,7 +77,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用高精度動態情境組合引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用多維度動態語意引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -159,158 +158,130 @@ def generate_dynamic_single_sentence(word, definition):
     random.seed(w_lower)
     is_plural = w_clean.lower().endswith("es") or (w_clean.lower().endswith("s") and w_clean.lower() not in ["bus", "class", "address", "always", "sometimes"]) or "複數" in d_clean
     
+    # 1.【介系詞系列】
     if w_lower in ["above", "below", "behind", "under", "between", "beside", "near", "inside", "outside", "across", "along", "through", "with", "without", "about", "from", "into", "onto"]:
         templates = [
-            f"The little bird flew gracefully {w_lower} the tall trees.",
-            f"We decided to have a picnic right {w_lower} the beautiful river.",
-            f"He accidentally dropped his keys {w_lower} the wooden desk.",
-            f"A mysterious shadow quietly passed {w_lower} the old building."
+            f"The adventurous travelers hiked {w_lower} the dense forest to reach the peak.",
+            f"We managed to set up our camp safely right {w_lower} the massive cliff.",
+            f"The secret passage is hidden securely {w_lower} the old stone wall.",
+            f"Light streamed gently {w_lower} the cracks of the wooden shutters."
         ]
         return random.choice(templates)
         
+    # 2.【副詞系列】
     elif w_lower in ["maybe", "perhaps", "actually", "probably", "certainly", "definitely"]:
         templates = [
-            f"{w_clean.capitalize()}, it would be a better idea to stay home today.",
-            f"She {w_lower} knows the real answer to this difficult question."
+            f"To be honest, I {w_lower} think we should reconsider our original plan.",
+            f"She {w_lower} surprised everyone by finishing the difficult project ahead of schedule.",
+            f"It is {w_lower} vital that we double-check all the details before submission."
         ]
         return random.choice(templates)
         
     elif w_lower in ["usually", "always", "often", "sometimes", "never", "seldom", "rarely"]:
         templates = [
-            f"My family {w_lower} goes out for a big dinner on Friday nights.",
-            f"I {w_lower} take a short walk in the park after finishing my homework."
+            f"Despite her busy schedule, she {w_lower} finds time to read inspirational books.",
+            f"Our team {w_lower} gathers on Monday mornings to discuss weekly milestones."
         ]
         return random.choice(templates)
         
+    # 3.【連接詞系列】
     elif w_lower in ["but", "yet", "and", "or", "so"]:
-        return f"He practiced very hard for the game, {w_lower} he still felt a little nervous before it started."
+        templates = [
+            f"The experiment faced several unexpected setbacks, {w_lower} the researchers refused to give up.",
+            f"You can choose to work on the report now, {w_lower} you can finish it tomorrow morning."
+        ]
+        return random.choice(templates)
     elif w_lower in ["however", "therefore", "moreover"]:
-        return f"The weather forecast predicted heavy rain; {w_lower}, we decided to cancel the outdoor trip."
+        return f"The initial results looked quite promising; {w_lower}, we need further testing to confirm."
     elif w_lower in ["although", "though", "because", "since", "if", "when", "while"]:
-        return f"{w_clean.capitalize()} the situation was highly challenging, the team never gave up on their goals."
+        templates = [
+            f"{w_clean.capitalize()} the weather conditions turned severe, the flight departed on time.",
+            f"We decided to postpone the outdoor event {w_lower} heavy rain was forecasted."
+        ]
+        return random.choice(templates)
 
+    # 4.【動詞動作系列】(確保動詞語法正確，絕對不套用名詞樣板)
+    elif any(k in d_clean for k in ["吃", "喝", "做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教", "去", "來", "幫助", "使用", "打破", "裂"]):
+        templates = [
+            f"It is essential to learn how to {w_clean} effectively in real-world situations.",
+            f"They gathered together to {w_clean} and share their creative ideas with each other.",
+            f"She always tries her best to {w_clean} whenever someone asks for assistance."
+        ]
+        return random.choice(templates)
+
+    # 5.【顏色系列】
     elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白", "灰", "棕", "紫", "粉", "橘"]):
         templates = [
-            f"She decided to paint her bedroom with a beautiful {w_clean} tone.",
-            f"He prefers wearing a stylish jacket with a dark {w_clean} shade.",
-            f"The artist used a bright {w_clean} color to highlight the sunset."
+            f"The interior designer chose a striking {w_clean} hue to brighten up the living room.",
+            f"He wore a classic suit accented with a subtle {w_clean} tie for the interview."
         ]
         return random.choice(templates)
 
+    # 6.【建築結構/牆壁系列】
     elif any(k in d_clean for k in ["牆", "門", "窗", "地板", "天花板", "屋頂", "樓梯"]):
-        if is_plural:
-            templates = [
-                f"They painted the {w_clean} with a bright and warm color.",
-                f"Please make sure all the {w_clean} are completely clean before you leave."
-            ]
-        else:
-            templates = [
-                f"He hung a beautiful painting right in the middle of the {w_clean}.",
-                f"The sunlight came shining directly through the open {w_clean}."
-            ]
+        templates = [
+            f"Sunlight poured directly through the large glass {w_clean} into the studio.",
+            f"They decorated the old brick {w_clean} with vintage posters and photographs."
+        ]
         return random.choice(templates)
 
+    # 7.【衛浴/廁所系列】
     elif any(k in d_clean for k in ["浴室", "廁所", "洗手間", "馬桶"]):
         templates = [
-            f"Please make sure to wash your hands in the {w_clean} before having dinner.",
-            f"The public {w_clean} is located right at the end of the long hallway."
+            f"Please ensure the {w_clean} is kept clean and well-ventilated after use.",
+            f"Visitors can find the public {w_clean} just past the main reception desk."
         ]
         return random.choice(templates)
 
+    # 8.【人物/職業系列】
     elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師", "家", "孩", "男", "女", "師", "長", "客"]):
-        if is_plural:
-            templates = [
-                f"All the {w_clean} gathered in the hall to celebrate the annual festival.",
-                f"Those experienced {w_clean} gave us a lot of valuable advice for our future."
-            ]
-        else:
-            templates = [
-                f"The kind {w_clean} helped the lost child find the way back home safely.",
-                f"We met a very talented {w_clean} who shared amazing stories with us."
-            ]
-        return random.choice(templates)
-        
-    elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "學校", "銀行", "店", "館", "園", "場", "站", "區"]):
-        if is_plural:
-            templates = [
-                f"They visited several famous {w_clean} during their long vacation in Europe.",
-                f"The city plans to renovate all the old {w_clean} in this historical district."
-            ]
-        else:
-            templates = [
-                f"We found a very cozy and quiet {w_clean} to relax after a long day of working.",
-                f"The newly opened {w_clean} at the corner has a really wonderful atmosphere."
-            ]
-        return random.choice(templates)
-        
-    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "筆記", "禮物", "鉛筆", "盒", "車", "包", "書", "筆", "機", "紙", "杯", "瓶", "衣", "鞋"]):
-        if is_plural:
-            templates = [
-                f"Please put all these heavy {w_clean} into the storage room carefully.",
-                f"She received many wonderful {w_clean} from her friends on her birthday."
-            ]
-        else:
-            templates = [
-                f"There is a beautiful wooden {w_clean} placed right in the center of the room.",
-                f"He bought a very expensive {w_clean} as a reward for his hard work this year."
-            ]
-        return random.choice(templates)
-        
-    elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔", "牛", "羊", "馬", "豬", "蟲"]):
-        if is_plural:
-            templates = [
-                f"We saw some cute {w_clean} playing happily together in the garden.",
-                f"It is important to protect these rare {w_clean} from losing their habitats."
-            ]
-        else:
-            templates = [
-                f"A small, energetic {w_clean} suddenly jumped out from the green bushes.",
-                f"My sister adopted a lovely {w_clean} from the local animal shelter yesterday."
-            ]
-        return random.choice(templates)
-        
-    elif any(k in d_clean for k in ["特別", "重要", "好", "壞", "大", "小", "高", "低", "長", "短", "新", "舊", "老", "少", "多", "餓", "累", "快樂", "傷心", "生氣", "忙", "冷", "熱", "漂亮", "聰明", "困難", "簡單", "清楚"]):
         templates = [
-            f"Everyone agreed that this was a truly {w_clean} experience for the whole team.",
-            f"She managed to find a very {w_clean} solution to fix the unexpected problem.",
-            f"It is quite {w_clean} to see how much progress he has made this semester."
+            f"The dedicated {w_clean} worked tirelessly to ensure the project succeeded.",
+            f"We were deeply impressed by how friendly and helpful the local {w_clean} were."
         ]
         return random.choice(templates)
         
-    elif any(k in d_clean for k in ["吃", "喝", "食物", "餅乾", "水", "蘋果", "麵包", "茶", "咖啡", "肉", "果", "菜", "蛋", "奶", "湯", "飯"]):
+    # 9.【地點/建築系列】
+    elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "學校", "銀行", "店", "館", "園", "場", "站", "區", "餐廳"]):
         templates = [
-            f"Having some fresh {w_clean} is a great way to start your energetic morning.",
-            f"We ordered some delicious {w_clean} to share while watching the late-night movie."
+            f"Locals often gather at this popular {w_clean} to socialize on weekends.",
+            f"We spent hours exploring the charming old {w_clean} located downtown."
         ]
         return random.choice(templates)
         
-    elif w_lower.endswith("ing") or any(k in d_clean for k in ["做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教", "去", "來", "幫助", "使用"]):
-        if w_lower.endswith("ing"):
-            templates = [
-                f"He spends at least two hours {w_lower} every single day to improve his skills.",
-                f"We really enjoyed {w_lower} together during our beautiful summer vacation."
-            ]
-            return random.choice(templates)
-        else:
-            templates = [
-                f"It takes a lot of time and daily practice to {w_clean} perfectly.",
-                f"They decided to {w_clean} together as a team in order to achieve the final goal."
-            ]
-            return random.choice(templates)
-            
+    # 10.【物品/家具/食物系列】
+    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "筆記", "禮物", "鉛筆", "盒", "車", "包", "書", "筆", "機", "紙", "杯", "瓶", "衣", "鞋", "餅乾", "食物", "水", "蘋果", "麵包"]):
+        templates = [
+            f"She carefully unwrapped the delicate {w_clean} and placed it on the shelf.",
+            f"Having some high-quality {w_clean} can truly elevate your daily routine.",
+            f"They brought a special {w_clean} to share with everyone at the gathering."
+        ]
+        return random.choice(templates)
+        
+    # 11.【動物/生物系列】
+    elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔", "牛", "羊", "馬", "豬", "蟲", "魔術"]):
+        templates = [
+            f"Researchers observed how the rare {w_clean} adapts to seasonal environmental shifts.",
+            f"A fascinating documentary about {w_clean} captured our attention all evening."
+        ]
+        return random.choice(templates)
+        
+    # 12.【形容詞特徵系列】
+    elif any(k in d_clean for k in ["特別", "重要", "好", "壞", "大", "小", "高", "低", "長", "短", "新", "舊", "老", "少", "多", "餓", "累", "快樂", "傷心", "生氣", "忙", "冷", "熱", "漂亮", "聰明", "困難", "簡單", "清楚", "魔幻"]):
+        templates = [
+            f"It was a truly {w_clean} moment that everyone in the room will always remember.",
+            f"She approached the challenge with a remarkably {w_clean} perspective.",
+            f}Finding a reliable solution to this issue proved to be quite {w_clean}."
+        ]
+        return random.choice(templates)
+        
+    # 13.【通用兜底句型】
     else:
-        if is_plural:
-            templates = [
-                f"Many people like to collect different kinds of {w_clean} as their personal hobby.",
-                f"We spotted several interesting {w_clean} while walking down the busy street."
-            ]
-            return random.choice(templates)
-        else:
-            templates = [
-                f"This particular {w_clean} is exactly what we need to finish the project.",
-                f"I noticed a very unusual {w_clean} lying right there on the table."
-            ]
-            return random.choice(templates)
+        templates = [
+            f"Experts have emphasized the growing significance of {w_clean} in modern studies.",
+            f"We discussed various practical applications of {w_clean} during the workshop."
+        ]
+        return random.choice(templates)
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
@@ -425,7 +396,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在查閱字典並生成最佳組合例句中..."):
+                with st.spinner("🤖 正在查閱字典並生成多維度動態例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -465,7 +436,7 @@ if main_menu == "✨ 智慧單字新增":
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 extracted_data_list = []
                 
-                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動匹配最高還原度情境例句）..."):
+                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動匹配多維度動態例句）..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -583,6 +554,35 @@ elif main_menu == "📖 字庫管理與搜尋":
                 time.sleep(0.5)
                 st.rerun()
 
+        st.markdown("---")
+        with st.container(border=True):
+            st.markdown("#### 🚨 單句語意多維度升級專區")
+            st.warning("點擊下方按鈕，系統會將所有舊例句重新以「**多維度動態語意引擎**」洗牌，確保動詞、名詞、形容詞的語法與情境絕對正確且不重複：")
+            if st.button("🧹 一鍵升級多維度動態例句", type="primary", use_container_width=True):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                df_current = load_vocab_dataframe(active_worksheet).copy()
+                total_fix = len(df_current)
+                fixed_count = 0
+                
+                for idx, row in df_current.iterrows():
+                    w = str(row['word']).strip()
+                    d = str(row.get('definition', '')).strip()
+                    status_text.text(f"🤖 正在為單字優化多維度例句 ({fixed_count+1}/{total_fix}): {w}")
+                    
+                    new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
+                    df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
+                    
+                    fixed_count += 1
+                    progress_bar.progress(fixed_count / total_fix)
+                    time.sleep(0.01)
+                    
+                save_all_vocab_to_sheet(active_worksheet, df_current)
+                status_text.success(f"🎉 成功完成多維度例句升級！總共更新了 {fixed_count} 個單字。")
+                time.sleep(1.5)
+                st.rerun()
+
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
         col_s1, col_s2 = st.columns([2, 1])
@@ -602,8 +602,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                 st.success("已成功刪除勾選的單字！")
                 st.rerun()
 
-        with st.expander("📋 單字總表與快速編輯（表格已設定自動換行與寬度自適應）", expanded=True):
-            # 透過 column_config 設定各欄位寬度與自動撐開比例，確保例句欄位擁有最大空間
+        with st.expander("📋 單字總表與快速編輯（自動換行與寬度自適應）", expanded=True):
             st.dataframe(
                 filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence']],
                 use_container_width=True,
@@ -614,7 +613,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     "phonetic": st.column_config.TextColumn("音標", width="small"),
                     "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
                     "definition": st.column_config.TextColumn("中文釋義", width="medium"),
-                    "basic_sentence": st.column_config.TextColumn("真實例句 (自動換行)", width="large"),
+                    "basic_sentence": st.column_config.TextColumn("真實例句 (多維度動態組合)", width="large"),
                 }
             )
             
