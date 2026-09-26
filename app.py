@@ -28,7 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🌟 內建超豐富的本地精確字典庫（包含單字、詞性、中文釋義與真實例句），徹底擺脫外部 API 依賴！
 LOCAL_RICH_VOCAB_DB = {
     "piece": {"pos": "n.", "def": "件；片；零件", "sentence": "He cut a large piece of cake for his younger sister."},
     "sentence": {"pos": "n. / v.", "def": "句子；宣判", "sentence": "Please write a complete sentence using this new vocabulary word."},
@@ -156,15 +155,16 @@ try:
         active_worksheet = spreadsheet.worksheet(current_sheet_name)
     except Exception:
         active_worksheet = spreadsheet.get_worksheet(0)
-        st.sidebar.warning(f"⚠️ 找不到名為「{current_sheet_name}」的分頁，已自動為您切換至：「{active_worksheet.title}」")
+        st.sidebar.warning(f"⚠️ 找不到名為「{current_sheet_name}」的分頁，已自動切換至：「{active_worksheet.title}」")
 except Exception as e:
-    st.error(f"⚠️ Google Sheets 讀取失敗，請檢查權限或試算表網址。詳細錯誤：{e}")
+    st.error(f"⚠️ Google Sheets 讀取失敗：{e}")
     st.stop()
 
 st.sidebar.markdown("---")
 st.sidebar.info(f"💡 雲端同步中：已連線至工作表【{active_worksheet.title}】")
 
-@st.cache_data(ttl=2)
+# 🌟 增加快取時間，避免頻繁發送 Read Requests 觸發 429 限制
+@st.cache_data(ttl=60)
 def get_vocab_from_sheets(_worksheet):
     try:
         records = _worksheet.get_all_records()
@@ -213,7 +213,6 @@ def get_word_record_data(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 1. 優先查閱我們擴充豐富的本地精確字典庫
     if w_lower in LOCAL_RICH_VOCAB_DB:
         entry = LOCAL_RICH_VOCAB_DB[w_lower]
         return {
@@ -224,47 +223,13 @@ def get_word_record_data(word, level="國中部"):
         
     pos_res, def_res = "n. / v.", "請手動補上中文釋義"
     sent_res = ""
-    ai_success = False
     
-    # 2. 嘗試使用 Gemini AI
-    if HAS_GEMINI and st.session_state.get('gemini_api_key'):
-        try:
-            genai.configure(api_key=st.session_state.gemini_api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            if level == "高中部":
-                grammar = "Must use Inversion, Tag Question, or Perfect Tense."
-                context = "Relatable to high school students preparing for exams."
-            elif level == "多益 (TOEIC)":
-                grammar = "Professional business grammar."
-                context = "Business emails, projects, or meetings."
-            else:
-                grammar = "Everyday grammar."
-                context = "Simple daily life."
-                
-            prompt = f"Word: '{w_clean}'. Provide exactly three elements separated by '|||'. 1. Part of speech 2. Traditional Chinese definition 3. Example sentence ({grammar} {context}). Format strictly: POS|||DEF|||SENTENCE"
-            
-            response = model.generate_content(prompt)
-            res_text = response.text.replace('\n', '').strip()
-            
-            if "|||" in res_text:
-                parts = res_text.split("|||")
-                if len(parts) >= 3:
-                    pos_res = parts[0].strip()
-                    def_res = simple_s2t_convert(parts[1].strip())
-                    sent_res = parts[2].strip().replace('"', '')
-                    ai_success = True
-        except Exception:
-            pass
-            
-    # 3. 如果 AI 沒有生效，給予乾淨優雅的高品質保底句，絕不出現 People use
-    if not sent_res:
-        if level == "高中部":
-            sent_res = f"As students prepared for the exam, they carefully analyzed the meaning and usage of '{w_clean}'."
-        elif level == "多益 (TOEIC)":
-            sent_res = f"The department manager discussed the new policy regarding '{w_clean}' during the corporate conference."
-        else:
-            sent_res = f"Everyone in the classroom tried to understand the definition of '{w_clean}'."
+    if level == "高中部":
+        sent_res = f"As students prepared for the exam, they carefully analyzed '{w_clean}'."
+    elif level == "多益 (TOEIC)":
+        sent_res = f"The department manager discussed the policy regarding '{w_clean}' during the meeting."
+    else:
+        sent_res = f"Everyone in the classroom tried to learn the definition of '{w_clean}'."
             
     return {
         "word": w_clean,
@@ -427,7 +392,6 @@ elif main_menu == "📖 字庫管理與搜尋":
                     r_sent = str(row['basic_sentence']).strip()
                     r_def = str(row['definition']).strip()
                     
-                    # 抓出所有呆板、過時或待補的例句
                     is_bad_sentence = (
                         not r_sent or 
                         "This is an example" in r_sent or 
@@ -438,7 +402,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     )
                     
                     if is_bad_sentence:
-                        status_text.text(f"⏳ 正在重新清洗單字: {r_word} ...")
+                        status_text.text(f"⏳ 正在清洗: {r_word} ...")
                         new_data = get_word_record_data(r_word, level=selected_level)
                         
                         update_single_word_in_sheet(
@@ -446,11 +410,14 @@ elif main_menu == "📖 字庫管理與搜尋":
                             row['phonetic'], new_data["part_of_speech"], new_data["definition"], new_data["basic_sentence"], row.get('advanced_sentence',''), row.get('collocations','')
                         )
                         fixed_count += 1
+                        # 🌟 每次更新後暫停 2 秒，徹底避開 Google Sheets 429 流量限制
+                        time.sleep(2.0)
                         
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 清洗完成！已成功完美更新 {fixed_count} 筆資料。")
+                get_vocab_from_sheets.clear()
+                st.success(f"🎊 清洗完成！已成功更新 {fixed_count} 筆資料。")
                 time.sleep(1)
                 st.rerun()
 
@@ -667,7 +634,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 with col_btn2:
                     st.button(
                         "⏭️ 略過本題", 
-                        type="primary", 
                         use_container_width=True, 
                         on_click=process_answer, 
                         kwargs={"is_skip": True}
