@@ -151,12 +151,11 @@ def simple_s2t_convert(text):
     return text
 
 def fetch_real_english_definition_and_example(word):
-    """從 Free Dictionary API 同步抓取真實英文釋義與例句"""
+    """步驟 1：從免費開源字典 API 內抓取英文釋義與例句"""
     w_clean = word.strip().lower()
     real_def = ""
     real_example = ""
 
-    # 1. 嘗試透過 Free Dictionary API 取得真實釋義與例句
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
         res_fd = requests.get(url_fd, timeout=3)
@@ -169,8 +168,7 @@ def fetch_real_english_definition_and_example(word):
     except Exception:
         pass
         
-    # 2. 如果 Free Dictionary 沒有例句，嘗試透過 Datamuse API 尋找關聯範例
-    if not real_example:
+    if not real_example or not real_def:
         try:
             url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
             res_dm = requests.get(url_dm, timeout=3)
@@ -178,19 +176,16 @@ def fetch_real_english_definition_and_example(word):
                 data = res_dm.json()
                 if data and 'defs' in data[0]:
                     for raw_def in data[0]['defs']:
-                        if raw_def.startswith('v\t') or raw_def.startswith('n\t'):
-                            clean_def = raw_def.split('\t', 1)[-1]
-                            if not real_def:
-                                real_def = clean_def.capitalize()
+                        clean_def = raw_def.split('\t', 1)[-1]
+                        if not real_def:
+                            real_def = clean_def.capitalize()
         except Exception:
             pass
-
-    if not real_def:
-        real_def = f"A common term referring to {word}."
 
     return real_def, real_example
 
 def generate_dynamic_single_sentence(word, definition):
+    """步驟 3：備用方案（動態智慧常模生成例句）"""
     w_clean = word.strip()
     w_lower = w_clean.lower()
     d_clean = definition.strip()
@@ -254,12 +249,14 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
+    # 步驟 1：先從字典內的資料抓取英文釋義與例句
     real_eng_def, real_example = fetch_real_english_definition_and_example(w_clean)
+    
+    final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
+    final_sentence = real_example
 
-    # 優先採用備用或動態產生的例句（當字典庫沒有真實例句時）
-    final_sentence = real_example if real_example else generate_numpy_or_fallback_sentence(w_clean, cleaned_def)
-
-    if HAS_GEMINI and st.session_state.get("gemini_api_key"):
+    # 步驟 2：如果字典內沒有完整取得，接著啟動 AI 引擎 (Gemini)
+    if (not final_sentence or not real_eng_def) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
                 genai.configure(api_key=st.session_state["gemini_api_key"])
@@ -282,36 +279,27 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     
                 data = json.loads(raw_text)
                 
-                final_eng_def = data.get("english_definition", "")
-                if not final_eng_def or "A term or concept referring to" in final_eng_def:
-                    final_eng_def = real_eng_def
-
-                ai_sentence = data.get("sentence", "")
-                if ai_sentence:
-                    final_sentence = ai_sentence
-
-                return {
-                    "word": w_clean,
-                    "phonetic": data.get("phonetic", f"/{w_lower.replace(' ', '')}/"),
-                    "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
-                    "definition": cleaned_def,
-                    "advanced_sentence": final_eng_def,
-                    "basic_sentence": final_sentence
-                }
+                if not real_eng_def:
+                    final_eng_def = data.get("english_definition", final_eng_def)
+                if not final_sentence:
+                    final_sentence = data.get("sentence", "")
+                
+                break
             except Exception:
                 time.sleep(1)
-            
+
+    # 步驟 3：最後防線 - 啟動備用方案（動態智慧常模生成例句）
+    if not final_sentence:
+        final_sentence = generate_dynamic_single_sentence(w_clean, cleaned_def)
+
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower.replace(' ', '')}/",
         "part_of_speech": "n.",
         "definition": cleaned_def,
-        "advanced_sentence": real_eng_def,
+        "advanced_sentence": final_eng_def,
         "basic_sentence": final_sentence
     }
-
-def generate_numpy_or_fallback_sentence(word, definition):
-    return generate_dynamic_single_sentence(word, definition)
 
 def save_all_vocab_to_sheet(_worksheet, df):
     try:
@@ -536,21 +524,28 @@ elif main_menu == "📖 字彙管理":
                 progress_bar = st.progress(0)
                 
                 df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
-                total_fix = len(df_current)
+                
+                # 如果有選擇特定單元，就只針對該單元的項目處理；若選全部單字則處理全部
+                if selected_unit_filter != "全部單字":
+                    target_indices = df_current[df_current['unit_tag'] == selected_unit_filter].index
+                else:
+                    target_indices = df_current.index
+                
+                total_fix = len(target_indices)
                 fixed_count = 0
                 
-                for idx, row in df_current.iterrows():
+                for idx in target_indices:
+                    row = df_current.loc[idx]
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
                     
                     new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                     df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
-                    
-                    if not row.get('basic_sentence'):
-                        df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
+                    df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
                     fixed_count += 1
-                    progress_bar.progress(fixed_count / total_fix)
+                    if total_fix > 0:
+                        progress_bar.progress(fixed_count / total_fix)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
                 st.success("✅ 重新整理與補齊完成！")
