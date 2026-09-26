@@ -73,7 +73,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用多維度動態語意引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用精確情境組合引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -236,11 +236,37 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "筆記", "禮物", "鉛筆", "盒", "車", "包", "書", "筆", "機", "紙", "杯", "瓶", "衣", "鞋", "餅乾", "食物", "水", "蘋果", "麵包"]):
+    # 專屬文書/文具用品系列（獨立出來，避免和禮物或食物混用）
+    elif any(k in d_clean for k in ["筆記本", "書", "紙", "筆", "鉛筆", "本子"]):
+        if is_plural:
+            templates = [
+                f"He always keeps several neat {w_clean} on his desk for daily notes.",
+                f"She organized all her old {w_clean} neatly on the wooden bookshelf."
+            ]
+        else:
+            templates = [
+                f"She opened her brand new {w_clean} and began jotting down important ideas.",
+                f"He always carries a small {w_clean} with him to write down sudden inspirations."
+            ]
+        return random.choice(templates)
+
+    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "禮物", "盒", "車", "包", "杯", "瓶", "衣", "鞋"]):
+        if is_plural:
+            templates = [
+                f"Please put all these heavy {w_clean} into the storage room carefully.",
+                f"She received many wonderful {w_clean} from her friends on her birthday."
+            ]
+        else:
+            templates = [
+                f"There is a beautiful wooden {w_clean} placed right in the center of the room.",
+                f"He bought a very expensive {w_clean} as a reward for his hard work this year."
+            ]
+        return random.choice(templates)
+
+    elif any(k in d_clean for k in ["餅乾", "食物", "水", "蘋果", "麵包", "茶", "咖啡", "肉", "果", "菜", "蛋", "奶", "湯", "飯"]):
         templates = [
-            f"She carefully unwrapped the delicate {w_clean} and placed it on the shelf.",
-            f"Having some high-quality {w_clean} can truly elevate your daily routine.",
-            f"They brought a special {w_clean} to share with everyone at the gathering."
+            f"Having some fresh {w_clean} is a great way to start your energetic morning.",
+            f"We ordered some delicious {w_clean} to share while watching the late-night movie."
         ]
         return random.choice(templates)
         
@@ -340,7 +366,6 @@ def save_all_vocab_to_sheet(_worksheet, df):
 
 @st.cache_data(show_spinner=False)
 def generate_audio_bytes(text, tld='com'):
-    # tld: 'com' (美式), 'co.uk' (英式), 'com.au' (澳洲)
     tts = gTTS(text=text, lang='en', tld=tld)
     fp = io.BytesIO()
     tts.write_to_fp(fp)
@@ -380,7 +405,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在查閱字典並生成多維度動態例句中..."):
+                with st.spinner("🤖 正在查閱字典並生成最佳文法例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -420,7 +445,7 @@ if main_menu == "✨ 智慧單字新增":
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 extracted_data_list = []
                 
-                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動匹配多維度動態例句）..."):
+                with st.spinner("🔍 正在結構化解析 Word 表格欄位..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -540,9 +565,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 單句語意多維度升級專區")
-            st.warning("點擊下方按鈕，系統會將所有舊例句重新以「**多維度動態語意引擎**」洗牌，確保動詞、名詞、形容詞的語法與情境絕對正確且不重複：")
-            if st.button("🧹 一鍵升級多維度動態例句", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 文具與物品例句修正專區")
+            st.warning("點擊下方按鈕，系統會重新檢查並修復所有文具用品（如筆記本、書本）的例句，確保文法完美且不與禮物衝突：")
+            if st.button("🧹 一鍵修復並升級例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -553,7 +578,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在為單字優化多維度例句 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在為單字優化例句 ({fixed_count+1}/{total_fix}): {w}")
                     
                     new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                     df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
@@ -563,7 +588,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     time.sleep(0.01)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成多維度例句升級！總共更新了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成例句修正！總共更新了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
@@ -587,7 +612,6 @@ elif main_menu == "📖 字庫管理與搜尋":
                 st.rerun()
 
         with st.expander("📋 單字總表與快速編輯（精緻適中寬度）", expanded=True):
-            # 寬度設定設為 False，呈現適中優雅的表格寬度
             st.dataframe(
                 filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence']],
                 use_container_width=False,
@@ -598,7 +622,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     "phonetic": st.column_config.TextColumn("音標", width="small"),
                     "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
                     "definition": st.column_config.TextColumn("中文釋義", width="medium"),
-                    "basic_sentence": st.column_config.TextColumn("真實例句 (多維度動態組合)", width="large"),
+                    "basic_sentence": st.column_config.TextColumn("真實例句", width="large"),
                 }
             )
             
