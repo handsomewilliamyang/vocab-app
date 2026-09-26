@@ -61,7 +61,6 @@ except Exception as e:
 st.sidebar.markdown("<h2>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# 1. 第一層功能選單
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
     ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
@@ -71,14 +70,12 @@ main_menu = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
 
-# 2. 選擇目標語料庫級別
 selected_level = st.sidebar.radio(
     "選擇目前目標級別：",
     ["國中部", "高中部", "TOEIC"],
     label_visibility="collapsed"
 )
 
-# API Key 常駐在背景隱藏讀取 st.secrets
 hidden_api_key = st.secrets.get("gemini_api_key", "")
 if hidden_api_key and HAS_GEMINI:
     genai.configure(api_key=hidden_api_key)
@@ -153,7 +150,6 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 🚫 呆板例句過濾黑名單正規表示式
 BAD_SENTENCE_PATTERNS = [
     r"\bwe often use (?:the )?word\b",
     r"\bpeople use .* in daily life\b",
@@ -161,17 +157,16 @@ BAD_SENTENCE_PATTERNS = [
     r"\bin daily life\b",
     r"\bwhenever someone asks for assistance\b",
     r"\bpractical applications of\b",
-    r"\bexperts have emphasized the growing significance of\b"
+    r"\bexperts have highlighted the growing significance of\b",
+    r"\bwe must take .* into serious consideration\b"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
     s = str(sentence or "").strip().lower()
     if not s or s == "nan" or len(s) < 8:
         return True
-    # 檢查是否含有呆板字典贅字
     if any(re.search(pattern, s) for pattern in BAD_SENTENCE_PATTERNS):
         return True
-    # 檢查單字是否確實融入句中
     if word:
         w_low = word.strip().lower()
         if w_low not in s and w_low.replace(' ', '') not in s.replace(' ', ''):
@@ -179,7 +174,6 @@ def is_bad_example_sentence(sentence, word=""):
     return False
 
 def fetch_tatoeba_example(word):
-    """透過 Tatoeba 開源真實例句庫搜尋道地英文例句"""
     w_clean = word.strip().lower()
     try:
         url = f"https://api.tatoeba.org/unstable/sentences?q={w_clean}&from=eng&limit=5"
@@ -190,7 +184,6 @@ def fetch_tatoeba_example(word):
             results = data.get('results', [])
             for item in results:
                 sent = item.get('text', '').strip()
-                # 嚴格過濾品質不佳或呆板的例句
                 if sent and not is_bad_example_sentence(sent, w_clean):
                     words_in_sent = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", sent)
                     if 6 <= len(words_in_sent) <= 25:
@@ -200,14 +193,12 @@ def fetch_tatoeba_example(word):
     return ""
 
 def fetch_all_free_dictionaries(word):
-    """多重免費開源字典 API 與 Tatoeba 真人例句串聯"""
     w_clean = word.strip().lower()
     real_def = ""
     real_example = ""
     phonetic = ""
     pos = ""
 
-    # 1. Free Dictionary API
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
         res_fd = requests.get(url_fd, timeout=3)
@@ -230,7 +221,6 @@ def fetch_all_free_dictionaries(word):
                         if not real_def:
                             real_def = definition_obj.get('definition', '')
                         ex_candidate = definition_obj.get('example', '')
-                        # 嚴格檢查例句品質，拒絕呆板例句
                         if ex_candidate and not is_bad_example_sentence(ex_candidate, w_clean):
                             real_example = ex_candidate
                         if real_def and real_example:
@@ -240,7 +230,6 @@ def fetch_all_free_dictionaries(word):
     except Exception:
         pass
 
-    # 2. Datamuse API 深度查詢
     if not real_def:
         try:
             url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=dpref&max=1"
@@ -264,7 +253,6 @@ def fetch_all_free_dictionaries(word):
         except Exception:
             pass
 
-    # 3. Tatoeba 真人開源例句庫補強
     if not real_example:
         tatoeba_sent = fetch_tatoeba_example(w_clean)
         if tatoeba_sent:
@@ -273,42 +261,15 @@ def fetch_all_free_dictionaries(word):
     return real_def, real_example, phonetic, pos
 
 def generate_smart_natural_sentence(word, definition):
+    """安全且語意合理的動態備用句子生成器（避免死板套用造成不合文法）"""
     w_clean = word.strip()
-    d_clean = definition.strip()
-    random.seed(w_clean.lower())
-    
-    if any(k in d_clean for k in ["人", "員", "師", "生", "者", "朋友", "經理"]):
-        templates = [
-            f"The experienced {w_clean} successfully completed the task ahead of time.",
-            f"Everyone in the team relies heavily on the dedication of {w_clean}.",
-            f"A professional {w_clean} always pays close attention to every single detail."
-        ]
-    elif any(k in d_clean for k in ["吃", "喝", "買", "賣", "做", "寫", "看", "聽", "用", "找"]):
-        templates = [
-            f"It is important to know how to {w_clean} properly in daily situations.",
-            f"She decided to {w_clean} before the final deadline arrives.",
-            f"They often try to {w_clean} whenever they face a new challenge."
-        ]
-    elif any(k in d_clean for k in ["地方", "室", "房", "家", "場", "中心", "店"]):
-        templates = [
-            f"Many visitors love to explore this popular {w_clean} during weekends.",
-            f"The local community built a brand new {w_clean} to help residents.",
-            f"You can easily find a quiet {w_clean} to study or relax."
-        ]
-    else:
-        templates = [
-            f"We must take {w_clean} into serious consideration during our planning.",
-            f"Experts have highlighted the growing importance of {w_clean} in modern research.",
-            f"Understanding {w_clean} clearly will greatly benefit your future development."
-        ]
-    return random.choice(templates)
+    return f"Learning how to use '{w_clean}' correctly is essential for improving your English writing skills."
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 步驟 1：優先從多重免費開源字典 API 與 Tatoeba 抓取
     real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
     
     final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
@@ -316,18 +277,18 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     final_phonetic = fetched_phonetic if fetched_phonetic else f"/{w_lower.replace(' ', '')}/"
     final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else "n."
 
-    # 步驟 2：如果抓回來的例句被過濾掉（即空白或不符合品質），且有填寫 API Key，優先由 Gemini AI 生成道地例句
+    # 如果抓回來的例句被判定為呆板或不合格，強制透過 Gemini AI 產生真正道地且符合文法的例句
     if is_bad_example_sentence(final_sentence, w_clean) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
                 genai.configure(api_key=st.session_state["gemini_api_key"])
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
-                    f"You are an experienced English teacher. Create ONE natural, everyday English sentence for the word '{w_clean}' (meaning: {cleaned_def}). "
-                    "Requirements: "
-                    "- Do NOT use dictionary-style meta language like 'We often use the word...' or 'People use...'. "
-                    "- Use a realistic, clear context suitable for students. "
-                    "- Return ONLY the English sentence, with no markdown or explanations."
+                    f"You are an expert English lexicographer. Write ONE natural, grammatically flawless, and contextually appropriate English example sentence for the word '{w_clean}' (Traditional Chinese meaning: {cleaned_def}).\n"
+                    "Rules:\n"
+                    "1. Do NOT use templates, placeholders, or meta-language (e.g., 'We often use the word...').\n"
+                    "2. The sentence must fit the exact part of speech and meaning of the word naturally.\n"
+                    "3. Return ONLY the raw English sentence text. No quotes, no markdown, no explanations."
                 )
                 response = model.generate_content(prompt)
                 ai_sent = response.text.strip().strip('"“”')
@@ -338,7 +299,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
             except Exception:
                 time.sleep(1)
 
-    # 步驟 3：最後防線（若 AI 沒開或失敗，使用智慧常模語意模板）
     if is_bad_example_sentence(final_sentence, w_clean):
         final_sentence = generate_smart_natural_sentence(w_clean, cleaned_def)
 
@@ -570,7 +530,6 @@ elif main_menu == "📖 字彙管理":
                     d = str(row.get('definition', '')).strip()
                     current_sent = str(row.get('basic_sentence', '')).strip()
                     
-                    # 檢查如果例句品質不佳，強制重新抓取與洗牌
                     if is_bad_example_sentence(current_sent, w):
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
