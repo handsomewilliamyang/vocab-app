@@ -71,10 +71,10 @@ main_menu = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
 
-# 2. 再選擇目標級別，讓使用者在同個模式下自由切換語料庫
+# 2. 選擇目標級別 (已將多益改為 TOEIC)
 selected_level = st.sidebar.radio(
     "選擇目前目標級別：",
-    ["國中部", "高中部", "多益 (TOEIC)"],
+    ["國中部", "高中部", "TOEIC"],
     label_visibility="collapsed"
 )
 
@@ -92,7 +92,7 @@ else:
 level_sheet_mapping = {
     "國中部": "國中部",
     "高中部": "高中部",
-    "多益 (TOEIC)": "多益"
+    "TOEIC": "多益"
 }
 current_sheet_name = level_sheet_mapping.get(selected_level, "國中部")
 
@@ -364,7 +364,7 @@ if main_menu == "✨ 智慧單字新增":
     elif selected_level == "高中部":
         semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
     else:
-        semester = st.selectbox("選擇階段：", ["多益核心", "多益進階", "商用英文"])
+        semester = st.selectbox("選擇階段：", ["TOEIC核心", "TOEIC進階", "商用英文"])
     unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     current_unit_tag = f"{semester} > {unit}"
     
