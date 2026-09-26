@@ -155,14 +155,43 @@ def get_word_record_data_via_ai(word, level="國中部"):
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
             prompt = (
-                f"你是一個專業的英語字典。請針對英文單字「{w_clean}」（適用級別：{level}），"
-                "提供以下 JSON 格式的解析，不要包含其他贅字：\n"
+                "你是一個專業的英語字典。請針對英文單字「" + w_clean + "」（適用級別：" + level + "），"
+                "提供以下 JSON 格式的解析，不要包含其他贅字或 Markdown 標記：\n"
                 "{\n"
                 '    "phonetic": "/音標/",\n'
-                '    "part_of_speech": "詞性 (例如 n., v., adj.)",\n'
-                '    "definition": "精準的繁體中文解釋與翻譯",\n'
-                '    "sentence": "一句道地的英文例句"\n'
+                '    "part_of_speech": "詞性",\n'
+                '    "definition": "繁體中文解釋",\n'
+                '    "sentence": "英文例句"\n'
                 "}"
             )
             response = model.generate_content(prompt)
-            clean_text = response.text.replace("```json", "").replace("
+            # 安全清理字串，完全不使用多個連續反引號
+            clean_text = response.text.replace(chr(96)*3 + "json", "").replace(chr(96)*3, "").strip()
+            data = json.loads(clean_text)
+            return {
+                "word": w_clean,
+                "phonetic": data.get("phonetic", "/" + w_lower + "/"),
+                "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
+                "definition": simple_s2t_convert(data.get("definition", w_clean)),
+                "basic_sentence": data.get("sentence", "Please learn how to use '" + w_clean + "'.")
+            }
+        except Exception:
+            pass
+            
+    return {
+        "word": w_clean,
+        "phonetic": "/" + w_lower + "/",
+        "part_of_speech": "n.",
+        "definition": w_clean,
+        "basic_sentence": "Please learn how to use '" + w_clean + "'."
+    }
+
+def upsert_word_to_sheet(data, unit_tag, _worksheet):
+    try:
+        df = get_vocab_from_sheets(_worksheet)
+        word = data.get('word')
+        if not df.empty and word in df['word'].values:
+            row_idx = df.index[df['word'] == word].tolist()[0] + 2
+            row_values = _worksheet.row_values(row_idx)
+            row_id = row_values[0] if len(row_values) > 0 else 1
+            srs = row_values[9] if len(row_values) >
