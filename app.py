@@ -174,6 +174,11 @@ def get_vocab_from_sheets(_worksheet):
                 df_temp = df_temp.rename(columns={df_temp.columns[idx]: col})
             else:
                 df_temp[col] = ""
+                
+    # 🌟 徹底過濾掉 word 欄位空白或 NaN 的無效列
+    df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
+    df_temp = df_temp[df_temp['word'].notna()]
+    
     return df_temp
 
 S2T_DICT = {
@@ -190,7 +195,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-def get_word_record_data(word):
+def get_word_record_data(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
@@ -213,7 +218,26 @@ def get_word_record_data(word):
         try:
             genai.configure(api_key=st.session_state.gemini_api_key)
             model = genai.GenerativeModel('gemini-1.5-flash')
-            prompt = f"Provide part of speech and Traditional Chinese definition for '{w_clean}' in format POS|DEF, and a natural everyday sentence. Format: POS|||DEF|||SENTENCE"
+            
+            # 🌟 針對不同級別動態設計專屬的 AI Prompt，融入特定文法與情境
+            if level == "高中部":
+                grammar_rules = "The sentence MUST clearly demonstrate advanced high school English grammar such as Inversion (倒裝句), a Tag Question (附加問句), or a Perfect Tense (完成式)."
+                context_rules = "Make the context highly relatable to students (e.g., mention names like Cyrus, Emma, or Hank) who are studying hard for exams, managing academic stress, or aiming for top schools like Wuling High School (武陵高中)."
+            elif level == "多益 (TOEIC)":
+                grammar_rules = "Use clear, professional business grammar suitable for the TOEIC exam."
+                context_rules = "The context must revolve around international business, corporate emails, project management, client meetings, or professional networking."
+            else:
+                grammar_rules = "Use natural, straightforward, and grammatically correct everyday English."
+                context_rules = "The context should be simple daily life, hobbies, school activities, or general conversations."
+                
+            prompt = f"""
+            You are an expert English educator. Provide the part of speech and Traditional Chinese definition for the word '{w_clean}'.
+            Then, write ONE highly contextual example sentence based on the following rules:
+            {grammar_rules}
+            {context_rules}
+            Format strictly as: POS|||DEF|||SENTENCE
+            """
+            
             response = model.generate_content(prompt)
             if response.text and "|||" in response.text:
                 parts = response.text.strip().split("|||")
@@ -221,7 +245,7 @@ def get_word_record_data(word):
                     pos_res = parts[0].strip()
                     def_res = simple_s2t_convert(parts[1].strip())
                     sent_res = parts[2].strip().replace('"', '')
-        except:
+        except Exception as e:
             pass
             
     return {
@@ -322,7 +346,8 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 寫入雲端單字庫", type="primary", use_container_width=True):
             if single_word:
-                data = get_word_record_data(single_word)
+                # 傳遞當前所選級別，確保生成的例句符合程度
+                data = get_word_record_data(single_word, level=selected_level)
                 if upsert_word_to_sheet(data, current_unit_tag, active_worksheet):
                     st.success(f"🎉 成功新增單字：{single_word}")
                     time.sleep(0.5)
@@ -348,7 +373,7 @@ if main_menu == "✨ 智慧單字新增":
                                     for line in cell.text.strip().split('\n'):
                                         cleaned = re.sub(r'^\d+[\.、\s]*', '', line).strip()
                                         if cleaned and len(cleaned) < 35 and not re.search(r'[\u4e00-\u9fa5]', cleaned):
-                                            w_data = get_word_record_data(cleaned)
+                                            w_data = get_word_record_data(cleaned, level=selected_level)
                                             if upsert_word_to_sheet(w_data, current_unit_tag, active_worksheet):
                                                 total_success_count += 1
                         if os.path.exists(temp_path):
@@ -372,30 +397,38 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 安全修復空白或呆板例句", type="primary", use_container_width=True):
+            if st.button("🔄 AI 智慧修復呆板例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 fixed_count = 0
                 
                 for idx, row in df_vocab.iterrows():
                     r_word = str(row['word']).strip()
+                    if not r_word:
+                        continue
+                        
                     w_lower = r_word.lower()
                     r_sent = str(row['basic_sentence']).strip()
                     
+                    # 精準鎖定空白，或是含有 "example sentence" 這類無意義的機器翻譯
                     is_bad_sentence = (not r_sent or "This is an example" in r_sent or "%s" in r_sent)
+                    
                     if is_bad_sentence:
-                        if w_lower in CORE_VOCAB_DICT:
-                            entry = CORE_VOCAB_DICT[w_lower]
-                            status_text.text(f"⏳ 正在修復: {r_word} ...")
-                            update_single_word_in_sheet(
-                                active_worksheet, r_word, r_word, 
-                                row['phonetic'], entry["pos"], entry["def"], entry["sentence"], row.get('advanced_sentence',''), row.get('collocations','')
-                            )
-                            fixed_count += 1
+                        status_text.text(f"⏳ 正在呼叫 AI 重新撰寫 [{selected_level}] 程度的例句: {r_word} ...")
+                        
+                        # 呼叫升級版函數，並傳入當前級別
+                        new_data = get_word_record_data(r_word, level=selected_level)
+                        
+                        update_single_word_in_sheet(
+                            active_worksheet, r_word, r_word, 
+                            row['phonetic'], new_data["part_of_speech"], new_data["definition"], new_data["basic_sentence"], row.get('advanced_sentence',''), row.get('collocations','')
+                        )
+                        fixed_count += 1
+                        
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 修復完成！已成功幫您補齊 {fixed_count} 筆例句。")
+                st.success(f"🎊 修復完成！已依照 {selected_level} 難度，為您重新撰寫 {fixed_count} 筆例句。")
                 time.sleep(1)
                 st.rerun()
 
@@ -491,11 +524,9 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_filtered_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            # 1. 補上最關鍵的 st.session_state.game_started = True 避免進度無限重置
             if "game_started" not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
                 st.session_state.game_started = True
                 st.session_state.current_game_unit = selected_game_unit
-                # sample(frac=1) 已將題目徹底打亂，按照順序拿取保證絕對不重複
                 st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
@@ -505,15 +536,12 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if "user_spelling_input" not in st.session_state:
                     st.session_state.user_spelling_input = ""
 
-            # 2. 定義核心 Callback 函數：處理送出與清空，絕不跳題
             def process_answer(is_skip=False):
-                # 防止超出範圍報錯
                 if st.session_state.game_index >= len(st.session_state.game_queue):
                     return
                     
                 current_item = st.session_state.game_queue[st.session_state.game_index]
                 target_word = str(current_item['word']).strip()
-                # 取得使用者當前輸入框的值
                 user_ans = st.session_state.user_spelling_input.strip().lower()
 
                 if is_skip:
@@ -537,16 +565,12 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                             "msg": f"❌ 上題答錯囉！正確答案是：`{target_word}`"
                         }
                 
-                # 關鍵：進入下一題
                 st.session_state.game_index += 1
-                # 強制把綁定的輸入框變數清空，畫面更新時保證變為空字串！
                 st.session_state.user_spelling_input = ""
 
-            # 3. 檢查是否測驗結束
             if st.session_state.game_index >= len(st.session_state.game_queue):
                 st.session_state.is_finished = True
 
-            # 4. 畫面渲染：測驗結束畫面
             if st.session_state.get("is_finished", False):
                 st.balloons()
                 st.markdown("## 🎉 測驗圓滿結束！")
@@ -570,7 +594,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     del st.session_state["game_started"]
                     st.rerun()
                     
-            # 5. 畫面渲染：測驗進行中畫面
             else:
                 current_item = st.session_state.game_queue[st.session_state.game_index]
                 target_word = str(current_item['word']).strip()
@@ -589,7 +612,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     except: 
                         pass
 
-                # 顯示上一題的即時回饋
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
                     if fb["type"] == "success":
@@ -597,7 +619,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     else:
                         st.error(fb["msg"])
                         
-                # 顯眼的錯題計數器
                 current_wrong_count = len(st.session_state.wrong_answers)
                 if current_wrong_count > 0:
                     st.markdown(f"<h4 style='color: #E53935;'>🛑 目前累積錯題數：{current_wrong_count} 題</h4>", unsafe_allow_html=True)
@@ -605,7 +626,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     st.markdown(f"<h4 style='color: #757575;'>🛑 目前累積錯題數：0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
                 st.markdown("---")
 
-                # Callbacks 設計
                 st.text_input(
                     "📝 請輸入您的拼寫答案 (輸入完畢可直接按 Enter 送出)：", 
                     key="user_spelling_input",
