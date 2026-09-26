@@ -43,7 +43,6 @@ st.markdown("""
         padding-top: 10px !important;
         padding-bottom: 10px !important;
     }
-    /* 確保所有原生的音訊控制條都不佔空間 */
     audio {
         display: none !important;
     }
@@ -363,20 +362,7 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🚀 神級播放器元件 🚀 =================
-# 1. 電腦版初次載入的隱藏自動播放器
-def play_audio_silently(audio_bytes):
-    b64 = base64.b64encode(audio_bytes).decode()
-    refresh_trigger = str(time.time())
-    md = f"""
-        <audio autoplay="true" style="display:none;">
-            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-        </audio>
-        <script> // 觸發更新: {refresh_trigger} </script>
-    """
-    components.html(md, width=0, height=0)
-
-# 2. 客製化 HTML/JS 原生按鈕（自動適配明亮/黑暗模式）
+# ================= 🚀 支援明亮/黑暗模式的播放按鈕元件 🚀 =================
 def custom_audio_button(audio_bytes, label):
     b64 = base64.b64encode(audio_bytes).decode()
     html_code = f"""
@@ -396,17 +382,17 @@ def custom_audio_button(audio_bytes, label):
             align-items: center;
         }}
         
-        /* 💡 預設配色 (適用於明亮模式 Light Mode) */
+        /* 🌞 預設配色 (明亮模式 Light Mode)：使用高對比深灰/黑色字，確保一定看得到文字 */
         :root {{
-            --btn-bg: transparent;
-            --btn-text: #31333F;
-            --btn-border: rgba(49, 51, 63, 0.2);
+            --btn-bg: #f0f2f6;
+            --btn-text: #262730;
+            --btn-border: #d6d6d6;
             --btn-hover-border: #ff4b4b;
             --btn-hover-text: #ff4b4b;
             --btn-active-bg: rgba(255, 75, 75, 0.1);
         }}
         
-        /* 🌙 系統切換為黑暗模式時，自動套用以下配色 (Dark Mode) */
+        /* 🌙 系統偵測為黑暗模式 (Dark Mode) 時自動切換 */
         @media (prefers-color-scheme: dark) {{
             :root {{
                 --btn-bg: rgba(255, 255, 255, 0.05);
@@ -423,7 +409,8 @@ def custom_audio_button(audio_bytes, label):
             color: var(--btn-text);
             border: 1px solid var(--btn-border);
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 15px;
+            font-weight: 500;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -447,8 +434,8 @@ def custom_audio_button(audio_bytes, label):
         <script>
             function playAudio() {{
                 var audio = document.getElementById("myAudio");
-                audio.pause();           // 暫停目前的播放
-                audio.currentTime = 0;   // 將時間歸零
+                audio.pause();
+                audio.currentTime = 0;
                 audio.play().catch(function(error) {{
                     console.log("Play failed:", error);
                 }});
@@ -458,7 +445,7 @@ def custom_audio_button(audio_bytes, label):
     </html>
     """
     components.html(html_code, height=45)
-# ========================================================
+# =====================================================================
 
 st.title("📚 我愛背單字")
 
@@ -841,9 +828,6 @@ elif main_menu == "🎯 背誦單字":
                     try:
                         audio_us = generate_audio_bytes(row['word'], tld='com')
                         custom_audio_button(audio_us, "🔊 美式發音 (US)")
-                        if st.session_state.get(f"flash_auto_{st.session_state.flashcard_index}") is None:
-                            play_audio_silently(audio_us)
-                            st.session_state[f"flash_auto_{st.session_state.flashcard_index}"] = True
                     except: pass
                 with ac_col2:
                     try:
@@ -932,10 +916,6 @@ elif main_menu == "🎮 我是拼字王":
                         try:
                             audio_bytes_to_play = generate_audio_bytes(target_word)
                             custom_audio_button(audio_bytes_to_play, "🔊 播放發音")
-                            
-                            if st.session_state.get(f"auto_played_{st.session_state.game_index}") is None:
-                                play_audio_silently(audio_bytes_to_play)
-                                st.session_state[f"auto_played_{st.session_state.game_index}"] = True
                         except: pass
 
                     else:
@@ -945,10 +925,6 @@ elif main_menu == "🎮 我是拼字王":
                         try:
                             audio_bytes_to_play = generate_audio_bytes(target_adv_def)
                             custom_audio_button(audio_bytes_to_play, "🔊 播放英文解釋")
-                            
-                            if st.session_state.get(f"auto_played_{st.session_state.game_index}") is None:
-                                play_audio_silently(audio_bytes_to_play)
-                                st.session_state[f"auto_played_{st.session_state.game_index}"] = True
                         except: pass
 
                 if st.session_state.get("last_feedback"):
