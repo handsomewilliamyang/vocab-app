@@ -86,6 +86,14 @@ selected_level = st.sidebar.radio(
     label_visibility="collapsed"
 )
 
+# ----------------- 側邊欄最下方加入版權標語 -----------------
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "<p style='text-align: center; color: gray; font-size: 13px; margin-top: 20px;'>版權所有，切勿模仿</p>",
+    unsafe_allow_html=True
+)
+# ------------------------------------------------------------
+
 hidden_api_key = st.secrets.get("gemini_api_key", "")
 if hidden_api_key and HAS_GEMINI:
     genai.configure(api_key=hidden_api_key)
@@ -361,65 +369,6 @@ def generate_audio_bytes(text, tld='com'):
     fp = io.BytesIO()
     tts.write_to_fp(fp)
     return fp.getvalue()
-
-# ================= 🔊 採用瀏覽器原生語音合成與極致精簡設計 =================
-def play_audio_compact(text_to_speak, label_key="🔊"):
-    safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {{
-            margin: 0;
-            padding: 0;
-            background: transparent;
-        }}
-        .speak-btn {{
-            width: 100%;
-            padding: 0.35rem 0.5rem;
-            background-color: transparent;
-            color: canvasText;
-            border: 1px solid rgba(128, 128, 128, 0.4);
-            border-radius: 0.4rem;
-            font-size: 14px;
-            font-family: inherit;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.2s ease;
-        }}
-        @media (prefers-color-scheme: dark) {{
-            .speak-btn {{
-                color: #ffffff;
-                border-color: rgba(255, 255, 255, 0.3);
-            }}
-        }}
-        .speak-btn:hover {{
-            background-color: rgba(128, 128, 128, 0.15);
-            border-color: #ff4b4b;
-            color: #ff4b4b;
-        }}
-    </style>
-    </head>
-    <body>
-        <button class="speak-btn" onclick="speakText()">{label_key}</button>
-        <script>
-            function speakText() {{
-                if ('speechSynthesis' in window) {{
-                    window.speechSynthesis.cancel();
-                    var utterance = new SpeechSynthesisUtterance("{safe_text}");
-                    utterance.lang = 'en-US';
-                    utterance.rate = 0.9;
-                    window.speechSynthesis.speak(utterance);
-                }}
-            }}
-        </script>
-    </body>
-    </html>
-    """
-    components.html(html_code, height=40)
-# =========================================================================
 
 st.title("📚 我愛背單字")
 
@@ -788,7 +737,6 @@ elif main_menu == "🎯 背誦單字":
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
-                # 改用 Streamlit 原生按鈕造型來製作三個發音按鈕，完美對應主題與黑暗模式
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
                     if st.button("🔊 美式發音 (US)", use_container_width=True, key=f"us_{st.session_state.flashcard_index}"):
@@ -909,6 +857,57 @@ elif main_menu == "🎮 我是拼字王":
                 current_idx = st.session_state.game_index + 1
                 total_q_len = len(st.session_state.game_queue)
                 
+                # 獨立宣告一個函式支援拼字王的發音按鈕
+                def play_audio_compact_game(text_to_speak, label_key="🔊"):
+                    safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
+                    html_code = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {{ margin: 0; padding: 0; background: transparent; }}
+                        .speak-btn {{
+                            width: 100%;
+                            padding: 0.35rem 0.5rem;
+                            background-color: transparent;
+                            color: canvasText;
+                            border: 1px solid rgba(128, 128, 128, 0.4);
+                            border-radius: 0.4rem;
+                            font-size: 14px;
+                            font-family: inherit;
+                            cursor: pointer;
+                            text-align: center;
+                            transition: all 0.2s ease;
+                        }}
+                        @media (prefers-color-scheme: dark) {{
+                            .speak-btn {{ color: #ffffff; border-color: rgba(255, 255, 255, 0.3); }}
+                        }}
+                        .speak-btn:hover {{
+                            background-color: rgba(128, 128, 128, 0.15);
+                            border-color: #ff4b4b;
+                            color: #ff4b4b;
+                        }}
+                    </style>
+                    </head>
+                    <body>
+                        <button class="speak-btn" onclick="speakText()">{label_key}</button>
+                        <script>
+                            function speakText() {{
+                                if ('speechSynthesis' in window) {{
+                                    window.speechSynthesis.cancel();
+                                    var utterance = new SpeechSynthesisUtterance("{safe_text}");
+                                    utterance.lang = 'en-US';
+                                    utterance.rate = 0.9;
+                                    window.speechSynthesis.speak(utterance);
+                                }}
+                            }}
+                        </script>
+                    </body>
+                    </html>
+                    """
+                    components.html(html_code, height=40)
+
                 with st.container(border=True):
                     col_h1, col_h2, col_h3 = st.columns([5, 1, 1])
                     with col_h1:
@@ -919,9 +918,9 @@ elif main_menu == "🎮 我是拼字王":
                     with col_h2:
                         try:
                             if game_mode.startswith("標準"):
-                                play_audio_compact(target_word, "🔊 發音")
+                                play_audio_compact_game(target_word, "🔊 發音")
                             else:
-                                play_audio_compact(target_adv_def, "🔊 發音")
+                                play_audio_compact_game(target_adv_def, "🔊 發音")
                         except: pass
                     with col_h3:
                         st.markdown(f"<p style='text-align: right; color: gray; font-size: 18px; font-weight: bold; margin: 0; padding-top: 5px;'>{current_idx} / {total_q_len}</p>", unsafe_allow_html=True)
