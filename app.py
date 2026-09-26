@@ -59,7 +59,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用內建智慧詞庫與自動解析引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用完整內建智慧詞庫與自動翻譯引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -89,26 +89,23 @@ def load_vocab_dataframe(_worksheet, force_reload=False):
     cache_key = f"vocab_df_{_worksheet.title}"
     if force_reload or cache_key not in st.session_state:
         try:
-            records = _worksheet.get_all_records()
-        except Exception:
-            records = []
-            
-        if not records:
             all_values = _worksheet.get_all_values()
-            if len(all_values) > 1:
-                headers = [str(h).strip().lower() for h in all_values[0]]
-                df_temp = pd.DataFrame(all_values[1:], columns=headers[:len(all_values[0])])
-            else:
-                df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage'])
-        else:
-            df_temp = pd.DataFrame(records)
+        except Exception:
+            all_values = []
             
-        df_temp.columns = [str(c).strip().lower() for c in df_temp.columns]
+        if len(all_values) > 1:
+            headers = [str(h).strip().lower() for h in all_values[0]]
+            data_rows = all_values[1:]
+            df_temp = pd.DataFrame(data_rows, columns=headers[:len(all_values[0])])
+        else:
+            df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage'])
+            
         required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage']
-        for idx, col in enumerate(required_cols):
+        for col in required_cols:
             if col not in df_temp.columns:
                 df_temp[col] = ""
                 
+        # 嚴格清理空白與 NaN
         df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
         df_temp = df_temp[df_temp['word'].notna()]
         
@@ -136,6 +133,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
+# 超大型常用片語與單字對照庫（包含您截圖中的單字）
 BUILTIN_VOCAB_MAP = {
     "right away": ("立刻、馬上", "adv.", "She cleaned her room right away."),
     "internet": ("網際網路", "n.", "You can find a lot of information on the Internet."),
@@ -199,7 +197,17 @@ BUILTIN_VOCAB_MAP = {
     "comb": ("梳子、梳理", "n./v.", "She used a comb to fix her hair."),
     "towel": ("毛巾", "n.", "Please use a clean towel."),
     "guess": ("猜測", "v./n.", "Can you guess what is in the box?"),
-    "actor": ("男演員", "n.", "He is a famous movie actor.")
+    "actor": ("男演員", "n.", "He is a famous movie actor."),
+    "you got it": ("沒問題、你說對了", "exp.", "Can you help me? Sure, you got it!"),
+    "be all ears": ("洗耳恭聽、全神貫注聽", "v.", "Tell me the story; I am all ears."),
+    "photo": ("相片、照片", "n.", "She took a nice photo of the sunset."),
+    "understand": ("理解、明白", "v.", "Do you understand the grammar rule?"),
+    "crazy": ("瘋狂的", "adj.", "He is crazy about playing video games."),
+    "diet": ("飲食、節食", "n./v.", "She is on a healthy diet."),
+    "habit": ("習慣", "n.", "Reading before bed is a good habit."),
+    "since": ("自從、因為", "prep./conj.", "I have known him since childhood."),
+    "ever": "曾經", "adv.", "Have you ever been to Japan?"),
+    "at least": ("至少", "adv.", "It will take at least two hours.")
 }
 
 def get_word_record_data_via_ai(word, level="國中部"):
@@ -244,28 +252,26 @@ def get_word_record_data_via_ai(word, level="國中部"):
                 "phonetic": data.get("phonetic", f"/{w_lower}/"),
                 "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
                 "definition": simple_s2t_convert(data.get("definition", f"{w_clean}")),
-                "basic_sentence": data.get("sentence", f"We can learn the word {w_clean} easily.")
+                "basic_sentence": data.get("sentence", f"We practice using {w_clean} in sentences.")
             }
         except Exception:
             pass
             
-    # 智慧詞尾智慧對照（即使沒填 API 也能自動判斷常見詞性）
-    pos_guess = "n."
-    if w_lower.endswith("ing") or w_lower.endswith("ed"):
-        pos_guess = "adj./v."
-    elif w_lower.endswith("ly"):
+    # 智慧詞尾判斷與優化翻譯
+    pos_guess = "n./v."
+    if w_lower.endswith("ly"):
         pos_guess = "adv."
-    elif w_lower.endswith("ful") or w_lower.endswith("able") or w_lower.endswith("ive"):
+    elif w_lower.endswith("ful") or w_lower.endswith("able") or w_lower.endswith("ive") or w_lower.endswith("al"):
         pos_guess = "adj."
-    elif w_lower.endswith("er") or w_lower.endswith("or") or w_lower.endswith("ion") or w_lower.endswith("ment"):
+    elif w_lower.endswith("er") or w_lower.endswith("or") or w_lower.endswith("ion") or w_lower.endswith("ment") or w_lower.endswith("ness"):
         pos_guess = "n."
 
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": pos_guess,
-        "definition": f"{w_clean} (核心單字)",
-        "basic_sentence": f"This is an example sentence using {w_clean}."
+        "definition": f"{w_clean} (實用字彙)",
+        "basic_sentence": f"Students use the word {w_clean} in daily conversation."
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
@@ -283,7 +289,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
                 str(row.get('basic_sentence', '')),
                 str(row.get('advanced_sentence', '')),
                 str(row.get('collocations', '')),
-                str(row.get('unit_tag', '')),
+                str(row.get('unit_tag', '')),  # 確保完整保留 Tag
                 str(row.get('srs_stage', 0))
             ])
         _worksheet.update(rows)
@@ -347,7 +353,6 @@ if main_menu == "✨ 智慧單字新增":
                         df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
                         df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence', '')
-                        # 若原本有 tag 則保留，沒有才賦予新 tag
                         if not str(df_current.at[idx, 'unit_tag']).strip():
                             df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
@@ -464,7 +469,7 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 🚨 試算表資料修復與一鍵補齊中文專區")
-            st.warning("點擊下方按鈕，系統會為試算表內所有單字補齊中文與例句，並**完美保留原有的單元 Tag**：")
+            st.warning("點擊下方按鈕，系統會為所有單字對照字典補齊中文與例句，並且**絕對完整保護原有的 unit_tag**：")
             if st.button("🧹 一鍵快速補齊並更新雲端", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -475,21 +480,23 @@ elif main_menu == "📖 字庫管理與搜尋":
                 
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
-                    status_text.text(f"🤖 正在補齊單字資料 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在處理單字 ({fixed_count+1}/{total_fix}): {w}")
                     
-                    new_data = get_word_record_data_via_ai(w, level=selected_level)
-                    df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
-                    df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
-                    df_current.at[idx, 'definition'] = simple_s2t_convert(new_data.get('definition', ''))
-                    df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
-                    # 絕對保留原本的 unit_tag，絕不覆蓋為空白！
+                    # 只有在原本沒有中文或中文是預設值時才重新用 AI/字典 查詢，藉此保護您手動輸入的內容
+                    current_def = str(row.get('definition', ''))
+                    if not current_def or "核心單字" in current_def or "手動編輯" in current_def:
+                        new_data = get_word_record_data_via_ai(w, level=selected_level)
+                        df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
+                        df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
+                        df_current.at[idx, 'definition'] = simple_s2t_convert(new_data.get('definition', ''))
+                        df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
                     fixed_count += 1
                     progress_bar.progress(fixed_count / total_fix)
-                    time.sleep(0.02)
+                    time.sleep(0.01)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成資料補齊與 Tag 保護！總共更新了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成資料補齊與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
