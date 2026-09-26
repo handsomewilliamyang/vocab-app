@@ -10,6 +10,7 @@ import re
 from gtts import gTTS
 import io
 import base64
+import streamlit.components.v1 as components
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -41,10 +42,6 @@ st.markdown("""
         height: auto !important;
         padding-top: 10px !important;
         padding-bottom: 10px !important;
-    }
-    /* 完美隱藏所有不必要的音訊長條播放器，讓畫面極簡乾淨 */
-    audio {
-        display: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -151,7 +148,7 @@ S2T_DICT = {
     "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
     "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
     "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
-    "默认": "預設", "句": "句", "词": "詞", "语法": "語法"
+    "默认": "預設", "句": "句", "词": "词", "语法": "語法"
 }
 
 def simple_s2t_convert(text):
@@ -362,14 +359,15 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
+# 極致隱藏播放器寫法 (長寬為0，完全不留空間)
 def play_audio_silently(audio_bytes):
     b64 = base64.b64encode(audio_bytes).decode()
     md = f"""
-        <audio autoplay="true">
+        <audio autoplay="true" style="display:none;">
             <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
         </audio>
     """
-    st.markdown(md, unsafe_allow_html=True)
+    components.html(md, width=0, height=0)
 
 st.title("📚 我愛背單字")
 
@@ -838,24 +836,47 @@ elif main_menu == "🎮 我是拼字王":
                 
                 st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
                 
+                audio_bytes_to_play = None
+
                 with st.container(border=True):
                     if game_mode.startswith("🎯 標準"):
                         st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                        audio = generate_audio_bytes(target_word)
-                        try: 
-                            play_audio_silently(audio)
-                        except: 
-                            pass
+                        
+                        # 讓玩家可隨時點擊重聽的按鈕
+                        if st.button("🔊 播放發音", key=f"play_std_btn_{st.session_state.game_index}"):
+                            try:
+                                audio_bytes_to_play = generate_audio_bytes(target_word)
+                            except: pass
+                            
+                        # 若這題是第一次載入，則自動播放一次
+                        if st.session_state.get(f"auto_played_{st.session_state.game_index}") is None:
+                            try:
+                                audio_bytes_to_play = generate_audio_bytes(target_word)
+                                st.session_state[f"auto_played_{st.session_state.game_index}"] = True
+                            except: pass
+
                     else:
                         st.markdown(f"<h2 style='color: #2196F3;'>🔥 進階聽力提示：請聆聽英文解釋並拼出單字</h2>", unsafe_allow_html=True)
                         st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                        try:
-                            audio_def = generate_audio_bytes(target_adv_def)
-                            play_audio_silently(audio_def)
-                        except:
-                            pass
+                        
+                        # 讓玩家可隨時點擊重聽的按鈕
+                        if st.button("🔊 播放英文解釋", key=f"play_adv_btn_{st.session_state.game_index}"):
+                            try:
+                                audio_bytes_to_play = generate_audio_bytes(target_adv_def)
+                            except: pass
+                            
+                        # 若這題是第一次載入，則自動播放一次
+                        if st.session_state.get(f"auto_played_{st.session_state.game_index}") is None:
+                            try:
+                                audio_bytes_to_play = generate_audio_bytes(target_adv_def)
+                                st.session_state[f"auto_played_{st.session_state.game_index}"] = True
+                            except: pass
+                            
+                # 執行極致隱形播放
+                if audio_bytes_to_play:
+                    play_audio_silently(audio_bytes_to_play)
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
