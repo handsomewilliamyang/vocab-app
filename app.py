@@ -362,7 +362,7 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🚀 完美高對比固定配色按鈕 (適應所有模式) =================
+# ================= 🎨 完美融入 Streamlit 風格的發音按鈕元件 =================
 def custom_audio_button(audio_bytes, label):
     b64 = base64.b64encode(audio_bytes).decode()
     html_code = f"""
@@ -381,27 +381,50 @@ def custom_audio_button(audio_bytes, label):
             justify-content: center;
             align-items: center;
         }}
+        
+        /* 💡 自動適配 Streamlit 的 Light/Dark 模式色彩 */
+        :root {{
+            --btn-bg: #ffffff;
+            --btn-text: #31333F;
+            --btn-border: #d5d6dc;
+            --btn-hover-bg: #f8f9fa;
+            --btn-hover-border: #ff4b4b;
+            --btn-hover-text: #ff4b4b;
+        }}
+        
+        @media (prefers-color-scheme: dark) {{
+            :root {{
+                --btn-bg: #262730;
+                --btn-text: #fafafa;
+                --btn-border: #41424C;
+                --btn-hover-bg: #31323B;
+                --btn-hover-border: #ff4b4b;
+                --btn-hover-text: #ff4b4b;
+            }}
+        }}
+
         button {{
             width: 100%;
             height: 100%;
             box-sizing: border-box;
-            background-color: #1e293b; /* 深色沉穩背景，明亮與黑暗模式下皆清晰 */
-            color: #ffffff;             /* 純白文字，絕對不會隱形 */
-            border: 1px solid #334155;
+            background-color: var(--btn-bg);
+            color: var(--btn-text);
+            border: 1px solid var(--btn-border);
             border-radius: 8px;
             font-size: 15px;
-            font-weight: 600;
+            font-weight: 500;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             transition: all 0.2s ease;
         }}
         button:hover {{
-            background-color: #334155;
-            border-color: #ff4b4b;
-            color: #ff4b4b;
+            background-color: var(--btn-hover-bg);
+            border-color: var(--btn-hover-border);
+            color: var(--btn-hover-text);
         }}
         button:active {{
-            background-color: #0f172a;
+            transform: scale(0.98);
         }}
     </style>
     </head>
@@ -426,7 +449,7 @@ def custom_audio_button(audio_bytes, label):
     </html>
     """
     components.html(html_code, height=45)
-# =====================================================================
+# =========================================================================
 
 st.title("📚 我愛背單字")
 
