@@ -45,7 +45,7 @@ try:
     gs_client = init_gsheets_client()
     SHEET_URL = st.secrets["sheet_url"]
 except Exception as e:
-    st.error(f"⚠️ Google Sheets 連線設定錯誤：{e}")
+    st.error("⚠️ Google Sheets 連線設定錯誤：" + str(e))
     st.stop()
 
 st.sidebar.markdown("<h2 style='font-size: 24px;'>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
@@ -87,13 +87,13 @@ try:
         active_worksheet = spreadsheet.worksheet(current_sheet_name)
     except Exception:
         active_worksheet = spreadsheet.get_worksheet(0)
-        st.sidebar.warning(f"⚠️ 找不到分頁，已自動切換至：{active_worksheet.title}")
+        st.sidebar.warning("⚠️ 找不到分頁，已自動切換至：" + active_worksheet.title)
 except Exception as e:
-    st.error(f"⚠️ Google Sheets 連線失敗：{e}")
+    st.error("⚠️ Google Sheets 連線失敗：" + str(e))
     st.stop()
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"💡 雲端同步中：已連線至工作表【{active_worksheet.title}】")
+st.sidebar.info("💡 雲端同步中：已連線至工作表【" + active_worksheet.title + "】")
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_vocab_from_sheets(_worksheet):
@@ -165,7 +165,6 @@ def get_word_record_data_via_ai(word, level="國中部"):
                 "}"
             )
             response = model.generate_content(prompt)
-            # 安全清理字串，完全不使用多個連續反引號
             clean_text = response.text.replace(chr(96)*3 + "json", "").replace(chr(96)*3, "").strip()
             data = json.loads(clean_text)
             return {
@@ -186,12 +185,431 @@ def get_word_record_data_via_ai(word, level="國中部"):
         "basic_sentence": "Please learn how to use '" + w_clean + "'."
     }
 
-def upsert_word_to_sheet(data, unit_tag, _worksheet):
+def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
     try:
         df = get_vocab_from_sheets(_worksheet)
-        word = data.get('word')
-        if not df.empty and word in df['word'].values:
-            row_idx = df.index[df['word'] == word].tolist()[0] + 2
-            row_values = _worksheet.row_values(row_idx)
-            row_id = row_values[0] if len(row_values) > 0 else 1
-            srs = row_values[9] if len(row_values) >
+        row_idx = df.index[df['word'] == target_word].tolist()[0] + 2
+        
+        row_values = _worksheet.row_values(row_idx)
+        row_id = row_values[0] if len(row_values) > 0 else 1
+        unit_tag = row_values[8] if len(row_values) > 8 else "未分類"
+        srs = row_values[9] if len(row_values) > 9 else 0
+        
+        new_row = [row_id, new_word, new_phonetic, new_pos, simple_s2t_convert(new_def), new_basic, new_adv, new_coll, unit_tag, srs]
+        _worksheet.update('A' + str(row_idx) + ':J' + str(row_idx), [new_row])
+        time.sleep(0.5)
+        get_vocab_from_sheets.clear()
+        return True, "成功"
+    except Exception as e:
+        return False, str(e)
+
+def delete_words_from_sheet(_worksheet, word_list):
+    if not word_list: return
+    df = get_vocab_from_sheets(_worksheet)
+    rows_to_delete = sorted([df.index[df['word'] == w].tolist()[0] + 2 for w in word_list if w in df['word'].values], reverse=True)
+    for r in rows_to_delete:
+        _worksheet.delete_rows(r)
+        time.sleep(0.3)
+    get_vocab_from_sheets.clear()
+
+@st.cache_data(show_spinner=False)
+def generate_audio_bytes(text, lang='en'):
+    tts = gTTS(text=text, lang=lang)
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    return fp.getvalue()
+
+st.title("📚 我愛背單字 (雲端拼字測驗版)")
+
+try:
+    df_vocab = get_vocab_from_sheets(active_worksheet)
+except Exception:
+    time.sleep(2)
+    get_vocab_from_sheets.clear()
+    df_vocab = get_vocab_from_sheets(active_worksheet)
+
+total_words = len(df_vocab)
+
+col_m1, col_m2 = st.columns(2)
+with col_m1:
+    st.metric(label="雲端總單字數", value=str(total_words) + " 個")
+with col_m2:
+    st.metric(label="目前模式", value=main_menu + " (" + selected_level + ")")
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+if main_menu == "✨ 智慧單字新增":
+    col_u1, col_u2 = st.columns(2)
+    with col_u1:
+        if selected_level == "國中部":
+            semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+        elif selected_level == "高中部":
+            semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+        else:
+            semester = st.selectbox("選擇階段：", ["多益核心", "多益進階", "商用英文"])
+            
+    with col_u2:
+        unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
+        
+    current_unit_tag = semester + " > " + unit
+    st.info("📌 即時同步至 Google Sheets 【" + active_worksheet.title + "】分頁：**" + current_unit_tag + "**")
+    st.markdown("---")
+
+    col_input1, col_input2 = st.columns(2, gap="large")
+    with col_input1:
+        st.subheader("📝 單筆快速建檔 (AI 字典)")
+        single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
+        if st.button("🚀 AI 查字典並寫入雲端", type="primary", use_container_width=True):
+            if single_word:
+                with st.spinner("🤖 AI 正在查閱字典並生成例句中..."):
+                    data = get_word_record_data_via_ai(single_word, level=selected_level)
+                    df_check = get_vocab_from_sheets(active_worksheet)
+                    word = data.get('word')
+                    if not df_check.empty and word in df_check['word'].values:
+                        r_idx = df_check.index[df_check['word'] == word].tolist()[0] + 2
+                        r_vals = active_worksheet.row_values(r_idx)
+                        r_id = r_vals[0] if len(r_vals) > 0 else 1
+                        srs_val = r_vals[9] if len(r_vals) > 9 else 0
+                        new_r = [r_id, word, data.get('phonetic', ''), data.get('part_of_speech', ''), data.get('definition', ''), data.get('basic_sentence', ''), "", "", current_unit_tag, srs_val]
+                        active_worksheet.update('A' + str(r_idx) + ':J' + str(r_idx), [new_r])
+                    else:
+                        next_id = len(df_check) + 1
+                        new_r = [next_id, word, data.get('phonetic', ''), data.get('part_of_speech', ''), data.get('definition', ''), data.get('basic_sentence', ''), "", "", current_unit_tag, 0]
+                        active_worksheet.append_row(new_r)
+                    get_vocab_from_sheets.clear()
+                    st.success("🎉 成功新增單字：" + single_word)
+                    time.sleep(0.5)
+                    st.rerun()
+
+    with col_input2:
+        st.subheader("📂 Word 檔案智慧查字典匯入")
+        uploaded_docxs = st.file_uploader("上傳 Word 講義檔案 (自動查字典與例句)", type=["docx"], accept_multiple_files=True)
+        if uploaded_docxs:
+            if st.button("📖 AI 批次解析 Word 並查字典", use_container_width=True):
+                total_success_count = 0
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                all_extracted_words = []
+                for uploaded_docx in uploaded_docxs:
+                    temp_path = "temp_" + uploaded_docx.name
+                    try:
+                        with open(temp_path, "wb") as f:
+                            f.write(uploaded_docx.getbuffer())
+                        doc = docx.Document(temp_path)
+                        for table in doc.tables:
+                            for row in table.rows:
+                                for cell in row.cells:
+                                    for line in cell.text.strip().split('\n'):
+                                        cleaned = re.sub(r'^\d+[\.、\s]*', '', line).strip()
+                                        if cleaned and len(cleaned) < 35 and not re.search(r'[\u4e00-\u9fa5]', cleaned):
+                                            if cleaned not in all_extracted_words:
+                                                all_extracted_words.append(cleaned)
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                    except Exception:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                            
+                total_words_to_process = len(all_extracted_words)
+                if total_words_to_process > 0:
+                    for i, word in enumerate(all_extracted_words):
+                        status_text.text("🤖 AI 正在查字典中 (" + str(i+1) + "/" + str(total_words_to_process) + "): " + word)
+                        w_data = get_word_record_data_via_ai(word, level=selected_level)
+                        
+                        df_check = get_vocab_from_sheets(active_worksheet)
+                        if not df_check.empty and word in df_check['word'].values:
+                            r_idx = df_check.index[df_check['word'] == word].tolist()[0] + 2
+                            r_vals = active_worksheet.row_values(r_idx)
+                            r_id = r_vals[0] if len(r_vals) > 0 else 1
+                            srs_val = r_vals[9] if len(r_vals) > 9 else 0
+                            new_r = [r_id, word, w_data.get('phonetic', ''), w_data.get('part_of_speech', ''), w_data.get('definition', ''), w_data.get('basic_sentence', ''), "", "", current_unit_tag, srs_val]
+                            active_worksheet.update('A' + str(r_idx) + ':J' + str(r_idx), [new_r])
+                        else:
+                            next_id = len(df_check) + 1
+                            new_r = [next_id, word, w_data.get('phonetic', ''), w_data.get('part_of_speech', ''), w_data.get('definition', ''), w_data.get('basic_sentence', ''), "", "", current_unit_tag, 0]
+                            active_worksheet.append_row(new_r)
+                        
+                        total_success_count += 1
+                        progress_bar.progress((i + 1) / total_words_to_process)
+                        time.sleep(0.8)
+                        
+                    get_vocab_from_sheets.clear()
+                    status_text.success("🎊 批次匯入完成！成功透過 AI 字典解析並匯入 " + str(total_success_count) + " 個單字與例句。")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.warning("⚠️ 在上傳的 Word 中找不到符合的英文單字。")
+
+elif main_menu == "📖 字庫管理與搜尋":
+    if df_vocab.empty:
+        st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
+    else:
+        unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else []
+        unit_list = ["全部單字"] + unit_list
+        
+        col_f1, col_f2 = st.columns([1.5, 1])
+        with col_f1:
+            selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
+        with col_f2:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
+                get_vocab_from_sheets.clear()
+                st.success("✅ 快取已清除！")
+                time.sleep(0.5)
+                st.rerun()
+
+        st.markdown("---")
+        with st.container(border=True):
+            st.markdown("#### 🚨 試算表資料修復專區")
+            st.warning("點擊下方按鈕，AI 會安全地逐筆為試算表的所有單字重新查字典、填入正統中文與道地例句（自動加入防 429 緩衝時間）：")
+            if st.button("🧹 強制啟動 AI 字典全面洗版並更新雲端", type="primary", use_container_width=True):
+                if not st.session_state.get("gemini_api_key"):
+                    st.error("❌ 請先在左側邊欄輸入您的 Gemini API Key！")
+                else:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    words_to_fix = df_vocab['word'].tolist()
+                    total_fix = len(words_to_fix)
+                    fixed_count = 0
+                    
+                    for idx, w in enumerate(words_to_fix):
+                        status_text.text("🤖 AI 正在安全查字典與例句 (" + str(idx+1) + "/" + str(total_fix) + "): " + w)
+                        row_match = df_vocab[df_vocab['word'] == w]
+                        u_tag = row_match['unit_tag'].values[0] if not row_match.empty and 'unit_tag' in row_match.columns else "未分類"
+                        
+                        new_data = get_word_record_data_via_ai(w, level=selected_level)
+                        df_check = get_vocab_from_sheets(active_worksheet)
+                        if not df_check.empty and w in df_check['word'].values:
+                            r_idx = df_check.index[df_check['word'] == w].tolist()[0] + 2
+                            r_vals = active_worksheet.row_values(r_idx)
+                            r_id = r_vals[0] if len(r_vals) > 0 else 1
+                            srs_val = r_vals[9] if len(r_vals) > 9 else 0
+                            new_r = [r_id, w, new_data.get('phonetic', ''), new_data.get('part_of_speech', ''), new_data.get('definition', ''), new_data.get('basic_sentence', ''), "", "", u_tag, srs_val]
+                            active_worksheet.update('A' + str(r_idx) + ':J' + str(r_idx), [new_r])
+                            fixed_count += 1
+                        progress_bar.progress((idx + 1) / total_fix)
+                        time.sleep(1.0)
+                        
+                    get_vocab_from_sheets.clear()
+                    status_text.success("🎉 成功完成 AI 洗版！總共修復了 " + str(fixed_count) + " 個單字的中文與例句。")
+                    time.sleep(1.5)
+                    st.rerun()
+
+        filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
+        
+        col_s1, col_s2 = st.columns([2, 1])
+        with col_s1:
+            search_query = st.text_input("🔍 搜尋單字或釋義：")
+        with col_s2:
+            words_to_delete = st.multiselect("🗑️ 勾選要刪除的單字：", filtered_df['word'].tolist(), placeholder="選擇要刪除的單字...")
+
+        if search_query:
+            filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
+        
+        if words_to_delete:
+            if st.button("⚠️ 確認刪除已勾選的單字 (同步至雲端)", type="primary"):
+                delete_words_from_sheet(active_worksheet, words_to_delete)
+                st.success("已成功刪除勾選的單字！")
+                st.rerun()
+
+        with st.expander("📋 單字總表與快速編輯 (點擊展開)", expanded=True):
+            st.dataframe(filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'unit_tag']], use_container_width=True, hide_index=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown("#### ✏️ 雲端單字快速編輯修正")
+                if not filtered_df.empty:
+                    word_options = {row['word'] + " (" + (row['definition'] if row['definition'] else '無中文') + ")": row for _, row in filtered_df.iterrows()}
+                    selected_option = st.selectbox("選擇要編輯的單字：", list(word_options.keys()), key="table_edit_select")
+                    
+                    if selected_option:
+                        target_row = word_options[selected_option]
+                        with st.form(key="table_edit_form_" + str(target_row['word'])):
+                            col_e1, col_e2, col_e3 = st.columns(3)
+                            with col_e1:
+                                edit_word = st.text_input("單字 (Word)", value=target_row['word'])
+                            with col_e2:
+                                edit_phonetic = st.text_input("音標 (Phonetic)", value=target_row.get('phonetic', ''))
+                            with col_e3:
+                                edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''))
+                                
+                            edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
+                            edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''))
+                            
+                            submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
+                            
+                            if submit_table_edit:
+                                success, msg = update_single_word_in_sheet(
+                                    active_worksheet, target_row['word'],
+                                    edit_word, edit_phonetic, edit_pos, edit_def, edit_basic, target_row.get('advanced_sentence',''), target_row.get('collocations','')
+                                )
+                                if success:
+                                    st.success("✅ 雲端修改成功！")
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                else:
+                                    st.error("❌ 修改失敗：" + msg)
+
+elif main_menu == "🎯 沉浸式閃卡複習":
+    if df_vocab.empty:
+        st.warning("📭 目前雲端沒有單字！")
+    else:
+        if "flashcard_index" not in st.session_state: st.session_state.flashcard_index = 0
+        total_count = len(df_vocab)
+        st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
+        row = df_vocab.iloc[st.session_state.flashcard_index]
+        
+        with st.container(border=True):
+            st.markdown("<h1 style='text-align: center; font-size: 54px;'>🔤 " + str(row['word']) + "</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: gray;'>" + str(row.get('phonetic','')) + " | " + str(row.get('part_of_speech','')) + "</p>", unsafe_allow_html=True)
+            
+        with st.expander("💡 詳細釋義與真實例句", expanded=True):
+            st.markdown("**中文釋義：** " + str(row['definition']))
+            st.markdown("**例句：** " + str(row.get('basic_sentence','')))
+        
+        c1, c2 = st.columns(2)
+        if c1.button("⬅️ 上一個", use_container_width=True):
+            st.session_state.flashcard_index = (st.session_state.flashcard_index - 1) % total_count
+            st.rerun()
+        if c2.button("➡️ 下一個", use_container_width=True):
+            st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
+            st.rerun()
+
+elif main_menu == "🎮 拼字王挑戰遊戲":
+    if df_vocab.empty:
+        st.warning("📭 目前沒有足夠的單字來進行遊戲！")
+    else:
+        unit_list_game = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
+        selected_game_unit = st.selectbox("選擇遊戲挑戰的單元範圍：", unit_list_game, key="game_unit_select")
+        
+        df_filtered_game = df_vocab if selected_game_unit == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_game_unit]
+        
+        if df_filtered_game.empty:
+            st.warning("📭 該分類中沒有單字！")
+        else:
+            if "game_started" not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
+                st.session_state.game_started = True
+                st.session_state.current_game_unit = selected_game_unit
+                st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
+                st.session_state.game_index = 0
+                st.session_state.wrong_answers = []
+                st.session_state.is_finished = False
+                st.session_state.last_feedback = None
+                
+                if "user_spelling_input" not in st.session_state:
+                    st.session_state.user_spelling_input = ""
+
+            def process_answer(is_skip=False):
+                if st.session_state.game_index >= len(st.session_state.game_queue):
+                    return
+                    
+                current_item = st.session_state.game_queue[st.session_state.game_index]
+                target_word = str(current_item['word']).strip()
+                user_ans = st.session_state.user_spelling_input.strip().lower()
+
+                if is_skip:
+                    if current_item not in st.session_state.wrong_answers:
+                        st.session_state.wrong_answers.append(current_item)
+                    st.session_state.last_feedback = {
+                        "type": "error", 
+                        "msg": "⏩ 已略過。正確答案是：`" + target_word + "`"
+                    }
+                else:
+                    if user_ans == target_word.lower():
+                        st.session_state.last_feedback = {
+                            "type": "success", 
+                            "msg": "🎉 上題答對了！就是 `" + target_word + "`"
+                        }
+                    else:
+                        if current_item not in st.session_state.wrong_answers:
+                            st.session_state.wrong_answers.append(current_item)
+                        st.session_state.last_feedback = {
+                            "type": "error", 
+                            "msg": "❌ 上題答錯囉！正確答案是：`" + target_word + "`"
+                        }
+                
+                st.session_state.game_index += 1
+                st.session_state.user_spelling_input = ""
+
+            if st.session_state.game_index >= len(st.session_state.game_queue):
+                st.session_state.is_finished = True
+
+            if st.session_state.get("is_finished", False):
+                st.balloons()
+                st.markdown("## 🎉 測驗圓滿結束！")
+                total_q = len(st.session_state.game_queue)
+                wrong_q = len(st.session_state.wrong_answers)
+                correct_q = total_q - wrong_q
+                
+                col_res1, col_res2 = st.columns(2)
+                col_res1.metric(label="總題數", value=str(total_q) + " 題")
+                col_res2.metric(label="答對題數", value=str(correct_q) + " 題")
+                
+                if wrong_q > 0:
+                    st.markdown("---")
+                    st.markdown("### ❌ 總共錯誤題數：" + str(wrong_q) + " 題（錯題訂正複習）：")
+                    for w_item in st.session_state.wrong_answers:
+                        st.markdown("- **中文釋義：** " + str(w_item['definition']) + " ➡️ **正確英文單字：** `" + str(w_item['word']) + "`")
+                else:
+                    st.success("🏆 太神啦！全部答對，完美過關！")
+
+                if st.button("🔄 重新挑戰本單元", type="primary", use_container_width=True):
+                    del st.session_state["game_started"]
+                    st.rerun()
+                    
+            else:
+                current_item = st.session_state.game_queue[st.session_state.game_index]
+                target_word = str(current_item['word']).strip()
+                target_def = str(current_item['definition']).strip() if str(current_item['definition']).strip() else "(尚無中文釋義)"
+                hint_masked = "".join([" _ " if c.isalpha() else "   " for c in target_word])
+                
+                st.markdown("### 📊 進度：第 `" + str(st.session_state.game_index + 1) + "` 題 / 共 `" + str(len(st.session_state.game_queue)) + "` 題")
+                
+                with st.container(border=True):
+                    st.markdown("<h2 style='color: #4CAF50;'>📌 中文釋義：" + target_def + "</h2>", unsafe_allow_html=True)
+                    st.markdown("**🔤 拼字提示 (Spelling Hint)：** `" + hint_masked + "` &nbsp;&nbsp; (長度: " + str(len(target_word)) + " 字母)")
+                    
+                    audio = generate_audio_bytes(target_word)
+                    try: 
+                        st.audio(audio, format="audio/mp3")
+                    except: 
+                        pass
+
+                if st.session_state.get("last_feedback"):
+                    fb = st.session_state.last_feedback
+                    if fb["type"] == "success":
+                        st.success(fb["msg"])
+                    else:
+                        st.error(fb["msg"])
+                        
+                current_wrong_count = len(st.session_state.wrong_answers)
+                if current_wrong_count > 0:
+                    st.markdown("<h4 style='color: #E53935;'>🛑 目前累積錯題數：" + str(current_wrong_count) + " 題</h4>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<h4 style='color: #757575;'>🛑 目前累積錯題數: 0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
+                st.markdown("---")
+
+                st.text_input(
+                    "📝 請輸入您的拼寫答案 (輸入完畢可直接按 Enter 送出)：", 
+                    key="user_spelling_input",
+                    on_change=process_answer,
+                    kwargs={"is_skip": False}
+                )
+                
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    st.button(
+                        "🚀 送出答案", 
+                        type="primary", 
+                        use_container_width=True, 
+                        on_click=process_answer, 
+                        kwargs={"is_skip": False}
+                    )
+                with col_btn2:
+                    st.button(
+                        "⏭️ 略過本題", 
+                        use_container_width=True, 
+                        on_click=process_answer, 
+                        kwargs={"is_skip": True}
+                    )
