@@ -28,7 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🌟 僅保留最核心的基礎字典庫，其餘全部交由「智慧動態句型工廠」自動生成，保持程式碼輕量！
 LOCAL_RICH_VOCAB_DB = {
     "piece": {"pos": "n.", "def": "件；片；零件", "sentence": "He cut a large piece of cake for his younger sister."},
     "sentence": {"pos": "n. / v.", "def": "句子；宣判", "sentence": "Please write a complete sentence using this new vocabulary word."},
@@ -69,7 +68,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.warning("⚠️ 未輸入 API Key (將使用萬能動態句型引擎)")
+    st.sidebar.warning("⚠️ 未輸入 API Key (將使用智慧動態句型引擎)")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -129,38 +128,33 @@ def get_vocab_from_sheets(_worksheet):
     df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
     df_temp = df_temp[df_temp['word'].notna()]
     
-    # 🌟 萬能動態句型工廠：自動依據單字生成生動自然的例句，無需臃腫的大字典！
+    # 🌟 安全防護網版動態生成引擎：絕不覆蓋原有正常資料，僅針對真正空白或機器人呆板舊句進行修復
     for idx, row in df_temp.iterrows():
         w_clean = str(row['word']).strip()
         w_lower = w_clean.lower()
         r_sent = str(row['basic_sentence']).strip()
         r_def = str(row['definition']).strip()
         
-        # 判斷是否為需要動態優化的舊句子或空內容
-        is_bad = (
+        # 嚴格界定：只有當例句完全空白，或包含明顯舊的呆板字串時才處理
+        is_truly_blank_or_bad = (
             not r_sent or 
+            r_sent == "nan" or
             "This is an example" in r_sent or 
             "People use" in r_sent or 
             "Students often learn" in r_sent or
-            "Everyone in the classroom" in r_sent or
-            "Understanding the exact meaning" in r_sent or
-            "It is quite important" in r_sent or
-            "Students are required" in r_sent or
-            "中文釋義待補" in r_def or
-            "請手動補上中文釋義" in r_def or
-            "(請自訂釋義)" in r_def
+            "Everyone in the classroom" in r_sent
         )
         
-        if is_bad:
+        if is_truly_blank_or_bad:
             if w_lower in LOCAL_RICH_VOCAB_DB:
                 df_temp.at[idx, 'definition'] = LOCAL_RICH_VOCAB_DB[w_lower]['def']
                 df_temp.at[idx, 'part_of_speech'] = LOCAL_RICH_VOCAB_DB[w_lower]['pos']
                 df_temp.at[idx, 'basic_sentence'] = LOCAL_RICH_VOCAB_DB[w_lower]['sentence']
             else:
-                if not r_def or "待補" in r_def or "自訂" in r_def:
-                    df_temp.at[idx, 'definition'] = f"{w_clean} (核心單字)"
+                # 若原本中文釋義也是空白或待補，才給予預設值，保留使用者辛苦建檔的中文！
+                if not r_def or r_def == "nan" or "中文釋義待補" in r_def:
+                    df_temp.at[idx, 'definition'] = f"{w_clean} (請自訂釋義)"
                 
-                # 多樣化情境句型樣板清單，隨機挑選組裝
                 smart_templates = [
                     f"She mentioned that learning how to use '{w_clean}' correctly is vital for daily communication.",
                     f"The teacher emphasized the importance of remembering '{w_clean}' for the upcoming exam.",
@@ -168,10 +162,9 @@ def get_vocab_from_sheets(_worksheet):
                     f"It is always helpful to practice writing sentences containing '{w_clean}'.",
                     f"He tried to recall where he had first encountered the expression '{w_clean}'."
                 ]
-                # 使用單字字串的雜湊值作為隨機種子，確保同一個單字每次顯示的例句都固定且自然
                 random.seed(len(w_clean) + ord(w_clean[0]))
                 df_temp.at[idx, 'basic_sentence'] = random.choice(smart_templates)
-                random.seed() # 重置隨機種子
+                random.seed()
 
     return df_temp
 
@@ -201,7 +194,7 @@ def get_word_record_data(word, level="國中部"):
             "advanced_sentence": "", "collocations": f"common {w_clean}"
         }
         
-    pos_res, def_res = "n. / v.", f"{w_clean} (核心單字)"
+    pos_res, def_res = "n. / v.", f"{w_clean} (請自訂釋義)"
     sent_res = f"The teacher emphasized the importance of remembering '{w_clean}' for the upcoming exam."
             
     return {
@@ -354,7 +347,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
                 get_vocab_from_sheets.clear()
-                st.success("✅ 快取已清除，所有單字已由萬能動態引擎優化完畢！")
+                st.success("✅ 快取已清除，已恢復原有正常字義與安全防護！")
                 time.sleep(0.5)
                 st.rerun()
 
