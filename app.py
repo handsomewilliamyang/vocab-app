@@ -74,7 +74,7 @@ CORE_VOCAB_DICT = {
     "color": {"pos": "n. / v.", "def": "色彩；顏色", "sentence": "What is your favorite color?"},
     "hungry": {"pos": "adj.", "def": "飢餓的", "sentence": "I missed lunch, so I am very hungry now."},
     "cookie": {"pos": "n.", "def": "餅乾", "sentence": "She baked a batch of chocolate chip cookies."},
-    "dining room": {"pos": "n.", "def": "餐廳", "sentence": "The family gathered in the dining room for dinner."},
+    "dining room": {"pos": "n.", "def": "餐厅", "sentence": "The family gathered in the dining room for dinner."},
     "crazy": {"pos": "adj.", "def": "瘋狂的", "sentence": "He is crazy about playing video games after school."},
     "diet": {"pos": "n. / v.", "def": "飲食；節食", "sentence": "A balanced diet is important for our health."},
     "habit": {"pos": "n.", "def": "習慣", "sentence": "Reading before bed is a very good habit."},
@@ -491,19 +491,62 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_filtered_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            # 初始化遊戲狀態
+            # 1. 初始化遊戲狀態與隨機題庫 (保證不重複)
             if "game_started" not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
                 st.session_state.current_game_unit = selected_game_unit
+                # df.sample(frac=1) 已經將題目完全打亂，按照順序拿取保證絕對不會出現重複單字！
                 st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
                 st.session_state.last_feedback = None
+                
+                # 初始化綁定文字框的狀態變數，用來觸發自動清空
+                if "user_spelling_input" not in st.session_state:
+                    st.session_state.user_spelling_input = ""
 
-            # 檢查是否測驗結束
+            # 2. 定義核心 Callback 函數：處理送出與清空，絕不跳題
+            def process_answer(is_skip=False):
+                # 防止超出範圍報錯
+                if st.session_state.game_index >= len(st.session_state.game_queue):
+                    return
+                    
+                current_item = st.session_state.game_queue[st.session_state.game_index]
+                target_word = str(current_item['word']).strip()
+                # 取得使用者當前輸入框的值
+                user_ans = st.session_state.user_spelling_input.strip().lower()
+
+                if is_skip:
+                    if current_item not in st.session_state.wrong_answers:
+                        st.session_state.wrong_answers.append(current_item)
+                    st.session_state.last_feedback = {
+                        "type": "error", 
+                        "msg": f"⏩ 已略過。正確答案是：`{target_word}`"
+                    }
+                else:
+                    if user_ans == target_word.lower():
+                        st.session_state.last_feedback = {
+                            "type": "success", 
+                            "msg": f"🎉 上題答對了！就是 `{target_word}`"
+                        }
+                    else:
+                        if current_item not in st.session_state.wrong_answers:
+                            st.session_state.wrong_answers.append(current_item)
+                        st.session_state.last_feedback = {
+                            "type": "error", 
+                            "msg": f"❌ 上題答錯囉！正確答案是：`{target_word}`"
+                        }
+                
+                # 關鍵：進入下一題
+                st.session_state.game_index += 1
+                # 終極解法：強制把綁定的輸入框變數清空，畫面更新時保證變為空字串！
+                st.session_state.user_spelling_input = ""
+
+            # 3. 檢查是否測驗結束
             if st.session_state.game_index >= len(st.session_state.game_queue):
                 st.session_state.is_finished = True
 
+            # 4. 畫面渲染：測驗結束畫面
             if st.session_state.get("is_finished", False):
                 st.balloons()
                 st.markdown("## 🎉 測驗圓滿結束！")
@@ -526,6 +569,8 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if st.button("🔄 重新挑戰本單元", type="primary", use_container_width=True):
                     del st.session_state["game_started"]
                     st.rerun()
+                    
+            # 5. 畫面渲染：測驗進行中畫面
             else:
                 current_item = st.session_state.game_queue[st.session_state.game_index]
                 target_word = str(current_item['word']).strip()
@@ -544,48 +589,46 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     except: 
                         pass
 
-                # 永久顯示上一題的即時回饋與累積錯誤題數
+                # 顯示上一題的即時回饋
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
                     if fb["type"] == "success":
                         st.success(fb["msg"])
                     else:
                         st.error(fb["msg"])
-                    st.markdown(f"### 🛑 目前累積錯誤題數：`{len(st.session_state.wrong_answers)}` 題")
-                    st.markdown("---")
+                        
+                # ===== 新增：顯眼的錯題計數器 =====
+                current_wrong_count = len(st.session_state.wrong_answers)
+                if current_wrong_count > 0:
+                    st.markdown(f"<h4 style='color: #E53935;'>🛑 目前累積錯題數：{current_wrong_count} 題</h4>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<h4 style='color: #757575;'>🛑 目前累積錯題數：0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
+                st.markdown("---")
 
-                # 使用標準 Form 表單，絕對不會殘留字、不會跳題，送出即自動清除輸入框
-                with st.form(key=f"bulletproof_form_{st.session_state.game_index}"):
-                    user_ans = st.text_input("請輸入您的拼寫答案：").strip().lower()
-                    
-                    col_btn1, col_btn2 = st.columns(2)
-                    with col_btn1:
-                        submit_clicked = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
-                    with col_btn2:
-                        skip_clicked = st.form_submit_button("⏭️ 略過本題", type="primary", use_container_width=True)
-                        
-                    if submit_clicked:
-                        if user_ans == target_word.lower():
-                            st.session_state.last_feedback = {
-                                "type": "success", 
-                                "msg": f"🎉 答對了！就是 `{target_word}`"
-                            }
-                        else:
-                            if current_item not in st.session_state.wrong_answers:
-                                st.session_state.wrong_answers.append(current_item)
-                            st.session_state.last_feedback = {
-                                "type": "error", 
-                                "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (錯誤題數 +1)"
-                            }
-                        st.session_state.game_index += 1
-                        st.rerun()
-                        
-                    if skip_clicked:
-                        if current_item not in st.session_state.wrong_answers:
-                            st.session_state.wrong_answers.append(current_item)
-                        st.session_state.last_feedback = {
-                            "type": "error", 
-                            "msg": f"⏩ 已略過。正確答案是：`{target_word}` (錯誤題數 +1)"
-                        }
-                        st.session_state.game_index += 1
-                        st.rerun()
+                # ===== 終極 Callbacks 設計 =====
+                # 這裡直接用 key 綁定 st.session_state.user_spelling_input
+                # 當使用者在框內按下 Enter 時，會觸發 on_change 執行 process_answer
+                st.text_input(
+                    "📝 請輸入您的拼寫答案 (輸入完畢可直接按 Enter 送出)：", 
+                    key="user_spelling_input",
+                    on_change=process_answer,
+                    kwargs={"is_skip": False}
+                )
+                
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    # 按鈕點擊時，也會觸發 on_click 執行 process_answer
+                    st.button(
+                        "🚀 送出答案", 
+                        type="primary", 
+                        use_container_width=True, 
+                        on_click=process_answer, 
+                        kwargs={"is_skip": False}
+                    )
+                with col_btn2:
+                    st.button(
+                        "⏭️ 略過本題", 
+                        use_container_width=True, 
+                        on_click=process_answer, 
+                        kwargs={"is_skip": True}
+                    )
