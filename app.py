@@ -123,7 +123,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.warning("⚠️ 未輸入 API Key (將啟用線上字典備援)")
+    st.sidebar.warning("⚠️ 未輸入 API Key (將自動改用線上字典備援)")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -202,7 +202,6 @@ def get_word_record_data(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 1. 優先查閱內部建置的高頻核心字典
     if w_lower in CORE_VOCAB_DICT:
         entry = CORE_VOCAB_DICT[w_lower]
         return {
@@ -211,12 +210,11 @@ def get_word_record_data(word, level="國中部"):
             "advanced_sentence": "", "collocations": f"common {w_clean}"
         }
         
-    # 預設呆板資料 (我們接下來要極力避免用到這個)
-    pos_res, def_res = "n. / v.", "中文釋義待補"
-    sent_res = f"People use {w_clean} in daily life."
+    pos_res, def_res = "n.", "請手動補上中文釋義"
+    sent_res = ""
     ai_success = False
     
-    # 2. 嘗試呼叫 Gemini API (如果失敗，可能是 Rate Limit 或沒填 API Key)
+    # 1. 嘗試使用 Gemini AI
     if HAS_GEMINI and st.session_state.get('gemini_api_key'):
         try:
             genai.configure(api_key=st.session_state.gemini_api_key)
@@ -244,12 +242,11 @@ def get_word_record_data(word, level="國中部"):
                     def_res = simple_s2t_convert(parts[1].strip())
                     sent_res = parts[2].strip().replace('"', '')
                     ai_success = True
-        except Exception as e:
-            # AI 被阻擋或發生例外錯誤，默默進行下一步備援
+        except Exception:
             pass
             
-    # 3. 🌟 終極備援：如果 Gemini 失敗，呼叫線上免費字典 API 抓取真實例句
-    if not ai_success:
+    # 2. 如果 AI 失敗，強制串聯線上免費字典 API 抓取真實外國例句
+    if not ai_success or not sent_res:
         try:
             url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_lower)}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -258,19 +255,25 @@ def get_word_record_data(word, level="國中部"):
                 if isinstance(data, list) and len(data) > 0:
                     meanings = data[0].get("meanings", [])
                     if meanings:
-                        # 抓取詞性
                         pos_res = meanings[0].get("partOfSpeech", "n.") + "."
-                        # 尋找第一個有例句的解釋
                         for m in meanings:
                             for d in m.get("definitions", []):
                                 if "example" in d:
                                     sent_res = d["example"]
-                                    def_res = "請手動補上中文釋義" # 至少給一個提示
                                     break
-                            if "example" in d:
+                            if sent_res:
                                 break
         except Exception:
-            pass # 如果連線上字典都查不到，只能用預設呆板句
+            pass
+            
+    # 3. 絕對保底：如果連線上字典也沒抓到例句，就根據所選級別給予優質的情境句，絕不再用呆板的 People use
+    if not sent_res:
+        if level == "高中部":
+            sent_res = f"Hardly had Cyrus and Emma encountered the word '{w_clean}' before they mastered its advanced usage for the exam."
+        elif level == "多益 (TOEIC)":
+            sent_res = f"The management team reviewed the project report regarding '{w_clean}' during this morning's corporate meeting."
+        else:
+            sent_res = f"Students often learn how to use '{w_clean}' correctly while practicing English reading every day."
             
     return {
         "word": w_clean,
@@ -399,8 +402,7 @@ if main_menu == "✨ 智慧單字新增":
                                             w_data = get_word_record_data(cleaned, level=selected_level)
                                             if upsert_word_to_sheet(w_data, current_unit_tag, active_worksheet):
                                                 total_success_count += 1
-                                            # 🌟 加入限速防呆，避免大批次匯入時 Gemini API 崩潰
-                                            time.sleep(1.5)
+                                            time.sleep(1.2) # 防呆限速
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
                     except Exception:
@@ -422,7 +424,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 AI 智慧修復呆板例句", type="primary", use_container_width=True):
+            if st.button("🔄 強制全面洗刷呆板例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 fixed_count = 0
@@ -435,7 +437,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     r_sent = str(row['basic_sentence']).strip()
                     r_def = str(row['definition']).strip()
                     
-                    # 🌟 擴大抓捕範圍：精準鎖定空白、example sentence、People use 以及 中文釋義待補
+                    # 抓出所有呆板、過時或待補的例句
                     is_bad_sentence = (
                         not r_sent or 
                         "This is an example" in r_sent or 
@@ -444,7 +446,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     )
                     
                     if is_bad_sentence:
-                        status_text.text(f"⏳ 正在呼叫 AI 重寫例句: {r_word} ...")
+                        status_text.text(f"⏳ 正在重新產生優質例句: {r_word} ...")
                         new_data = get_word_record_data(r_word, level=selected_level)
                         
                         update_single_word_in_sheet(
@@ -452,13 +454,12 @@ elif main_menu == "📖 字庫管理與搜尋":
                             row['phonetic'], new_data["part_of_speech"], new_data["definition"], new_data["basic_sentence"], row.get('advanced_sentence',''), row.get('collocations','')
                         )
                         fixed_count += 1
-                        # 🌟 避免批次修復時 Gemini API 崩潰
-                        time.sleep(1.5)
+                        time.sleep(1.2)
                         
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 修復完成！已依照 {selected_level} 難度，為您重新撰寫 {fixed_count} 筆例句。")
+                st.success(f"🎊 洗刷完成！已成功替換 {fixed_count} 筆例句。")
                 time.sleep(1)
                 st.rerun()
 
@@ -675,6 +676,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 with col_btn2:
                     st.button(
                         "⏭️ 略過本題", 
+                        type="primary", 
                         use_container_width=True, 
                         on_click=process_answer, 
                         kwargs={"is_skip": True}
