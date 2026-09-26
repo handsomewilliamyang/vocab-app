@@ -200,7 +200,7 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 4.【動詞動作系列】(確保動詞語法正確，絕對不套用名詞樣板)
+    # 4.【動詞動作系列】
     elif any(k in d_clean for k in ["吃", "喝", "做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教", "去", "來", "幫助", "使用", "打破", "裂"]):
         templates = [
             f"It is essential to learn how to {w_clean} effectively in real-world situations.",
@@ -271,7 +271,7 @@ def generate_dynamic_single_sentence(word, definition):
         templates = [
             f"It was a truly {w_clean} moment that everyone in the room will always remember.",
             f"She approached the challenge with a remarkably {w_clean} perspective.",
-            f}Finding a reliable solution to this issue proved to be quite {w_clean}."
+            f"Finding a reliable solution to this issue proved to be quite {w_clean}."
         ]
         return random.choice(templates)
         
