@@ -818,7 +818,7 @@ elif main_menu == "🎮 我是拼字王":
     if df_vocab.empty:
         st.warning("📭 目前沒有足夠的單字來進行遊戲！")
     else:
-        game_mode = st.radio("選擇遊戲模式：", ["🎮 標準模式 (中文提示 + 發音)", "🎮 進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
+        game_mode = st.radio("選擇遊戲模式：🎮", ["標準模式 (中文提示 + 發音)", "進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
         st.markdown("---")
         
         unit_list_game = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
@@ -875,7 +875,7 @@ elif main_menu == "🎮 我是拼字王":
                 st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
                 
                 with st.container(border=True):
-                    if game_mode.startswith("🎮 標準"):
+                    if game_mode.startswith("標準"):
                         st.markdown(f"<h2 style='color: #4CAF50;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         
