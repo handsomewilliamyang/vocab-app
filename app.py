@@ -22,14 +22,14 @@ except ImportError:
     HAS_GEMINI = False
 
 st.set_page_config(
-    page_title="我愛背單字 (智慧動態字庫版)",
+    page_title="我愛背單字 (雲端穩定同步版)",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # -------------------------------------------------------------------------
-# 0. 台灣 7000 單與國高中基礎核心字典庫 (含豐富常用單字與完美例句)
+# 0. 高品質核心離線字典庫 (涵蓋國中、高中及多益常用單字)
 # -------------------------------------------------------------------------
 CORE_VOCAB_DICT = {
     "eat": {"pos": "v.", "def": "吃", "sentence": "I like to eat fresh fruit and vegetables every day."},
@@ -201,7 +201,6 @@ def get_word_record_data(word):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 1. 優先查閱核心字庫
     if w_lower in CORE_VOCAB_DICT:
         entry = CORE_VOCAB_DICT[w_lower]
         return {
@@ -214,9 +213,8 @@ def get_word_record_data(word):
             "collocations": f"common {w_clean}"
         }
         
-    # 2. 若不在字典中，利用智慧動態產生優質例句，絕不使用呆板範本
     pos_res, def_res = "n. / v.", "中文釋義待補"
-    sent_res = f"We often use the word '{w_clean}' when talking about daily life."
+    sent_res = f"People use {w_clean} in daily life."
     
     if HAS_GEMINI and st.session_state.get('gemini_api_key'):
         try:
@@ -295,7 +293,7 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-st.title("📚 我愛背單字 (智慧動態字庫與雲端同步版)")
+st.title("📚 我愛背單字 (雲端穩定同步版)")
 
 df_vocab = get_vocab_from_sheets(active_worksheet)
 total_words = len(df_vocab)
@@ -381,37 +379,34 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 一鍵智慧升級所有呆板例句", type="primary", use_container_width=True):
+            # 安全修復按鈕：只修復「空白」或「呆板預設字串」的例句，絕對不碰您原本正常的例句！
+            if st.button("🔄 安全修復空白或呆板例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                updated_count = 0
+                fixed_count = 0
                 
                 for idx, row in df_vocab.iterrows():
                     r_word = str(row['word']).strip()
                     w_lower = r_word.lower()
-                    r_sent = str(row['basic_sentence'])
+                    r_sent = str(row['basic_sentence']).strip()
                     
-                    # 只要發現例句含有呆板的 This is an example 或包含亂碼，就透過字庫或智慧生成修復
-                    if "This is an example" in r_sent or "%s" in r_sent or not r_sent:
-                        status_text.text(f"⏳ 正在升級例句: {r_word} ...")
-                        
-                        # 檢查核心字庫
+                    # 嚴格判斷：只有當例句是空白、或包含呆板預設字串時才進行修復
+                    is_bad_sentence = (not r_sent or "This is an example" in r_sent or "%s" in r_sent)
+                    
+                    if is_bad_sentence:
                         if w_lower in CORE_VOCAB_DICT:
                             entry = CORE_VOCAB_DICT[w_lower]
-                            new_pos, new_def, new_sent = entry["pos"], entry["def"], entry["sentence"]
-                        else:
-                            new_pos, new_def = row['part_of_speech'], row['definition']
-                            new_sent = f"We often use the word '{r_word}' when talking about daily life."
-                            
-                        update_single_word_in_sheet(
-                            active_worksheet, r_word, r_word, 
-                            row['phonetic'], new_pos, new_def, new_sent, row.get('advanced_sentence',''), row.get('collocations','')
-                        )
-                        updated_count += 1
+                            status_text.text(f"⏳ 正在修復: {r_word} ...")
+                            update_single_word_in_sheet(
+                                active_worksheet, r_word, r_word, 
+                                row['phonetic'], entry["pos"], entry["def"], entry["sentence"], row.get('advanced_sentence',''), row.get('collocations','')
+                            )
+                            fixed_count += 1
+                    
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 修復完成！已成功升級 {updated_count} 筆單字的例句。")
+                st.success(f"🎊 修復完成！已成功幫您補齊 {fixed_count} 筆原本空白或呆板的例句（原本正常的例句已完美保留）。")
                 time.sleep(1)
                 st.rerun()
 
@@ -493,7 +488,7 @@ elif main_menu == "🎯 沉浸式閃卡複習":
         if c1.button("⬅️ 上一個", use_container_width=True):
             st.session_state.flashcard_index = (st.session_state.flashcard_index - 1) % total_count
             st.rerun()
-        if c2.button("➡️ 下今年", use_container_width=True):
+        if c2.button("➡️ 下一個", use_container_width=True):
             st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
             st.rerun()
 
