@@ -74,7 +74,7 @@ CORE_VOCAB_DICT = {
     "color": {"pos": "n. / v.", "def": "色彩；顏色", "sentence": "What is your favorite color?"},
     "hungry": {"pos": "adj.", "def": "飢餓的", "sentence": "I missed lunch, so I am very hungry now."},
     "cookie": {"pos": "n.", "def": "餅乾", "sentence": "She baked a batch of chocolate chip cookies."},
-    "dining room": {"pos": "n.", "def": "餐厅", "sentence": "The family gathered in the dining room for dinner."},
+    "dining room": {"pos": "n.", "def": "餐廳", "sentence": "The family gathered in the dining room for dinner."},
     "crazy": {"pos": "adj.", "def": "瘋狂的", "sentence": "He is crazy about playing video games after school."},
     "diet": {"pos": "n. / v.", "def": "飲食；節食", "sentence": "A balanced diet is important for our health."},
     "habit": {"pos": "n.", "def": "習慣", "sentence": "Reading before bed is a very good habit."},
@@ -491,17 +491,17 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_filtered_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            # 1. 初始化遊戲狀態與隨機題庫 (保證不重複)
+            # 1. 補上最關鍵的 st.session_state.game_started = True 避免進度無限重置
             if "game_started" not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
+                st.session_state.game_started = True
                 st.session_state.current_game_unit = selected_game_unit
-                # df.sample(frac=1) 已經將題目完全打亂，按照順序拿取保證絕對不會出現重複單字！
+                # sample(frac=1) 已將題目徹底打亂，按照順序拿取保證絕對不重複
                 st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
                 st.session_state.last_feedback = None
                 
-                # 初始化綁定文字框的狀態變數，用來觸發自動清空
                 if "user_spelling_input" not in st.session_state:
                     st.session_state.user_spelling_input = ""
 
@@ -539,7 +539,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 # 關鍵：進入下一題
                 st.session_state.game_index += 1
-                # 終極解法：強制把綁定的輸入框變數清空，畫面更新時保證變為空字串！
+                # 強制把綁定的輸入框變數清空，畫面更新時保證變為空字串！
                 st.session_state.user_spelling_input = ""
 
             # 3. 檢查是否測驗結束
@@ -597,7 +597,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     else:
                         st.error(fb["msg"])
                         
-                # ===== 新增：顯眼的錯題計數器 =====
+                # 顯眼的錯題計數器
                 current_wrong_count = len(st.session_state.wrong_answers)
                 if current_wrong_count > 0:
                     st.markdown(f"<h4 style='color: #E53935;'>🛑 目前累積錯題數：{current_wrong_count} 題</h4>", unsafe_allow_html=True)
@@ -605,9 +605,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     st.markdown(f"<h4 style='color: #757575;'>🛑 目前累積錯題數：0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
                 st.markdown("---")
 
-                # ===== 終極 Callbacks 設計 =====
-                # 這裡直接用 key 綁定 st.session_state.user_spelling_input
-                # 當使用者在框內按下 Enter 時，會觸發 on_change 執行 process_answer
+                # Callbacks 設計
                 st.text_input(
                     "📝 請輸入您的拼寫答案 (輸入完畢可直接按 Enter 送出)：", 
                     key="user_spelling_input",
@@ -617,7 +615,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
-                    # 按鈕點擊時，也會觸發 on_click 執行 process_answer
                     st.button(
                         "🚀 送出答案", 
                         type="primary", 
