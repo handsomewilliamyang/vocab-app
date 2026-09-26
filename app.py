@@ -56,10 +56,10 @@ if user_api_key:
     st.session_state.gemini_api_key = user_api_key
     if HAS_GEMINI:
         genai.configure(api_key=user_api_key)
-    st.sidebar.success("✅ AI 字典引擎已啟用（將為您自動生成高畫質道地例句）")
+    st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將透過智慧語意規則生成自然例句")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用動態語法例句引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -133,31 +133,27 @@ def simple_s2t_convert(text):
     return text
 
 def generate_smart_sentence(word, definition):
-    w_lower = word.lower()
-    # 針對常見方位的智慧例句生成
-    if "between" in w_lower:
-        return "The bank is located between the post office and the bookstore."
-    elif "in front of" in w_lower:
-        return "There is a big playground right in front of our school."
-    elif "behind" in w_lower:
-        return "The cat is hiding quietly behind the sofa."
-    elif "kitchen" in w_lower:
-        return "My mother is preparing delicious dinner in the kitchen."
-    elif "living room" in w_lower:
-        return "Our family likes to watch movies together in the living room."
-    elif "each other" in w_lower:
-        return "Good friends should always support and help each other."
-    elif "house" in w_lower:
-        return "They live in a cozy little house surrounded by green trees."
-    elif "marker" in w_lower:
-        return "He used a red marker to highlight the important notes."
-    elif "brush" in w_lower:
-        return "Make sure to brush your teeth before going to bed."
-    elif "crack" in w_lower:
-        return "A small crack appeared on the surface of the glass."
+    w_clean = word.strip()
+    w_lower = w_clean.lower()
     
-    # 預設自然例句
-    return f"We can easily observe {word} in our daily life and study."
+    # 動態智慧語法拼裝：根據單字特性與詞性自動套用正確且自然的英文句型
+    if w_lower in ["maybe", "perhaps", "actually", "usually", "always", "often", "sometimes"]:
+        return f"{w_clean.capitalize()} we can try a different approach to solve this problem."
+    elif w_lower in ["but", "however", "although", "because", "if", "when"]:
+        return f"I wanted to finish the work on time, {w_lower} unexpected issues came up."
+    elif w_lower in ["between", "above", "behind", "under", "in front of", "beside", "near"]:
+        return f"The new building is located right {w_lower} the central park."
+    elif w_lower.endswith("ly"):
+        return f"She managed to complete the difficult task very {w_clean}."
+    elif w_lower.endswith("ing"):
+        return f"Doing {w_lower} requires a lot of patience and daily practice."
+    elif w_lower in ["person", "people", "someone", "anyone", "nobody"]:
+        return f"He is such a kind and helpful {w_clean} in our community."
+    elif w_lower in ["house", "home", "school", "office", "kitchen", "room"]:
+        return f"They spend most of their time cleaning up the {w_lower}."
+    
+    # 通用自然句型
+    return f"We use the word '{w_clean}' to express '{definition}' in daily conversations."
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
@@ -165,7 +161,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 若有填寫 API Key，優先透過 AI 產生高水準例句與音標
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
@@ -199,7 +194,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
             except Exception:
                 time.sleep(1)
             
-    # 無 API Key 時的智慧邏輯生成
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower.replace(' ', '')}/",
@@ -412,7 +406,7 @@ if main_menu == "✨ 智慧單字新增":
                     status_ui.markdown("🔄 **正在將所有資料同步至 Google Sheets，請稍候...**")
                     save_all_vocab_to_sheet(active_worksheet, df_current)
                     
-                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字與道地例句。")
+                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字與動態例句。")
                     time.sleep(2)
                     st.rerun()
                 else:
@@ -438,8 +432,8 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 試算表例句與資料修復專區")
-            st.warning("點擊下方按鈕，系統會為所有舊資料重新生成真實道地的例句，並且**100% 絕對完整保護與保留原有的 unit_tag 與中文解釋**：")
+            st.markdown("#### 🚨 試算表例句與動態修復專區")
+            st.warning("點擊下方按鈕，系統會為所有舊資料重新透過動態語法拼裝生成自然例句，並且**100% 絕對完整保護與保留原有的 unit_tag 與中文解釋**：")
             if st.button("🧹 一鍵修復並更新雲端例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -451,10 +445,10 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在為單字生成道地例句 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在為單字生成動態例句 ({fixed_count+1}/{total_fix}): {w}")
                     
                     current_sent = str(row.get('basic_sentence', ''))
-                    if not current_sent or "She knows how to use" in current_sent:
+                    if not current_sent or "We can easily observe" in current_sent:
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
@@ -463,7 +457,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     time.sleep(0.01)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成例句修復與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成例句動態修復與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
