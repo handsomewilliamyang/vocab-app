@@ -270,7 +270,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 1. 先連結外部免費電子字典
     real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
     
     final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
@@ -278,7 +277,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     final_phonetic = fetched_phonetic if fetched_phonetic else f"/{w_lower.replace(' ', '')}/"
     final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else "n."
 
-    # 2. 若外部字典缺漏，再聯動 AI 進行補齊
     if (not final_eng_def or is_bad_example_sentence(final_sentence, w_clean)) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
@@ -430,8 +428,34 @@ if main_menu == "✨ 新增單字":
                     st.rerun()
 
     with col_input2:
-        st.subheader("📂 多格式檔案智慧匯入 (Word / PDF / 照片)")
+        st.subheader("📂 多格式檔案智慧匯入")
+        
+        # 顯示即時單字新增與檔案掃描狀態面板
+        with st.container(border=True):
+            st.markdown(f"**📌 目前目標分類：** `{current_unit_tag}`")
+            st.markdown(f"**📊 雲端現有總單字數：** `{total_words} 個單字`")
+            
         uploaded_files = st.file_uploader("上傳 Word、PDF 講義或單字照片", type=["docx", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True)
+        
+        # 即時計算並顯示上傳檔案中掃描到的單字數量預覽
+        preview_extracted_count = 0
+        if uploaded_files:
+            for uf in uploaded_files:
+                fn = uf.name.lower()
+                if fn.endswith(".docx"):
+                    try:
+                        temp_p = f"temp_prev_{uf.name}"
+                        with open(temp_p, "wb") as f: f.write(uf.getbuffer())
+                        doc = docx.Document(temp_p)
+                        for t in doc.tables:
+                            for r in t.rows:
+                                if len(r.cells) >= 2: preview_extracted_count += 1
+                        if os.path.exists(temp_p): os.remove(temp_p)
+                    except: pass
+                elif fn.endswith((".pdf", ".png", ".jpg", ".jpeg")):
+                    preview_extracted_count += 1
+            st.info(f"📊 目前已上傳 `{len(uploaded_files)}` 個檔案，預計可掃描到約 **{preview_extracted_count}** 個單字項目。")
+
         if uploaded_files:
             if st.button("📖 批次解析檔案並匯入", use_container_width=True):
                 extracted_data_list = []
@@ -507,6 +531,8 @@ if main_menu == "✨ 新增單字":
                                 pass
                 
                 total_words_to_process = len(extracted_data_list)
+                st.success(f"🎯 實際成功掃描並萃取出 **{total_words_to_process}** 個有效單字！")
+                
                 if total_words_to_process > 0:
                     progress_bar = st.progress(0)
                     df_current = load_vocab_dataframe(active_worksheet)
@@ -545,7 +571,7 @@ if main_menu == "✨ 新增單字":
                         progress_bar.progress((i + 1) / total_words_to_process)
                         
                     save_all_vocab_to_sheet(active_worksheet, df_current)
-                    st.success(f"🎊 檔案解析與匯入完成！成功辨識並寫入 {total_success_count} 個單字。")
+                    st.success(f"🎊 檔案解析與匯入完成！成功寫入 {total_success_count} 個單字至雲端。")
                     time.sleep(1.5)
                     st.rerun()
                 else:
