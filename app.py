@@ -59,7 +59,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用動態語法例句引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用全面擴展的智慧句型引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -136,24 +136,32 @@ def generate_smart_sentence(word, definition):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 動態智慧語法拼裝：根據單字特性與詞性自動套用正確且自然的英文句型
+    # 擴展後的智慧語法拼裝引擎：針對各類生活主題自動匹配道地例句
     if w_lower in ["maybe", "perhaps", "actually", "usually", "always", "often", "sometimes"]:
         return f"{w_clean.capitalize()} we can try a different approach to solve this problem."
     elif w_lower in ["but", "however", "although", "because", "if", "when"]:
         return f"I wanted to finish the work on time, {w_lower} unexpected issues came up."
     elif w_lower in ["between", "above", "behind", "under", "in front of", "beside", "near"]:
         return f"The new building is located right {w_lower} the central park."
+    elif w_lower in ["table", "desk", "chair", "sofa", "bed", "door", "window", "lamp"]:
+        return f"There is a clean and tidy {w_clean} placed in the corner of the room."
+    elif w_lower in ["brown", "gray", "black", "white", "red", "blue", "green", "yellow"]:
+        return f"My favorite style is decorated with a touch of {w_clean}."
+    elif w_lower in ["parents", "mother", "father", "brother", "sister", "family", "friend"]:
+        return f"My {w_clean} always support me and give me good advice."
+    elif w_lower in ["bathroom", "kitchen", "bedroom", "living room", "house", "school", "office"]:
+        return f"We spend a lot of time cleaning and organizing the {w_clean}."
+    elif w_lower in ["favorite", "best", "great", "nice", "good", "wonderful", "special"]:
+        return f"This is definitely one of my {w_clean} choices for today."
+    elif w_lower in ["i think so", "i hope so", "sure", "of course"]:
+        return f"A: Is everything ready? B: {w_clean}!"
     elif w_lower.endswith("ly"):
         return f"She managed to complete the difficult task very {w_clean}."
     elif w_lower.endswith("ing"):
         return f"Doing {w_lower} requires a lot of patience and daily practice."
-    elif w_lower in ["person", "people", "someone", "anyone", "nobody"]:
-        return f"He is such a kind and helpful {w_clean} in our community."
-    elif w_lower in ["house", "home", "school", "office", "kitchen", "room"]:
-        return f"They spend most of their time cleaning up the {w_lower}."
     
-    # 通用自然句型
-    return f"We use the word '{w_clean}' to express '{definition}' in daily conversations."
+    # 道地通用生活句型（不再出現機械式說明）
+    return f"It is very important for us to learn how to use '{w_clean}' correctly in daily conversations."
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
@@ -311,7 +319,7 @@ if main_menu == "✨ 智慧單字新增":
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 extracted_data_list = []
                 
-                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動對應英文、中文與例句生成）..."):
+                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動對應英文、中文與擴展例句生成）..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -406,7 +414,7 @@ if main_menu == "✨ 智慧單字新增":
                     status_ui.markdown("🔄 **正在將所有資料同步至 Google Sheets，請稍候...**")
                     save_all_vocab_to_sheet(active_worksheet, df_current)
                     
-                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字與動態例句。")
+                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字與擴展道地例句。")
                     time.sleep(2)
                     st.rerun()
                 else:
@@ -432,9 +440,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 試算表例句與動態修復專區")
-            st.warning("點擊下方按鈕，系統會為所有舊資料重新透過動態語法拼裝生成自然例句，並且**100% 絕對完整保護與保留原有的 unit_tag 與中文解釋**：")
-            if st.button("🧹 一鍵修復並更新雲端例句", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 試算表例句擴展與一鍵修復專區")
+            st.warning("點擊下方按鈕，系統會為所有舊資料重新透過擴展智慧句型引擎生成自然道地的例句，並且**100% 絕對完整保護與保留原有的 unit_tag 與中文解釋**：")
+            if st.button("🧹 一鍵升級並更新雲端例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -445,10 +453,10 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在為單字生成動態例句 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在升級單字例句 ({fixed_count+1}/{total_fix}): {w}")
                     
                     current_sent = str(row.get('basic_sentence', ''))
-                    if not current_sent or "We can easily observe" in current_sent:
+                    if not current_sent or "We use the word" in current_sent or "We can easily observe" in current_sent:
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
@@ -457,7 +465,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     time.sleep(0.01)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成例句動態修復與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成例句全面升級與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
@@ -591,7 +599,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     if user_ans == target_word.lower():
                         st.session_state.last_feedback = {
                             "type": "success", 
-                            "msg": f"🎉 上題答對了！就是 `{target_word}`"
+                            "msg": f"🎉 上題答對了!就是 `{target_word}`"
                         }
                     else:
                         if current_item not in st.session_state.wrong_answers:
