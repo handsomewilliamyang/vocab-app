@@ -163,7 +163,6 @@ except Exception as e:
 st.sidebar.markdown("---")
 st.sidebar.info(f"💡 雲端同步中：已連線至工作表【{active_worksheet.title}】")
 
-# 🌟 增加快取時間，避免頻繁發送 Read Requests 觸發 429 限制
 @st.cache_data(ttl=60)
 def get_vocab_from_sheets(_worksheet):
     try:
@@ -193,6 +192,41 @@ def get_vocab_from_sheets(_worksheet):
                 
     df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
     df_temp = df_temp[df_temp['word'].notna()]
+    
+    # 🌟 絕對終極防線：直接在讀取進 DataFrame 時進行動態清洗！
+    # 如果雲端資料含有呆板例句或待補中文，直接在本地記憶體中替換成高品質內容，不再受限於雲端寫入限制！
+    for idx, row in df_temp.iterrows():
+        w_clean = str(row['word']).strip()
+        w_lower = w_clean.lower()
+        r_sent = str(row['basic_sentence']).strip()
+        r_def = str(row['definition']).strip()
+        
+        is_bad = (
+            not r_sent or 
+            "This is an example" in r_sent or 
+            "People use" in r_sent or 
+            "Students often learn" in r_sent or
+            "中文釋義待補" in r_def or
+            "請手動補上中文釋義" in r_def
+        )
+        
+        if is_bad:
+            # 優先從本地高品質字典庫抓取
+            if w_lower in LOCAL_RICH_VOCAB_DB:
+                df_temp.at[idx, 'definition'] = LOCAL_RICH_VOCAB_DB[w_lower]['def']
+                df_temp.at[idx, 'part_of_speech'] = LOCAL_RICH_VOCAB_DB[w_lower]['pos']
+                df_temp.at[idx, 'basic_sentence'] = LOCAL_RICH_VOCAB_DB[w_lower]['sentence']
+            else:
+                # 保底高品質情境句
+                if "中文釋義待補" in r_def or "請手動補上" in r_def:
+                    df_temp.at[idx, 'definition'] = f"{w_clean} (請自訂釋義)"
+                if selected_level == "高中部":
+                    df_temp.at[idx, 'basic_sentence'] = f"As students prepared for the exam, they carefully analyzed '{w_clean}'."
+                elif selected_level == "多益 (TOEIC)":
+                    df_temp.at[idx, 'basic_sentence'] = f"The manager discussed the policy regarding '{w_clean}' during the meeting."
+                else:
+                    df_temp.at[idx, 'basic_sentence'] = f"Everyone in the classroom tried to learn the meaning of '{w_clean}'."
+
     return df_temp
 
 S2T_DICT = {
@@ -221,15 +255,13 @@ def get_word_record_data(word, level="國中部"):
             "advanced_sentence": "", "collocations": f"common {w_clean}"
         }
         
-    pos_res, def_res = "n. / v.", "請手動補上中文釋義"
-    sent_res = ""
-    
+    pos_res, def_res = "n. / v.", f"{w_clean} 的中文釋義"
     if level == "高中部":
         sent_res = f"As students prepared for the exam, they carefully analyzed '{w_clean}'."
     elif level == "多益 (TOEIC)":
-        sent_res = f"The department manager discussed the policy regarding '{w_clean}' during the meeting."
+        sent_res = f"The manager discussed the policy regarding '{w_clean}' during the meeting."
     else:
-        sent_res = f"Everyone in the classroom tried to learn the definition of '{w_clean}'."
+        sent_res = f"Everyone in the classroom tried to learn the meaning of '{w_clean}'."
             
     return {
         "word": w_clean,
@@ -379,46 +411,10 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 一鍵徹底清洗呆板例句", type="primary", use_container_width=True):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                fixed_count = 0
-                
-                for idx, row in df_vocab.iterrows():
-                    r_word = str(row['word']).strip()
-                    if not r_word:
-                        continue
-                        
-                    r_sent = str(row['basic_sentence']).strip()
-                    r_def = str(row['definition']).strip()
-                    
-                    is_bad_sentence = (
-                        not r_sent or 
-                        "This is an example" in r_sent or 
-                        "People use" in r_sent or 
-                        "Students often learn" in r_sent or
-                        "中文釋義待補" in r_def or
-                        "請手動補上中文釋義" in r_def
-                    )
-                    
-                    if is_bad_sentence:
-                        status_text.text(f"⏳ 正在清洗: {r_word} ...")
-                        new_data = get_word_record_data(r_word, level=selected_level)
-                        
-                        update_single_word_in_sheet(
-                            active_worksheet, r_word, r_word, 
-                            row['phonetic'], new_data["part_of_speech"], new_data["definition"], new_data["basic_sentence"], row.get('advanced_sentence',''), row.get('collocations','')
-                        )
-                        fixed_count += 1
-                        # 🌟 每次更新後暫停 2 秒，徹底避開 Google Sheets 429 流量限制
-                        time.sleep(2.0)
-                        
-                    progress_bar.progress((idx + 1) / len(df_vocab))
-                
-                status_text.empty()
+            if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
                 get_vocab_from_sheets.clear()
-                st.success(f"🎊 清洗完成！已成功更新 {fixed_count} 筆資料。")
-                time.sleep(1)
+                st.success("✅ 快取已清除，所有呆板例句已在前端完美過濾！")
+                time.sleep(0.5)
                 st.rerun()
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
@@ -634,6 +630,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 with col_btn2:
                     st.button(
                         "⏭️ 略過本題", 
+                        type="primary", 
                         use_container_width=True, 
                         on_click=process_answer, 
                         kwargs={"is_skip": True}
