@@ -123,7 +123,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.warning("⚠️ 未輸入 API Key")
+    st.sidebar.warning("⚠️ 未輸入 API Key (將啟用線上字典備援)")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -139,13 +139,11 @@ level_sheet_mapping = {
 }
 current_sheet_name = level_sheet_mapping.get(selected_level, "國中部")
 
-# 🌟 新增的防呆連線機制：找不到就抓第一個分頁
 try:
     spreadsheet = gs_client.open_by_url(SHEET_URL)
     try:
         active_worksheet = spreadsheet.worksheet(current_sheet_name)
     except Exception:
-        # 如果找不到指定名稱的工作表，直接強制抓取左邊第一個分頁，避免系統崩潰
         active_worksheet = spreadsheet.get_worksheet(0)
         st.sidebar.warning(f"⚠️ 找不到名為「{current_sheet_name}」的分頁，已自動為您切換至：「{active_worksheet.title}」")
 except Exception as e:
@@ -182,10 +180,8 @@ def get_vocab_from_sheets(_worksheet):
             else:
                 df_temp[col] = ""
                 
-    # 🌟 徹底過濾掉 word 欄位空白或 NaN 的無效列
     df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
     df_temp = df_temp[df_temp['word'].notna()]
-    
     return df_temp
 
 S2T_DICT = {
@@ -206,54 +202,75 @@ def get_word_record_data(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
+    # 1. 優先查閱內部建置的高頻核心字典
     if w_lower in CORE_VOCAB_DICT:
         entry = CORE_VOCAB_DICT[w_lower]
         return {
-            "word": w_clean,
-            "phonetic": f"/{w_lower}/",
-            "part_of_speech": entry["pos"],
-            "definition": entry["def"],
-            "basic_sentence": entry["sentence"],
-            "advanced_sentence": "",
-            "collocations": f"common {w_clean}"
+            "word": w_clean, "phonetic": f"/{w_lower}/", "part_of_speech": entry["pos"],
+            "definition": entry["def"], "basic_sentence": entry["sentence"],
+            "advanced_sentence": "", "collocations": f"common {w_clean}"
         }
         
+    # 預設呆板資料 (我們接下來要極力避免用到這個)
     pos_res, def_res = "n. / v.", "中文釋義待補"
     sent_res = f"People use {w_clean} in daily life."
+    ai_success = False
     
+    # 2. 嘗試呼叫 Gemini API (如果失敗，可能是 Rate Limit 或沒填 API Key)
     if HAS_GEMINI and st.session_state.get('gemini_api_key'):
         try:
             genai.configure(api_key=st.session_state.gemini_api_key)
             model = genai.GenerativeModel('gemini-1.5-flash')
             
-            # 🌟 針對不同級別動態設計專屬的 AI Prompt，融入特定文法與情境
             if level == "高中部":
-                grammar_rules = "The sentence MUST clearly demonstrate advanced high school English grammar such as Inversion (倒裝句), a Tag Question (附加問句), or a Perfect Tense (完成式)."
-                context_rules = "Make the context highly relatable to students (e.g., mention names like Cyrus, Emma, or Hank) who are studying hard for exams, managing academic stress, or aiming for top schools like Wuling High School (武陵高中)."
+                grammar = "Must use Inversion, Tag Question, or Perfect Tense."
+                context = "Relatable to high school students preparing for exams."
             elif level == "多益 (TOEIC)":
-                grammar_rules = "Use clear, professional business grammar suitable for the TOEIC exam."
-                context_rules = "The context must revolve around international business, corporate emails, project management, client meetings, or professional networking."
+                grammar = "Professional business grammar."
+                context = "Business emails, projects, or meetings."
             else:
-                grammar_rules = "Use natural, straightforward, and grammatically correct everyday English."
-                context_rules = "The context should be simple daily life, hobbies, school activities, or general conversations."
+                grammar = "Everyday grammar."
+                context = "Simple daily life."
                 
-            prompt = f"""
-            You are an expert English educator. Provide the part of speech and Traditional Chinese definition for the word '{w_clean}'.
-            Then, write ONE highly contextual example sentence based on the following rules:
-            {grammar_rules}
-            {context_rules}
-            Format strictly as: POS|||DEF|||SENTENCE
-            """
+            prompt = f"Word: '{w_clean}'. Provide exactly three elements separated by '|||'. 1. Part of speech 2. Traditional Chinese definition 3. Example sentence ({grammar} {context}). Format strictly: POS|||DEF|||SENTENCE"
             
             response = model.generate_content(prompt)
-            if response.text and "|||" in response.text:
-                parts = response.text.strip().split("|||")
+            res_text = response.text.replace('\n', '').strip()
+            
+            if "|||" in res_text:
+                parts = res_text.split("|||")
                 if len(parts) >= 3:
                     pos_res = parts[0].strip()
                     def_res = simple_s2t_convert(parts[1].strip())
                     sent_res = parts[2].strip().replace('"', '')
+                    ai_success = True
         except Exception as e:
+            # AI 被阻擋或發生例外錯誤，默默進行下一步備援
             pass
+            
+    # 3. 🌟 終極備援：如果 Gemini 失敗，呼叫線上免費字典 API 抓取真實例句
+    if not ai_success:
+        try:
+            url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_lower)}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                data = json.loads(response.read().decode())
+                if isinstance(data, list) and len(data) > 0:
+                    meanings = data[0].get("meanings", [])
+                    if meanings:
+                        # 抓取詞性
+                        pos_res = meanings[0].get("partOfSpeech", "n.") + "."
+                        # 尋找第一個有例句的解釋
+                        for m in meanings:
+                            for d in m.get("definitions", []):
+                                if "example" in d:
+                                    sent_res = d["example"]
+                                    def_res = "請手動補上中文釋義" # 至少給一個提示
+                                    break
+                            if "example" in d:
+                                break
+        except Exception:
+            pass # 如果連線上字典都查不到，只能用預設呆板句
             
     return {
         "word": w_clean,
@@ -353,7 +370,6 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 寫入雲端單字庫", type="primary", use_container_width=True):
             if single_word:
-                # 傳遞當前所選級別，確保生成的例句符合程度
                 data = get_word_record_data(single_word, level=selected_level)
                 if upsert_word_to_sheet(data, current_unit_tag, active_worksheet):
                     st.success(f"🎉 成功新增單字：{single_word}")
@@ -383,6 +399,8 @@ if main_menu == "✨ 智慧單字新增":
                                             w_data = get_word_record_data(cleaned, level=selected_level)
                                             if upsert_word_to_sheet(w_data, current_unit_tag, active_worksheet):
                                                 total_success_count += 1
+                                            # 🌟 加入限速防呆，避免大批次匯入時 Gemini API 崩潰
+                                            time.sleep(1.5)
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
                     except Exception:
@@ -414,16 +432,19 @@ elif main_menu == "📖 字庫管理與搜尋":
                     if not r_word:
                         continue
                         
-                    w_lower = r_word.lower()
                     r_sent = str(row['basic_sentence']).strip()
+                    r_def = str(row['definition']).strip()
                     
-                    # 精準鎖定空白，或是含有 "example sentence" 這類無意義的機器翻譯
-                    is_bad_sentence = (not r_sent or "This is an example" in r_sent or "%s" in r_sent)
+                    # 🌟 擴大抓捕範圍：精準鎖定空白、example sentence、People use 以及 中文釋義待補
+                    is_bad_sentence = (
+                        not r_sent or 
+                        "This is an example" in r_sent or 
+                        "People use" in r_sent or 
+                        "中文釋義待補" in r_def
+                    )
                     
                     if is_bad_sentence:
-                        status_text.text(f"⏳ 正在呼叫 AI 重新撰寫 [{selected_level}] 程度的例句: {r_word} ...")
-                        
-                        # 呼叫升級版函數，並傳入當前級別
+                        status_text.text(f"⏳ 正在呼叫 AI 重寫例句: {r_word} ...")
                         new_data = get_word_record_data(r_word, level=selected_level)
                         
                         update_single_word_in_sheet(
@@ -431,6 +452,8 @@ elif main_menu == "📖 字庫管理與搜尋":
                             row['phonetic'], new_data["part_of_speech"], new_data["definition"], new_data["basic_sentence"], row.get('advanced_sentence',''), row.get('collocations','')
                         )
                         fixed_count += 1
+                        # 🌟 避免批次修復時 Gemini API 崩潰
+                        time.sleep(1.5)
                         
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
