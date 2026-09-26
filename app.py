@@ -139,14 +139,21 @@ level_sheet_mapping = {
 }
 current_sheet_name = level_sheet_mapping.get(selected_level, "國中部")
 
+# 🌟 新增的防呆連線機制：找不到就抓第一個分頁
 try:
-    active_worksheet = gs_client.open_by_url(SHEET_URL).worksheet(current_sheet_name)
+    spreadsheet = gs_client.open_by_url(SHEET_URL)
+    try:
+        active_worksheet = spreadsheet.worksheet(current_sheet_name)
+    except Exception:
+        # 如果找不到指定名稱的工作表，直接強制抓取左邊第一個分頁，避免系統崩潰
+        active_worksheet = spreadsheet.get_worksheet(0)
+        st.sidebar.warning(f"⚠️ 找不到名為「{current_sheet_name}」的分頁，已自動為您切換至：「{active_worksheet.title}」")
 except Exception as e:
-    st.error(f"⚠️ 找不到名為「{current_sheet_name}」的工作表。")
+    st.error(f"⚠️ Google Sheets 讀取失敗，請檢查權限或試算表網址。詳細錯誤：{e}")
     st.stop()
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"💡 雲端同步中：已連線至工作表【{current_sheet_name}】")
+st.sidebar.info(f"💡 雲端同步中：已連線至工作表【{active_worksheet.title}】")
 
 @st.cache_data(ttl=2)
 def get_vocab_from_sheets(_worksheet):
@@ -337,7 +344,7 @@ if main_menu == "✨ 智慧單字新增":
         unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
         
     current_unit_tag = f"{semester} > {unit}"
-    st.info(f"📌 即時同步至 Google Sheets 【{current_sheet_name}】分頁：**{current_unit_tag}**")
+    st.info(f"📌 即時同步至 Google Sheets 【{active_worksheet.title}】分頁：**{current_unit_tag}**")
     st.markdown("---")
 
     col_input1, col_input2 = st.columns(2, gap="large")
