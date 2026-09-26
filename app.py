@@ -436,8 +436,6 @@ if main_menu == "✨ 新增單字":
                 with st.spinner("🔍 正在透過多模態與檔案解析器萃取單字..."):
                     for uploaded_file in uploaded_files:
                         file_name = uploaded_file.name.lower()
-                        
-                        # 1. Word 檔案解析
                         if file_name.endswith(".docx"):
                             temp_path = f"temp_{uploaded_file.name}"
                             try:
@@ -461,8 +459,6 @@ if main_menu == "✨ 新增單字":
                                 if os.path.exists(temp_path): os.remove(temp_path)
                             except:
                                 if os.path.exists(temp_path): os.remove(temp_path)
-                                
-                        # 2. PDF 檔案解析
                         elif file_name.endswith(".pdf") and HAS_FITZ:
                             temp_path = f"temp_{uploaded_file.name}"
                             try:
@@ -474,8 +470,6 @@ if main_menu == "✨ 新增單字":
                                     pdf_text += page.get_text() + "\n"
                                 doc.close()
                                 if os.path.exists(temp_path): os.remove(temp_path)
-                                
-                                # 透過 Gemini 將純文字 PDF 結構化萃取
                                 if HAS_GEMINI and st.session_state.get("gemini_api_key"):
                                     genai.configure(api_key=st.session_state["gemini_api_key"])
                                     model = genai.GenerativeModel("gemini-1.5-flash")
@@ -491,8 +485,6 @@ if main_menu == "✨ 新增單字":
                                                     extracted_data_list.append({"word": pi['word'].strip(), "definition": pi['definition'].strip()})
                             except:
                                 if os.path.exists(temp_path): os.remove(temp_path)
-                                
-                        # 3. 照片 / 圖片檔解析 (Gemini Vision)
                         elif file_name.endswith((".png", ".jpg", ".jpeg")) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
                             try:
                                 image_bytes = uploaded_file.getvalue()
@@ -749,7 +741,7 @@ elif main_menu == "🎮 我是拼字王":
     if df_vocab.empty:
         st.warning("📭 目前沒有足夠的單字來進行遊戲！")
     else:
-        game_mode = st.radio("選擇遊戲模式：", ["🎯 標準模式 (中文提示 + 發音)", "🔥 進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
+        game_mode = st.radio("選擇遊戲模式：", ["🎯 標準模式 (中文提示 + 發音)", "🔥 進階挑戰模式 (聽英文解釋拼單字)", "🌟 專家測驗模式 (無提示雙句克漏字 10選1)"], horizontal=True)
         st.markdown("---")
         
         unit_list_game = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
@@ -780,16 +772,18 @@ elif main_menu == "🎮 我是拼字王":
                 total_q = len(st.session_state.game_queue)
                 wrong_q = len(st.session_state.wrong_answers)
                 correct_q = total_q - wrong_q
+                score_pct = int((correct_q / total_q) * 100) if total_q > 0 else 0
                 
-                col_res1, col_res2 = st.columns(2)
+                col_res1, col_res2, col_res3 = st.columns(3)
                 col_res1.metric(label="總題數", value=f"{total_q} 題")
                 col_res2.metric(label="答對題數", value=f"{correct_q} 題")
+                col_res3.metric(label="總成績", value=f"{score_pct} 分")
                 
                 if wrong_q > 0:
                     st.markdown("---")
-                    st.markdown(f"### ❌ 總共錯誤題數：{wrong_q} 題（錯題與英文解釋總複習）：")
+                    st.markdown(f"### ❌ 總共錯誤題數：{wrong_q} 題（錯題總複習）：")
                     for w_item in st.session_state.wrong_answers:
-                        st.markdown(f"- **單字：** `{w_item['word']}` | **中文：** {w_item['definition']} \n  - 📖 **英文解釋：** _{w_item.get('advanced_sentence', '無')}_")
+                        st.markdown(f"- **單字：** `{w_item['word']}` | **中文：** {w_item.get('definition', '無')} \n  - 📖 **英文例句：** _{w_item.get('basic_sentence', '無')}_")
                 else:
                     st.success("🏆 太神啦！全部答對，完美過關！")
 
@@ -801,61 +795,104 @@ elif main_menu == "🎮 我是拼字王":
                 target_word = str(current_item['word']).strip()
                 target_def = str(current_item['definition']).strip() if str(current_item['definition']).strip() else "(尚無中文釋義)"
                 target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or "No English definition provided."
-                hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
+                target_sent = str(current_item.get('basic_sentence', '')).strip() or f"Please learn the word {target_word} carefully."
                 
                 st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
                 
-                with st.container(border=True):
-                    if game_mode.startswith("🎯 標準"):
-                        st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                        audio = generate_audio_bytes(target_word)
-                        try: 
-                            st.audio(audio, format="audio/mp3")
-                        except: 
-                            pass
-                    else:
-                        st.markdown(f"<h2 style='color: #2196F3;'>🔥 進階聽力提示：請聆聽英文解釋並拼出單字</h2>", unsafe_allow_html=True)
-                        st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
-                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                        try:
-                            audio_def = generate_audio_bytes(target_adv_def)
-                            st.audio(audio_def, format="audio/mp3")
-                        except:
-                            pass
-
-                if st.session_state.get("last_feedback"):
-                    fb = st.session_state.last_feedback
-                    if fb["type"] == "success":
-                        st.success(fb["msg"])
-                    else:
-                        st.error(fb["msg"])
+                if game_mode.startswith("🌟 專家"):
+                    # 產生專家模式的 10 個選項（包含正確答案與其他隨機單字，不足10個則取全部）
+                    all_words = df_filtered_game['word'].tolist()
+                    distractors = [w for w in all_words if w.lower() != target_word.lower()]
+                    selected_distractors = random.sample(distractors, min(9, len(distractors)))
+                    options = selected_distractors + [target_word]
+                    random.seed(target_word) # 讓選項順序固定但隨機
+                    random.shuffle(options)
                     
-                    if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
-                        st.session_state.last_feedback = None
-                        st.session_state.game_index += 1
-                        st.rerun()
-                else:
-                    with st.form(key=f"quiz_form_{st.session_state.game_index}"):
-                        user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
+                    # 將例句中的目標單字挖空
+                    masked_sent = re.sub(re.escape(target_word), "_____", target_sent, flags=re.IGNORECASE)
+                    if masked_sent == target_sent: # 如果剛好沒直接包含，組合成兩句雙句
+                        masked_sent = f"This vocabulary test is about '{target_word}'. " + target_sent.replace(target_word, "_____")
+                    
+                    with st.container(border=True):
+                        st.markdown("<h3 style='color: #FF9800;'>🌟 專家測驗模式 (克漏字選填)</h3>", unsafe_allow_html=True)
+                        st.markdown(f"**📖 請根據下方雙句語意，選出正確的填空單字：**")
+                        st.markdown(f"> **{masked_sent}**")
+                        st.markdown(f"> *Hint: {target_adv_def}*")
+
+                    if st.session_state.get("last_feedback"):
+                        fb = st.session_state.last_feedback
+                        if fb["type"] == "success":
+                            st.success(fb["msg"])
+                        else:
+                            st.error(fb["msg"])
                         
-                        col_btn1, col_btn2 = st.columns(2)
-                        with col_btn1:
-                            submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
-                        with col_btn2:
-                            skip_ans = st.form_submit_button("⏭️ 略過本題", use_container_width=True)
+                        if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
+                            st.session_state.last_feedback = None
+                            st.session_state.game_index += 1
+                            st.rerun()
+                    else:
+                        st.markdown("#### 🔘 請選擇正確答案：")
+                        cols = st.columns(2)
+                        for idx, opt in enumerate(options):
+                            col_target = cols[idx % 2]
+                            if col_target.button(f"{idx+1}. {opt}", key=f"expert_opt_{st.session_state.game_index}_{opt}", use_container_width=True):
+                                if opt.lower() == target_word.lower():
+                                    st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
+                                else:
+                                    if current_item not in st.session_state.wrong_answers:
+                                        st.session_state.wrong_answers.append(current_item)
+                                    st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (中文: {target_def})"}
+                                st.rerun()
+                else:
+                    hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
+                    with st.container(border=True):
+                        if game_mode.startswith("🎯 標準"):
+                            st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                            st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
+                            audio = generate_audio_bytes(target_word)
+                            try: st.audio(audio, format="audio/mp3")
+                            except: pass
+                        else:
+                            st.markdown(f"<h2 style='color: #2196F3;'>🔥 進階聽力提示：請聆聽英文解釋並拼出單字</h2>", unsafe_allow_html=True)
+                            st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
+                            st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
+                            try:
+                                audio_def = generate_audio_bytes(target_adv_def)
+                                st.audio(audio_def, format="audio/mp3")
+                            except: pass
+
+                    if st.session_state.get("last_feedback"):
+                        fb = st.session_state.last_feedback
+                        if fb["type"] == "success":
+                            st.success(fb["msg"])
+                        else:
+                            st.error(fb["msg"])
+                        
+                        if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
+                            st.session_state.last_feedback = None
+                            st.session_state.game_index += 1
+                            st.rerun()
+                    else:
+                        with st.form(key=f"quiz_form_{st.session_state.game_index}"):
+                            user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
                             
-                        if submit_ans:
-                            if user_ans == target_word.lower():
-                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
-                            else:
+                            col_btn1, col_btn2 = st.columns(2)
+                            with col_btn1:
+                                submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
+                            with col_btn2:
+                                skip_ans = st.form_submit_button("⏭️ 略過本題", use_container_width=True)
+                                
+                            if submit_ans:
+                                if user_ans == target_word.lower():
+                                    st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
+                                else:
+                                    if current_item not in st.session_state.wrong_answers:
+                                        st.session_state.wrong_answers.append(current_item)
+                                    st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
+                                st.rerun()
+                                
+                            if skip_ans:
                                 if current_item not in st.session_state.wrong_answers:
                                     st.session_state.wrong_answers.append(current_item)
-                                st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
-                            st.rerun()
-                            
-                        if skip_ans:
-                            if current_item not in st.session_state.wrong_answers:
-                                st.session_state.wrong_answers.append(current_item)
-                            st.session_state.last_feedback = {"type": "error", "msg": f"⏩ 已略過。正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
-                            st.rerun()
+                                st.session_state.last_feedback = {"type": "error", "msg": f"⏩ 已略過。正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
+                                st.rerun()
