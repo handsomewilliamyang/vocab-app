@@ -95,43 +95,47 @@ except Exception as e:
 st.sidebar.markdown("---")
 st.sidebar.info("💡 雲端同步中：已連線至工作表【" + active_worksheet.title + "】")
 
-@st.cache_data(ttl=300, show_spinner=False)
-def get_vocab_from_sheets(_worksheet):
-    try:
-        records = _worksheet.get_all_records()
-    except Exception:
-        records = []
-        
-    if not records:
-        all_values = _worksheet.get_all_values()
-        if len(all_values) > 1:
-            headers = [str(h).strip().lower() for h in all_values[0]]
-            data_rows = all_values[1:]
-            df_temp = pd.DataFrame(data_rows, columns=headers[:len(all_values[0])])
-        else:
-            df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage'])
-    else:
-        df_temp = pd.DataFrame(records)
-        
-    df_temp.columns = [str(c).strip().lower() for c in df_temp.columns]
-    required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage']
-    for idx, col in enumerate(required_cols):
-        if col not in df_temp.columns:
-            if idx < len(df_temp.columns):
-                df_temp = df_temp.rename(columns={df_temp.columns[idx]: col})
+# 🌟 絕對防禦 429 錯誤：使用 Session State 快取試算表資料，避免重複向 Google 發請求
+def load_vocab_dataframe(_worksheet, force_reload=False):
+    cache_key = "vocab_df_" + _worksheet.title
+    if force_reload or cache_key not in st.session_state:
+        try:
+            records = _worksheet.get_all_records()
+        except Exception:
+            records = []
+            
+        if not records:
+            all_values = _worksheet.get_all_values()
+            if len(all_values) > 1:
+                headers = [str(h).strip().lower() for h in all_values[0]]
+                data_rows = all_values[1:]
+                df_temp = pd.DataFrame(data_rows, columns=headers[:len(all_values[0])])
             else:
-                df_temp[col] = ""
-                
-    df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
-    df_temp = df_temp[df_temp['word'].notna()]
+                df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage'])
+        else:
+            df_temp = pd.DataFrame(records)
+            
+        df_temp.columns = [str(c).strip().lower() for c in df_temp.columns]
+        required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage']
+        for idx, col in enumerate(required_cols):
+            if col not in df_temp.columns:
+                if idx < len(df_temp.columns):
+                    df_temp = df_temp.rename(columns={df_temp.columns[idx]: col})
+                else:
+                    df_temp[col] = ""
+                    
+        df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
+        df_temp = df_temp[df_temp['word'].notna()]
+        
+        for idx, row in df_temp.iterrows():
+            for col in df_temp.columns:
+                val = str(df_temp.at[idx, col])
+                if val == "nan" or val.lower() == "none":
+                    df_temp.at[idx, col] = ""
+                    
+        st.session_state[cache_key] = df_temp
     
-    for idx, row in df_temp.iterrows():
-        for col in df_temp.columns:
-            val = str(df_temp.at[idx, col])
-            if val == "nan" or val.lower() == "none":
-                df_temp.at[idx, col] = ""
-
-    return df_temp
+    return st.session_state[cache_key]
 
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
@@ -187,7 +191,7 @@ def get_word_record_data_via_ai(word, level="國中部"):
 
 def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
     try:
-        df = get_vocab_from_sheets(_worksheet)
+        df = load_vocab_dataframe(_worksheet)
         row_idx = df.index[df['word'] == target_word].tolist()[0] + 2
         
         row_values = _worksheet.row_values(row_idx)
@@ -198,19 +202,19 @@ def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic,
         new_row = [row_id, new_word, new_phonetic, new_pos, simple_s2t_convert(new_def), new_basic, new_adv, new_coll, unit_tag, srs]
         _worksheet.update('A' + str(row_idx) + ':J' + str(row_idx), [new_row])
         time.sleep(0.5)
-        get_vocab_from_sheets.clear()
+        load_vocab_dataframe(_worksheet, force_reload=True)
         return True, "成功"
     except Exception as e:
         return False, str(e)
 
 def delete_words_from_sheet(_worksheet, word_list):
     if not word_list: return
-    df = get_vocab_from_sheets(_worksheet)
+    df = load_vocab_dataframe(_worksheet)
     rows_to_delete = sorted([df.index[df['word'] == w].tolist()[0] + 2 for w in word_list if w in df['word'].values], reverse=True)
     for r in rows_to_delete:
         _worksheet.delete_rows(r)
         time.sleep(0.3)
-    get_vocab_from_sheets.clear()
+    load_vocab_dataframe(_worksheet, force_reload=True)
 
 @st.cache_data(show_spinner=False)
 def generate_audio_bytes(text, lang='en'):
@@ -222,11 +226,10 @@ def generate_audio_bytes(text, lang='en'):
 st.title("📚 我愛背單字 (雲端拼字測驗版)")
 
 try:
-    df_vocab = get_vocab_from_sheets(active_worksheet)
+    df_vocab = load_vocab_dataframe(active_worksheet)
 except Exception:
     time.sleep(2)
-    get_vocab_from_sheets.clear()
-    df_vocab = get_vocab_from_sheets(active_worksheet)
+    df_vocab = load_vocab_dataframe(active_worksheet, force_reload=True)
 
 total_words = len(df_vocab)
 
@@ -263,7 +266,7 @@ if main_menu == "✨ 智慧單字新增":
             if single_word:
                 with st.spinner("🤖 AI 正在查閱字典並生成例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
-                    df_check = get_vocab_from_sheets(active_worksheet)
+                    df_check = load_vocab_dataframe(active_worksheet)
                     word = data.get('word')
                     if not df_check.empty and word in df_check['word'].values:
                         r_idx = df_check.index[df_check['word'] == word].tolist()[0] + 2
@@ -276,7 +279,7 @@ if main_menu == "✨ 智慧單字新增":
                         next_id = len(df_check) + 1
                         new_r = [next_id, word, data.get('phonetic', ''), data.get('part_of_speech', ''), data.get('definition', ''), data.get('basic_sentence', ''), "", "", current_unit_tag, 0]
                         active_worksheet.append_row(new_r)
-                    get_vocab_from_sheets.clear()
+                    load_vocab_dataframe(active_worksheet, force_reload=True)
                     st.success("🎉 成功新增單字：" + single_word)
                     time.sleep(0.5)
                     st.rerun()
@@ -317,7 +320,7 @@ if main_menu == "✨ 智慧單字新增":
                         status_text.text("🤖 AI 正在查字典中 (" + str(i+1) + "/" + str(total_words_to_process) + "): " + word)
                         w_data = get_word_record_data_via_ai(word, level=selected_level)
                         
-                        df_check = get_vocab_from_sheets(active_worksheet)
+                        df_check = load_vocab_dataframe(active_worksheet)
                         if not df_check.empty and word in df_check['word'].values:
                             r_idx = df_check.index[df_check['word'] == word].tolist()[0] + 2
                             r_vals = active_worksheet.row_values(r_idx)
@@ -334,7 +337,7 @@ if main_menu == "✨ 智慧單字新增":
                         progress_bar.progress((i + 1) / total_words_to_process)
                         time.sleep(0.8)
                         
-                    get_vocab_from_sheets.clear()
+                    load_vocab_dataframe(active_worksheet, force_reload=True)
                     status_text.success("🎊 批次匯入完成！成功透過 AI 字典解析並匯入 " + str(total_success_count) + " 個單字與例句。")
                     time.sleep(1)
                     st.rerun()
@@ -354,8 +357,8 @@ elif main_menu == "📖 字庫管理與搜尋":
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
-                get_vocab_from_sheets.clear()
-                st.success("✅ 快取已清除！")
+                load_vocab_dataframe(active_worksheet, force_reload=True)
+                st.success("✅ 快取已清除，已重新載入雲端資料！")
                 time.sleep(0.5)
                 st.rerun()
 
@@ -379,7 +382,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                         u_tag = row_match['unit_tag'].values[0] if not row_match.empty and 'unit_tag' in row_match.columns else "未分類"
                         
                         new_data = get_word_record_data_via_ai(w, level=selected_level)
-                        df_check = get_vocab_from_sheets(active_worksheet)
+                        df_check = load_vocab_dataframe(active_worksheet)
                         if not df_check.empty and w in df_check['word'].values:
                             r_idx = df_check.index[df_check['word'] == w].tolist()[0] + 2
                             r_vals = active_worksheet.row_values(r_idx)
@@ -391,7 +394,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                         progress_bar.progress((idx + 1) / total_fix)
                         time.sleep(1.0)
                         
-                    get_vocab_from_sheets.clear()
+                    load_vocab_dataframe(active_worksheet, force_reload=True)
                     status_text.success("🎉 成功完成 AI 洗版！總共修復了 " + str(fixed_count) + " 個單字的中文與例句。")
                     time.sleep(1.5)
                     st.rerun()
@@ -587,7 +590,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 if current_wrong_count > 0:
                     st.markdown("<h4 style='color: #E53935;'>🛑 目前累積錯題數：" + str(current_wrong_count) + " 題</h4>", unsafe_allow_html=True)
                 else:
-                    st.markdown("<h4 style='color: #757575;'>🛑 目前累積錯題數: 0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='color: #757575;'>🛑 目前累積錯題數：0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
                 st.markdown("---")
 
                 st.text_input(
