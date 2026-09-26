@@ -241,6 +241,54 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
+
+# 高品質人工校訂例句：避免出現「We often use the word...」這類字典式/AI 保底句。
+NATURAL_SENTENCE_DICT = {
+    "enough": "We have enough time to finish the project before dinner.",
+    "pencil box": "I keep three pencils and an eraser in my pencil box.",
+    "near": "There is a convenience store near our school.",
+    "color": "My sister chose her favorite color for the new backpack.",
+    "hungry": "I was so hungry that I finished my lunch in five minutes.",
+    "cookie": "She baked a batch of chocolate cookies for her classmates.",
+    "dining room": "We usually eat dinner together in the dining room.",
+    "magic": "The magician made a coin disappear from his hand.",
+    "call": "I will call you after I finish my homework.",
+    "abroad": "My cousin studied abroad in Canada for one year.",
+    "garbage": "Please put the garbage in the large bin outside.",
+    "tip": "The waiter gave us a useful tip about the local restaurant.",
+    "already": "I have already finished my homework, so I can go out now.",
+    "wish": "I wish I could travel around Europe with my family.",
+    "angry": "My brother was angry when he found out that I had used his computer.",
+    "take action": "The school decided to take action after several students reported the problem.",
+    "star": "She wants to be a movie star when she grows up.",
+    "lately": "I have been very busy with schoolwork lately.",
+    "cheat": "Students should never cheat on a test, even when the questions are difficult.",
+    "joy": "Her face was full of joy when she opened the birthday present.",
+    "you got it": '"Please send me the file before lunch." "You got it!"',
+    "be all ears": "Tell me what happened at school—I'm all ears.",
+    "photo": "I took a photo of the sunset before the sky became dark.",
+    "understand": "I did not understand the question, so I asked the teacher for help.",
+    "crazy": "It sounds crazy to drive all the way there just for one meal.",
+    "diet": "She changed her diet to include more vegetables and whole grains.",
+    "habit": "Reading for twenty minutes before bed is a good habit.",
+    "since": "I have known Amy since we were in elementary school.",
+    "ever": "Have you ever tried making homemade pizza?",
+    "at least": "Please give me at least ten minutes to finish this report.",
+    "interest": "He has a strong interest in photography and often takes pictures on weekends.",
+}
+
+BAD_SENTENCE_PATTERNS = [
+    r"\bwe often use (?:the )?word\b",
+    r"\bpeople use .* in daily life\b",
+    r"\bthis is an example\b",
+]
+
+def is_bad_example_sentence(sentence):
+    s = str(sentence or "").strip().lower()
+    if not s or s == "nan":
+        return True
+    return any(re.search(pattern, s) for pattern in BAD_SENTENCE_PATTERNS)
+
 def get_word_record_data(word):
     """建立單字資料：內建字庫優先，Gemini 次之，最後使用安全保底。"""
     w_clean = str(word).strip()
@@ -257,7 +305,7 @@ def get_word_record_data(word):
             "collocations": ""
         }
 
-    # 內建字庫優先，確保已知單字一定有自然例句
+    # 先使用人工校訂的自然例句。
     if w_lower in CORE_VOCAB_DICT:
         entry = CORE_VOCAB_DICT[w_lower]
         return {
@@ -270,14 +318,36 @@ def get_word_record_data(word):
             "collocations": f"common {w_clean}"
         }
 
+    if w_lower in NATURAL_SENTENCE_DICT:
+        return {
+            "word": w_clean,
+            "phonetic": f"/{w_lower}/",
+            "part_of_speech": "",
+            "definition": "",
+            "basic_sentence": NATURAL_SENTENCE_DICT[w_lower],
+            "advanced_sentence": "",
+            "collocations": ""
+        }
+
     pos_res = "n. / v."
     def_res = "中文釋義待補"
-    sent_res = f"People use {w_clean} in daily life."
+    sent_res = ""
 
     if HAS_GEMINI and st.session_state.get('gemini_api_key'):
         try:
             genai.configure(api_key=st.session_state.gemini_api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = None
+            last_model_error = None
+            for model_name in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content(prompt)
+                    break
+                except Exception as model_error:
+                    last_model_error = model_error
+                    model = None
+            if model is None:
+                raise last_model_error
 
             prompt = f"""
 You are an English vocabulary teacher.
@@ -291,7 +361,6 @@ Rules:
 - Do not add explanations.
 - Do not use the delimiter ||| anywhere except between the three fields.
 """
-            response = model.generate_content(prompt)
             raw = getattr(response, "text", "") or ""
             parts = [p.strip() for p in raw.strip().split("|||", 2)]
 
@@ -581,7 +650,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 安全修復空白或呆板例句", type="primary", use_container_width=True):
+            if st.button("✨ 修復空白／AI 呆板例句（改成自然英文）", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
 
@@ -593,7 +662,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     r_word = str(row.get('word', '')).strip()
                     r_sent = str(row.get('basic_sentence', '')).strip()
 
-                    if not r_word or (r_sent and r_sent.lower() != "nan"):
+                    if not r_word or not is_bad_example_sentence(r_sent):
                         progress_bar.progress((idx + 1) / len(df_vocab))
                         continue
 
