@@ -268,7 +268,7 @@ def fetch_all_free_dictionaries(word):
         tatoeba_sent = fetch_tatoeba_example(w_clean)
         if tatoeba_sent:
             real_example = tatoeba_sent
-
+            
     return real_def, real_example, phonetic, pos
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
@@ -437,7 +437,6 @@ def custom_audio_button(audio_bytes, label):
     </body>
     </html>
     """
-    # 渲染為一個完美貼合的按鈕高度，不再因為重新整理而卡頓
     components.html(html_code, height=45)
 # ========================================================
 
@@ -909,7 +908,7 @@ elif main_menu == "🎮 我是拼字王":
                 
                 with st.container(border=True):
                     if game_mode.startswith("🎯 標準"):
-                        st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<h2 style='color: #4CAF50;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         
                         try:
@@ -922,7 +921,6 @@ elif main_menu == "🎮 我是拼字王":
                         except: pass
 
                     else:
-                        st.markdown(f"<h2 style='color: #2196F3;'>🔥 進階聽力提示：請聆聽英文解釋並拼出單字</h2>", unsafe_allow_html=True)
                         st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         
