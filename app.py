@@ -61,33 +61,23 @@ except Exception as e:
 st.sidebar.markdown("<h2>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# 1. 先選擇主要功能模式
+# 1. 第一層功能選單
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
-    ["✨ 智慧單字新增", "📖 字庫管理與搜尋", "🎯 單字記憶", "🎮 拼字王挑戰遊戲"],
+    ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
     label_visibility="collapsed"
 )
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
+# 第三層語料庫設定：常駐隱藏，預設使用國中部
+selected_level = "國中部"
 
-# 2. 選擇目標語料庫級別
-selected_level = st.sidebar.radio(
-    "選擇目前目標級別：",
-    ["國中部", "高中部", "TOEIC"],
-    label_visibility="collapsed"
-)
-
-st.sidebar.markdown("---")
-user_api_key = st.sidebar.text_input("輸入 Gemini API Key (選填)", type="password", value=st.secrets.get("gemini_api_key", ""))
-if user_api_key:
-    st.session_state.gemini_api_key = user_api_key
-    if HAS_GEMINI:
-        genai.configure(api_key=user_api_key)
-    st.sidebar.success("✅ AI 字典引擎已啟用")
+# API Key 常駐在背景隱藏讀取 st.secrets，不顯示輸入框
+hidden_api_key = st.secrets.get("gemini_api_key", "")
+if hidden_api_key and HAS_GEMINI:
+    genai.configure(api_key=hidden_api_key)
+    st.session_state.gemini_api_key = hidden_api_key
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用「多重免費字典串聯」引擎")
 
 level_sheet_mapping = {
     "國中部": "國中部",
@@ -355,19 +345,13 @@ total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
 
-# 移除目前模式文字前方帶有的任何小圖標，只保留純文字與級別
 clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
 col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if main_menu == "✨ 智慧單字新增":
-    if selected_level == "國中部":
-        semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
-    elif selected_level == "高中部":
-        semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
-    else:
-        semester = st.selectbox("選擇階段：", ["TOEIC核心", "TOEIC進階", "商用英文"])
+if main_menu == "✨ 新增單字":
+    semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
     unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     current_unit_tag = f"{semester} > {unit}"
     
@@ -520,7 +504,7 @@ if main_menu == "✨ 智慧單字新增":
                 else:
                     st.warning("⚠️ 在上傳的 Word 表格中找不到符合的結構化單字。")
 
-elif main_menu == "📖 字庫管理與搜尋":
+elif main_menu == "📖 字彙管理":
     if df_vocab.empty:
         st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
     else:
@@ -647,9 +631,9 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 else:
                                     st.error("❌ 修改失敗：找不到該單字")
 
-elif main_menu == "🎯 單字記憶":
+elif main_menu == "🎯 背誦單字":
     if df_vocab.empty:
-        st.warning(f"📭 目前【{selected_level}】雲端沒有單字！")
+        st.warning(f"📭 目前雲端沒有單字！")
     else:
         unit_list_flash = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
         selected_flash_unit = st.selectbox("🎯 選擇要複習的單元：", unit_list_flash, key="flash_unit_select")
@@ -713,7 +697,7 @@ elif main_menu == "🎯 單字記憶":
                 st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
                 st.rerun()
 
-elif main_menu == "🎮 拼字王挑戰遊戲":
+elif main_menu == "🎮 我是拼字王":
     if df_vocab.empty:
         st.warning("📭 目前沒有足夠的單字來進行遊戲！")
     else:
