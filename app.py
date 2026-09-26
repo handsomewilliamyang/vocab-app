@@ -150,50 +150,45 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-def fetch_real_english_definition(word):
-    """三大免費開源字典 API 串聯 (Datamuse -> Free Dictionary -> Wiktionary)"""
+def fetch_real_english_definition_and_example(word):
+    """從 Free Dictionary API 同步抓取真實英文釋義與例句"""
     w_clean = word.strip().lower()
-    
-    try:
-        url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
-        res_dm = requests.get(url_dm, timeout=3)
-        if res_dm.status_code == 200:
-            data = res_dm.json()
-            if data and 'defs' in data[0]:
-                raw_def = data[0]['defs'][0]
-                clean_def = raw_def.split('\t', 1)[-1] if '\t' in raw_def else raw_def
-                if clean_def:
-                    return clean_def.capitalize()
-    except Exception:
-        pass
+    real_def = ""
+    real_example = ""
 
+    # 1. 嘗試透過 Free Dictionary API 取得真實釋義與例句
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
         res_fd = requests.get(url_fd, timeout=3)
         if res_fd.status_code == 200:
             data = res_fd.json()
-            real_def = data[0]['meanings'][0]['definitions'][0]['definition']
-            if real_def:
-                return real_def
+            meaning = data[0]['meanings'][0]
+            definition_obj = meaning['definitions'][0]
+            real_def = definition_obj.get('definition', '')
+            real_example = definition_obj.get('example', '')
     except Exception:
         pass
         
-    try:
-        url_wk = f"https://en.wiktionary.org/api/rest_v1/page/definition/{w_clean.replace(' ', '_')}"
-        res_wk = requests.get(url_wk, timeout=3)
-        if res_wk.status_code == 200:
-            data = res_wk.json()
-            for lang in data.values():
-                for item in lang:
-                    if 'definitions' in item and len(item['definitions']) > 0:
-                        raw_html = item['definitions'][0]['definition']
-                        clean_text = re.sub(r'<[^>]+>', '', raw_html).strip()
-                        if clean_text:
-                            return clean_text
-    except Exception:
-        pass
+    # 2. 如果 Free Dictionary 沒有例句，嘗試透過 Datamuse API 尋找關聯範例
+    if not real_example:
+        try:
+            url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
+            res_dm = requests.get(url_dm, timeout=3)
+            if res_dm.status_code == 200:
+                data = res_dm.json()
+                if data and 'defs' in data[0]:
+                    for raw_def in data[0]['defs']:
+                        if raw_def.startswith('v\t') or raw_def.startswith('n\t'):
+                            clean_def = raw_def.split('\t', 1)[-1]
+                            if not real_def:
+                                real_def = clean_def.capitalize()
+        except Exception:
+            pass
 
-    return f"A common term referring to {word}."
+    if not real_def:
+        real_def = f"A common term referring to {word}."
+
+    return real_def, real_example
 
 def generate_dynamic_single_sentence(word, definition):
     w_clean = word.strip()
@@ -201,7 +196,6 @@ def generate_dynamic_single_sentence(word, definition):
     d_clean = definition.strip()
     
     random.seed(w_lower)
-    is_plural = w_clean.lower().endswith("es") or (w_clean.lower().endswith("s") and w_clean.lower() not in ["bus", "class", "address", "always", "sometimes"]) or "複數" in d_clean
     
     if w_lower in ["above", "below", "behind", "under", "between", "beside", "near", "inside", "outside", "across", "along", "through", "with", "without", "about", "from", "into", "onto"]:
         templates = [
@@ -260,7 +254,10 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    real_eng_def = fetch_real_english_definition(w_clean)
+    real_eng_def, real_example = fetch_real_english_definition_and_example(w_clean)
+
+    # 優先採用備用或動態產生的例句（當字典庫沒有真實例句時）
+    final_sentence = real_example if real_example else generate_numpy_or_fallback_sentence(w_clean, cleaned_def)
 
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
@@ -289,13 +286,17 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                 if not final_eng_def or "A term or concept referring to" in final_eng_def:
                     final_eng_def = real_eng_def
 
+                ai_sentence = data.get("sentence", "")
+                if ai_sentence:
+                    final_sentence = ai_sentence
+
                 return {
                     "word": w_clean,
                     "phonetic": data.get("phonetic", f"/{w_lower.replace(' ', '')}/"),
                     "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
                     "definition": cleaned_def,
                     "advanced_sentence": final_eng_def,
-                    "basic_sentence": data.get("sentence", generate_dynamic_single_sentence(w_clean, cleaned_def))
+                    "basic_sentence": final_sentence
                 }
             except Exception:
                 time.sleep(1)
@@ -306,8 +307,11 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         "part_of_speech": "n.",
         "definition": cleaned_def,
         "advanced_sentence": real_eng_def,
-        "basic_sentence": generate_dynamic_single_sentence(w_clean, cleaned_def)
+        "basic_sentence": final_sentence
     }
+
+def generate_numpy_or_fallback_sentence(word, definition):
+    return generate_dynamic_single_sentence(word, definition)
 
 def save_all_vocab_to_sheet(_worksheet, df):
     try:
