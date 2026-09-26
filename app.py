@@ -11,6 +11,7 @@ import urllib.request
 import urllib.parse
 from gtts import gTTS
 import io
+import streamlit.components.v1 as components
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -552,8 +553,30 @@ elif main_menu == "🎮 拼字王挑戰遊戲 (打字版)":
                         st.session_state.typed_index += 1
                         st.rerun()
                 else:
-                    # 使用絕對乾淨的獨立文字框輸入方式
-                    typed_ans = st.text_input("請輸入您的拼寫答案：", key=f"native_typed_input_{st.session_state.typed_index}").strip().lower()
+                    # 使用 HTML 注入強制關閉自動完成與記憶，徹底解決瀏覽器殘留問題
+                    curr_idx = st.session_state.typed_index
+                    html_code = f"""
+                    <div style="margin-bottom: 10px; font-family: sans-serif;">
+                        <label style="color: #fafafa; font-size: 16px; font-weight: 600; display: block; margin-bottom: 8px;">請輸入您的拼寫答案：</label>
+                        <form action="javascript:void(0);" onsubmit="return false;" style="display: flex; gap: 10px;">
+                            <input type="text" id="user_typed_input_{curr_idx}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" 
+                            style="width: 100%; padding: 12px; font-size: 18px; border-radius: 8px; border: 1px solid #444; background-color: #262730; color: white;" 
+                            placeholder="在此輸入英文單字..." autofocus>
+                        </form>
+                    </div>
+                    <script>
+                        // 確保每次載入時強制清空並聚焦
+                        const inputField = document.getElementById("user_typed_input_{curr_idx}");
+                        if (inputField) {{
+                            inputField.value = "";
+                            inputField.focus();
+                        }}
+                    </script>
+                    """
+                    components.html(html_code, height=90)
+                    
+                    # 透過 Streamlit 的文字框接收輸入值（透過前端機制）
+                    typed_ans = st.text_input("確認輸入並送出：", key=f"native_typed_input_{curr_idx}", label_visibility="collapsed", placeholder="請在此再次輸入上方框框內的答案以送出...").strip().lower()
                     
                     col_b1, col_b2 = st.columns(2)
                     with col_b1:
