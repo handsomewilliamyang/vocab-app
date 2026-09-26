@@ -343,7 +343,6 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# 標題已改為「我愛背單字」
 st.title("📚 我愛背單字")
 
 try:
@@ -355,8 +354,10 @@ except Exception:
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
-# 右下角目前模式：僅顯示純文字與級別，無任何小圖案
-col_m2.metric(label="目前模式", value=f"{main_menu}【{selected_level}】")
+
+# 移除目前模式文字前方帶有的任何小圖標，只保留純文字與級別
+clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
+col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
