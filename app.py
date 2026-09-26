@@ -517,7 +517,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 
                 if wrong_q > 0:
                     st.markdown("---")
-                    st.markdown("### ❌ 錯題訂正專區（需加強複習）：")
+                    st.markdown(f"### ❌ 總共錯誤題數：{wrong_q} 題（錯題訂正複習）：")
                     for w_item in st.session_state.wrong_answers:
                         st.markdown(f"- **中文釋義：** {w_item['definition']} ➡️ **正確英文單字：** `{w_item['word']}`")
                 else:
@@ -544,7 +544,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     except: 
                         pass
                 
-                # 如果已經作答過，顯示評語與「進入下一題」按鈕
+                # 如果已經作答過，顯示正解與累積錯誤題數
                 if st.session_state.get("quiz_feedback"):
                     fb = st.session_state.quiz_feedback
                     if fb["type"] == "success":
@@ -552,14 +552,21 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     else:
                         st.error(fb["msg"])
                     
+                    st.markdown(f"### 🛑 目前累積錯誤題數：`{len(st.session_state.wrong_answers)}` 題")
+                    
                     if st.button("➡️ 進入下一題", type="primary", use_container_width=True):
                         st.session_state.quiz_feedback = None
                         st.session_state.game_index += 1
                         st.rerun()
                 else:
-                    # 尚未作答時顯示打字輸入框與按鈕
                     curr_idx = st.session_state.game_index
-                    user_ans = st.text_input("請輸入您的拼寫答案：", key=f"standard_input_{curr_idx}").strip().lower()
+                    input_key = f"input_box_force_clean_{curr_idx}"
+                    
+                    # 確保每次切換題目時，該 key 的值絕對是空的
+                    if input_key not in st.session_state:
+                        st.session_state[input_key] = ""
+                        
+                    user_ans = st.text_input("請輸入您的拼寫答案：", key=input_key).strip().lower()
                     
                     col_btn1, col_btn2 = st.columns(2)
                     with col_btn1:
@@ -567,14 +574,23 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                             if user_ans == target_word.lower():
                                 st.session_state.quiz_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
                             else:
-                                st.session_state.quiz_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
                                 if current_item not in st.session_state.wrong_answers:
                                     st.session_state.wrong_answers.append(current_item)
+                                st.session_state.quiz_feedback = {
+                                    "type": "error", 
+                                    "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (錯誤題數 +1)"
+                                }
+                            # 強制將該輸入框內容清空
+                            st.session_state[input_key] = ""
                             st.rerun()
                             
                     with col_btn2:
                         if st.button("⏭️ 略過本題", use_container_width=True):
                             if current_item not in st.session_state.wrong_answers:
                                 st.session_state.wrong_answers.append(current_item)
-                            st.session_state.quiz_feedback = {"type": "error", "msg": f"⏩ 已略過。本題正確答案為：`{target_word}`"}
+                            st.session_state.quiz_feedback = {
+                                "type": "error", 
+                                "msg": f"⏩ 已略過。本題正確答案為：`{target_word}` (錯誤題數 +1)"
+                            }
+                            st.session_state[input_key] = ""
                             st.rerun()
