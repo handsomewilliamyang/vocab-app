@@ -331,7 +331,14 @@ if main_menu == "✨ 智慧單字新增":
         if uploaded_docxs:
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 all_extracted_words = []
-                with st.spinner("🔍 正在掃描 Word 文本中的單字..."):
+                # 定義詞性與常見雜訊黑名單，絕對不被當成單字抓取
+                POS_BLACKLIST = {
+                    'n', 'v', 'adj', 'adv', 'prep', 'conj', 'pron', 'interj', 'aux', 
+                    'n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'interj.', 'aux.',
+                    'v.n.', 'n.v.', 'adj.adv.', 'phr', 'phr.', 'pl', 'pl.', 'sg', 'sg.'
+                }
+                
+                with st.spinner("🔍 正在精準掃描 Word 文本中的單字（已自動濾除詞性標示）..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -342,10 +349,13 @@ if main_menu == "✨ 智慧單字新增":
                                 for row in table.rows:
                                     for cell in row.cells:
                                         for line in cell.text.strip().split('\n'):
-                                            cleaned = line.strip()
-                                            if cleaned and len(cleaned) < 35 and not any(('\u4e00' <= c <= '\u9fff') for c in cleaned):
-                                                if cleaned not in all_extracted_words:
-                                                    all_extracted_words.append(cleaned)
+                                            cleaned = line.strip().lower()
+                                            # 過濾條件：排除黑名單、空字串、太短或包含中文的雜訊
+                                            if cleaned and cleaned not in POS_BLACKLIST and len(cleaned) < 35 and not any(('\u4e00' <= c <= '\u9fff') for c in cleaned):
+                                                # 還原首字大小寫保留原始外觀
+                                                original_c = line.strip()
+                                                if original_c not in all_extracted_words:
+                                                    all_extracted_words.append(original_c)
                             if os.path.exists(temp_path):
                                 os.remove(temp_path)
                         except Exception:
@@ -355,7 +365,7 @@ if main_menu == "✨ 智慧單字新增":
                 total_words_to_process = len(all_extracted_words)
                 
                 if total_words_to_process > 0:
-                    st.info(f"📑 文本掃描完畢！共找到 **{total_words_to_process}** 個單字準備匯入。")
+                    st.info(f"📑 文本精準掃描完畢！共過濾雜訊並找到 **{total_words_to_process}** 個有效單字準備匯入。")
                     
                     progress_bar = st.progress(0)
                     status_ui = st.empty()
