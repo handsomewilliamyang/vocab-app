@@ -10,6 +10,7 @@ import re
 from gtts import gTTS
 import io
 import base64
+import streamlit.components.v1 as components
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -361,38 +362,59 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🔊 完全使用原生風格與 JS 互動的播放機制 =================
-def play_audio_native(audio_bytes, label_key):
-    b64 = base64.b64encode(audio_bytes).decode()
-    audio_html = f"""
-        <audio id="audio_{label_key}">
-            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-        </audio>
-        <script>
-            function triggerAudio_{label_key}() {{
-                var audio = document.getElementById("audio_{label_key}");
-                audio.pause();
-                audio.currentTime = 0;
-                audio.play().catch(function(error) {{
-                    console.log("Play failed:", error);
-                }});
-            }}
-        </script>
-        <button onclick="triggerAudio_{label_key}()" style="
+# ================= 🔊 採用瀏覽器原生語音合成與極致和諧設計 =================
+def play_audio_native(text_to_speak, label_key):
+    # 透過瀏覽器內建的 SpeechSynthesis API，點擊立即發聲且不佔空間、與 Streamlit 介面 100% 融合
+    safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {{
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }}
+        .speak-btn {{
             width: 100%;
+            padding: 0.55rem 1rem;
             background-color: transparent;
             color: inherit;
-            border: 1px solid rgba(49, 51, 63, 0.2);
-            padding: 0.5rem 0.75rem;
+            border: 1px solid rgba(128, 128, 128, 0.35);
             border-radius: 0.5rem;
-            font-weight: 400;
             font-size: 14px;
-            text-align: center;
+            font-weight: 400;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             cursor: pointer;
-            transition: all 0.2s;
-        ">🔊 {label_key}</button>
+            text-align: center;
+            transition: all 0.2s ease;
+        }}
+        .speak-btn:hover {{
+            background-color: rgba(128, 128, 128, 0.08);
+            border-color: #ff4b4b;
+            color: #ff4b4b;
+        }}
+    </style>
+    </head>
+    <body>
+        <button class="speak-btn" onclick="speakText()">🔊 {label_key}</button>
+        <script>
+            function speakText() {{
+                if ('speechSynthesis' in window) {{
+                    window.speechSynthesis.cancel();
+                    var utterance = new SpeechSynthesisUtterance("{safe_text}");
+                    utterance.lang = 'en-US';
+                    utterance.rate = 0.9;
+                    window.speechSynthesis.speak(utterance);
+                }}
+            }}
+        </script>
+    </body>
+    </html>
     """
-    st.components.v1.html(audio_html, height=48)
+    components.html(html_code, height=45)
 # =========================================================================
 
 st.title("📚 我愛背單字")
@@ -774,18 +796,15 @@ elif main_menu == "🎯 背誦單字":
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
                     try:
-                        audio_us = generate_audio_bytes(row['word'], tld='com')
-                        play_audio_native(audio_us, "美式發音 (US)")
+                        play_audio_native(row['word'], "美式發音 (US)")
                     except: pass
                 with ac_col2:
                     try:
-                        audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
-                        play_audio_native(audio_uk, "英式發音 (UK)")
+                        play_audio_native(row['word'], "英式發音 (UK)")
                     except: pass
                 with ac_col3:
                     try:
-                        audio_au = generate_audio_bytes(row['word'], tld='com.au')
-                        play_audio_native(audio_au, "澳洲發音 (AU)")
+                        play_audio_native(row['word'], "澳洲發音 (AU)")
                     except: pass
             
             c1, c2 = st.columns(2)
@@ -862,8 +881,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         
                         try:
-                            audio_bytes_to_play = generate_audio_bytes(target_word)
-                            play_audio_native(audio_bytes_to_play, "播放發音")
+                            play_audio_native(target_word, "播放發音")
                         except: pass
 
                     else:
@@ -871,8 +889,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         
                         try:
-                            audio_bytes_to_play = generate_audio_bytes(target_adv_def)
-                            play_audio_native(audio_bytes_to_play, "播放英文解釋")
+                            play_audio_native(target_adv_def, "播放英文解釋")
                         except: pass
 
                 if st.session_state.get("last_feedback"):
