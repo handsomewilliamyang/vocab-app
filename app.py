@@ -6,7 +6,7 @@ import time
 import docx
 import random
 import requests
-import re  # 新增：用來過濾維基詞典的 HTML 標籤
+import re  
 from gtts import gTTS
 import io
 
@@ -651,55 +651,72 @@ elif main_menu == "🎯 沉浸式閃卡複習":
     if df_vocab.empty:
         st.warning("📭 目前雲端沒有單字！")
     else:
-        if "flashcard_index" not in st.session_state: st.session_state.flashcard_index = 0
-        total_count = len(df_vocab)
-        st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
-        row = df_vocab.iloc[st.session_state.flashcard_index]
+        # 新增：讓閃卡也能依據單元來過濾
+        unit_list_flash = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
+        selected_flash_unit = st.selectbox("🎯 選擇要複習的單元：", unit_list_flash, key="flash_unit_select")
         
-        with st.container(border=True):
-            st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
-            st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
-            
-            # 常駐顯示的中英文解釋與例句區塊
-            st.markdown("---")
-            st.markdown(f"<h4 style='color: #4CAF50;'>📌 中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
-            st.markdown(f"<p style='color: #2196F3; font-weight: bold;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
-            if row.get('basic_sentence'):
-                st.markdown(f"<p style='font-style: italic; color: #555;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            # 多國口音發音按鈕區
-            st.markdown("<p style='text-align: center; font-weight: bold;'>🔊 點擊聆聽多國口音發音：</p>", unsafe_allow_html=True)
-            ac_col1, ac_col2, ac_col3 = st.columns(3)
-            with ac_col1:
-                if st.button("🇺🇸 美式發音 (US)", use_container_width=True):
-                    try:
-                        audio_us = generate_audio_bytes(row['word'], tld='com')
-                        st.audio(audio_us, format="audio/mp3", autoplay=True)
-                    except:
-                        pass
-            with ac_col2:
-                if st.button("🇬🇧 英式發音 (UK)", use_container_width=True):
-                    try:
-                        audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
-                        st.audio(audio_uk, format="audio/mp3", autoplay=True)
-                    except:
-                        pass
-            with ac_col3:
-                if st.button("🇦🇺 澳洲發音 (AU)", use_container_width=True):
-                    try:
-                        audio_au = generate_audio_bytes(row['word'], tld='com.au')
-                        st.audio(audio_au, format="audio/mp3", autoplay=True)
-                    except:
-                        pass
+        df_filtered_flash = df_vocab if selected_flash_unit == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_flash_unit]
         
-        c1, c2 = st.columns(2)
-        if c1.button("⬅️ 上一個", use_container_width=True):
-            st.session_state.flashcard_index = (st.session_state.flashcard_index - 1) % total_count
-            st.rerun()
-        if c2.button("➡️ 下一個", use_container_width=True):
-            st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
-            st.rerun()
+        if df_filtered_flash.empty:
+            st.warning("📭 該分類中沒有單字！")
+        else:
+            # 確保切換單元時，索引會重置，避免 out of bounds
+            if "current_flash_unit" not in st.session_state or st.session_state.current_flash_unit != selected_flash_unit:
+                st.session_state.current_flash_unit = selected_flash_unit
+                st.session_state.flashcard_index = 0
+                
+            if "flashcard_index" not in st.session_state: st.session_state.flashcard_index = 0
+            
+            total_count = len(df_filtered_flash)
+            st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
+            row = df_filtered_flash.iloc[st.session_state.flashcard_index]
+            
+            with st.container(border=True):
+                st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+                
+                # 常駐顯示的中英文解釋與例句區塊
+                st.markdown("---")
+                st.markdown(f"<h4 style='color: #4CAF50;'>📌 中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color: #2196F3; font-weight: bold;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
+                
+                # 更新：將例句顏色改為高對比度的明黃色 (#FFC107)，提升深淺色模式的閱讀性
+                if row.get('basic_sentence'):
+                    st.markdown(f"<p style='font-style: italic; font-weight: 500; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                # 多國口音發音按鈕區
+                st.markdown("<p style='text-align: center; font-weight: bold;'>🔊 點擊聆聽多國口音發音：</p>", unsafe_allow_html=True)
+                ac_col1, ac_col2, ac_col3 = st.columns(3)
+                with ac_col1:
+                    if st.button("🇺🇸 美式發音 (US)", use_container_width=True):
+                        try:
+                            audio_us = generate_audio_bytes(row['word'], tld='com')
+                            st.audio(audio_us, format="audio/mp3", autoplay=True)
+                        except:
+                            pass
+                with ac_col2:
+                    if st.button("🇬🇧 英式發音 (UK)", use_container_width=True):
+                        try:
+                            audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
+                            st.audio(audio_uk, format="audio/mp3", autoplay=True)
+                        except:
+                            pass
+                with ac_col3:
+                    if st.button("🇦🇺 澳洲發音 (AU)", use_container_width=True):
+                        try:
+                            audio_au = generate_audio_bytes(row['word'], tld='com.au')
+                            st.audio(audio_au, format="audio/mp3", autoplay=True)
+                        except:
+                            pass
+            
+            c1, c2 = st.columns(2)
+            if c1.button("⬅️ 上一個", use_container_width=True):
+                st.session_state.flashcard_index = (st.session_state.flashcard_index - 1) % total_count
+                st.rerun()
+            if c2.button("➡️ 下一個", use_container_width=True):
+                st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
+                st.rerun()
 
 elif main_menu == "🎮 拼字王挑戰遊戲":
     if df_vocab.empty:
