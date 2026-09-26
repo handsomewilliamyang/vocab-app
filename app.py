@@ -362,7 +362,7 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🔊 採用支援黑暗/亮色模式的自適應按鈕設計 =================
+# ================= 🔊 採用瀏覽器原生語音合成與極致精簡設計 =================
 def play_audio_compact(text_to_speak, label_key="🔊"):
     safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
     html_code = f"""
@@ -788,20 +788,50 @@ elif main_menu == "🎯 背誦單字":
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
-                # 三個發音按鈕改至單字下方正中央，並與拼字王風格造型完全一致
+                # 改用 Streamlit 原生按鈕造型來製作三個發音按鈕，完美對應主題與黑暗模式
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
-                    try:
-                        play_audio_compact(row['word'], "🔊 美式發音 (US)")
-                    except: pass
+                    if st.button("🔊 美式發音 (US)", use_container_width=True, key=f"us_{st.session_state.flashcard_index}"):
+                        safe_w = row['word'].replace("'", "\\'").replace('"', '\\"')
+                        components.html(f"""
+                        <script>
+                            if ('speechSynthesis' in window) {{
+                                window.speechSynthesis.cancel();
+                                var utterance = new SpeechSynthesisUtterance("{safe_w}");
+                                utterance.lang = 'en-US';
+                                utterance.rate = 0.9;
+                                window.speechSynthesis.speak(utterance);
+                            }}
+                        </script>
+                        """, height=0)
                 with ac_col2:
-                    try:
-                        play_audio_compact(row['word'], "🔊 英式發音 (UK)")
-                    except: pass
+                    if st.button("🔊 英式發音 (UK)", use_container_width=True, key=f"uk_{st.session_state.flashcard_index}"):
+                        safe_w = row['word'].replace("'", "\\'").replace('"', '\\"')
+                        components.html(f"""
+                        <script>
+                            if ('speechSynthesis' in window) {{
+                                window.speechSynthesis.cancel();
+                                var utterance = new SpeechSynthesisUtterance("{safe_w}");
+                                utterance.lang = 'en-GB';
+                                utterance.rate = 0.9;
+                                window.speechSynthesis.speak(utterance);
+                            }}
+                        </script>
+                        """, height=0)
                 with ac_col3:
-                    try:
-                        play_audio_compact(row['word'], "🔊 澳洲發音 (AU)")
-                    except: pass
+                    if st.button("🔊 澳洲發音 (AU)", use_container_width=True, key=f"au_{st.session_state.flashcard_index}"):
+                        safe_w = row['word'].replace("'", "\\'").replace('"', '\\"')
+                        components.html(f"""
+                        <script>
+                            if ('speechSynthesis' in window) {{
+                                window.speechSynthesis.cancel();
+                                var utterance = new SpeechSynthesisUtterance("{safe_w}");
+                                utterance.lang = 'en-AU';
+                                utterance.rate = 0.9;
+                                window.speechSynthesis.speak(utterance);
+                            }}
+                        </script>
+                        """, height=0)
                 
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
