@@ -9,6 +9,7 @@ import requests
 import re  
 from gtts import gTTS
 import io
+import base64
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -357,6 +358,15 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
+def autoplay_audio_html(audio_bytes):
+    b64 = base64.b64encode(audio_bytes).decode()
+    md = f"""
+        <audio autoplay="true">
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        </audio>
+    """
+    st.markdown(md, unsafe_allow_html=True)
+
 st.title("📚 我愛背單字")
 
 try:
@@ -384,7 +394,6 @@ if main_menu == "✨ 新增單字":
     unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     current_unit_tag = f"{semester} > {unit}"
     
-    st.info(f"📌 即時同步至 Google Sheets 【{active_worksheet.title}】分頁：**{current_unit_tag}**")
     st.markdown("---")
 
     col_input1, col_input2 = st.columns(2, gap="large")
@@ -430,14 +439,12 @@ if main_menu == "✨ 新增單字":
     with col_input2:
         st.subheader("📂 多格式檔案智慧匯入")
         
-        # 顯示即時單字新增與檔案掃描狀態面板
         with st.container(border=True):
             st.markdown(f"**📌 目前目標分類：** `{current_unit_tag}`")
             st.markdown(f"**📊 雲端現有總單字數：** `{total_words} 個單字`")
             
         uploaded_files = st.file_uploader("上傳 Word、PDF 講義或單字照片", type=["docx", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True)
         
-        # 即時計算並顯示上傳檔案中掃描到的單字數量預覽
         preview_extracted_count = 0
         if uploaded_files:
             for uf in uploaded_files:
@@ -741,21 +748,21 @@ elif main_menu == "🎯 背誦單字":
                     if st.button("🔊 美式發音 (US)", use_container_width=True):
                         try:
                             audio_us = generate_audio_bytes(row['word'], tld='com')
-                            st.audio(audio_us, format="audio/mp3", autoplay=True)
+                            autoplay_audio_html(audio_us)
                         except:
                             pass
                 with ac_col2:
                     if st.button("🔊 英式發音 (UK)", use_container_width=True):
                         try:
                             audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
-                            st.audio(audio_uk, format="audio/mp3", autoplay=True)
+                            autoplay_audio_html(audio_uk)
                         except:
                             pass
                 with ac_col3:
                     if st.button("🔊 澳洲發音 (AU)", use_container_width=True):
                         try:
                             audio_au = generate_audio_bytes(row['word'], tld='com.au')
-                            st.audio(audio_au, format="audio/mp3", autoplay=True)
+                            autoplay_audio_html(audio_au)
                         except:
                             pass
             
@@ -833,7 +840,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         audio = generate_audio_bytes(target_word)
                         try: 
-                            st.audio(audio, format="audio/mp3")
+                            autoplay_audio_html(audio)
                         except: 
                             pass
                     else:
@@ -842,7 +849,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         try:
                             audio_def = generate_audio_bytes(target_adv_def)
-                            st.audio(audio_def, format="audio/mp3")
+                            autoplay_audio_html(audio_def)
                         except:
                             pass
 
