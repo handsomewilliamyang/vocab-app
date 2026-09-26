@@ -133,7 +133,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 超大型常用片語與單字對照庫（包含您截圖中的單字）
+# 超大型常用片語與單字對照庫
 BUILTIN_VOCAB_MAP = {
     "right away": ("立刻、馬上", "adv.", "She cleaned her room right away."),
     "internet": ("網際網路", "n.", "You can find a lot of information on the Internet."),
@@ -206,7 +206,7 @@ BUILTIN_VOCAB_MAP = {
     "diet": ("飲食、節食", "n./v.", "She is on a healthy diet."),
     "habit": ("習慣", "n.", "Reading before bed is a good habit."),
     "since": ("自從、因為", "prep./conj.", "I have known him since childhood."),
-    "ever": "曾經", "adv.", "Have you ever been to Japan?"),
+    "ever": ("曾經", "adv.", "Have you ever been to Japan?"),
     "at least": ("至少", "adv.", "It will take at least two hours.")
 }
 
@@ -257,7 +257,6 @@ def get_word_record_data_via_ai(word, level="國中部"):
         except Exception:
             pass
             
-    # 智慧詞尾判斷與優化翻譯
     pos_guess = "n./v."
     if w_lower.endswith("ly"):
         pos_guess = "adv."
@@ -482,9 +481,8 @@ elif main_menu == "📖 字庫管理與搜尋":
                     w = str(row['word']).strip()
                     status_text.text(f"🤖 正在處理單字 ({fixed_count+1}/{total_fix}): {w}")
                     
-                    # 只有在原本沒有中文或中文是預設值時才重新用 AI/字典 查詢，藉此保護您手動輸入的內容
                     current_def = str(row.get('definition', ''))
-                    if not current_def or "核心單字" in current_def or "手動編輯" in current_def:
+                    if not current_def or "核心單字" in current_def or "手動編輯" in current_def or "實用字彙" in current_def:
                         new_data = get_word_record_data_via_ai(w, level=selected_level)
                         df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
                         df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
