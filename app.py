@@ -136,7 +136,6 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 內建常見單字備份庫（當 API 限流或無 Key 時自動支援，確保瞬間補齊不失敗）
 BUILTIN_VOCAB_MAP = {
     "right away": ("立刻、馬上", "adv.", "She cleaned her room right away."),
     "internet": ("網際網路", "n.", "You can find a lot of information on the Internet."),
@@ -165,7 +164,6 @@ def get_word_record_data_via_ai(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 先檢查內建字典庫是否直接有對應（瞬間完成，絕不限流）
     if w_lower in BUILTIN_VOCAB_MAP:
         def_val, pos_val, sent_val = BUILTIN_VOCAB_MAP[w_lower]
         return {
@@ -209,27 +207,33 @@ def get_word_record_data_via_ai(word, level="國中部"):
         except Exception:
             pass
             
-    # 若無 API 且不在內建庫，給予優化的預設值
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "n.",
-        "definition": f"{w_clean} (核心單字)",
+        "definition": f"{w_clean}",
         "basic_sentence": f"This is an example sentence for {w_clean}."
     }
 
 def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
     try:
-        df = load_vocab_dataframe(_worksheet)
-        row_idx = df.index[df['word'] == target_word].tolist()[0] + 2
-        row_values = _worksheet.row_values(row_idx)
+        all_vals = _worksheet.get_all_values()
+        row_idx = -1
+        for idx, row in enumerate(all_vals):
+            if len(row) > 1 and row[1].strip().lower() == target_word.strip().lower():
+                row_idx = idx + 1
+                break
+        
+        if row_idx == -1:
+            return False, "找不到該單字"
+            
+        row_values = all_vals[row_idx - 1]
         row_id = row_values[0] if len(row_values) > 0 else 1
         unit_tag = row_values[8] if len(row_values) > 8 else "未分類"
         srs = row_values[9] if len(row_values) > 9 else 0
         
         new_row = [row_id, new_word, new_phonetic, new_pos, simple_s2t_convert(new_def), new_basic, new_adv, new_coll, unit_tag, srs]
         _worksheet.update(f"A{row_idx}:J{row_idx}", [new_row])
-        time.sleep(0.3)
         load_vocab_dataframe(_worksheet, force_reload=True)
         return True, "成功"
     except Exception as e:
@@ -237,11 +241,18 @@ def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic,
 
 def delete_words_from_sheet(_worksheet, word_list):
     if not word_list: return
-    df = load_vocab_dataframe(_worksheet)
-    rows_to_delete = sorted([df.index[df['word'] == w].tolist()[0] + 2 for w in word_list if w in df['word'].values], reverse=True)
-    for r in rows_to_delete:
-        _worksheet.delete_rows(r)
-        time.sleep(0.2)
+    all_vals = _worksheet.get_all_values()
+    rows_to_delete = []
+    for w in word_list:
+        for idx, row in enumerate(all_vals):
+            if len(row) > 1 and row[1].strip().lower() == w.strip().lower():
+                rows_to_delete.append(idx + 1)
+                
+    for r in sorted(rows_to_delete, reverse=True):
+        try:
+            _worksheet.delete_rows(r)
+        except Exception:
+            pass
     load_vocab_dataframe(_worksheet, force_reload=True)
 
 @st.cache_data(show_spinner=False)
@@ -290,19 +301,27 @@ if main_menu == "✨ 智慧單字新增":
             if single_word:
                 with st.spinner("🤖 正在查閱字典並生成中文與例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
-                    df_check = load_vocab_dataframe(active_worksheet)
                     word = data.get('word')
-                    if not df_check.empty and word in df_check['word'].values:
-                        r_idx = df_check.index[df_check['word'] == word].tolist()[0] + 2
-                        r_vals = active_worksheet.row_values(r_idx)
+                    
+                    all_vals = active_worksheet.get_all_values()
+                    row_idx = -1
+                    for idx, row in enumerate(all_vals):
+                        if len(row) > 1 and row[1].strip().lower() == word.strip().lower():
+                            row_idx = idx + 1
+                            break
+                            
+                    if row_idx != -1:
+                        r_vals = all_vals[row_idx - 1]
                         r_id = r_vals[0] if len(r_vals) > 0 else 1
                         srs_val = r_vals[9] if len(r_vals) > 9 else 0
                         new_r = [r_id, word, data.get('phonetic', ''), data.get('part_of_speech', ''), data.get('definition', ''), data.get('basic_sentence', ''), "", "", current_unit_tag, srs_val]
-                        active_worksheet.update(f"A{r_idx}:J{r_idx}", [new_r])
+                        active_worksheet.update(f"A{row_idx}:J{row_idx}", [new_r])
                     else:
+                        df_check = load_vocab_dataframe(active_worksheet)
                         next_id = len(df_check) + 1
                         new_r = [next_id, word, data.get('phonetic', ''), data.get('part_of_speech', ''), data.get('definition', ''), data.get('basic_sentence', ''), "", "", current_unit_tag, 0]
                         active_worksheet.append_row(new_r)
+                        
                     load_vocab_dataframe(active_worksheet, force_reload=True)
                     st.success(f"🎉 成功新增單字：{word} | 中文：{data.get('definition')}")
                     time.sleep(0.5)
@@ -340,26 +359,32 @@ if main_menu == "✨ 智慧單字新增":
                             
                 total_words_to_process = len(all_extracted_words)
                 if total_words_to_process > 0:
+                    all_vals = active_worksheet.get_all_values()
                     for i, word in enumerate(all_extracted_words):
                         status_text.text(f"🤖 正在處理單字 ({i+1}/{total_words_to_process}): {word}")
                         w_data = get_word_record_data_via_ai(word, level=selected_level)
                         
-                        df_check = load_vocab_dataframe(active_worksheet)
-                        if not df_check.empty and word in df_check['word'].values:
-                            r_idx = df_check.index[df_check['word'] == word].tolist()[0] + 2
-                            r_vals = active_worksheet.row_values(r_idx)
+                        row_idx = -1
+                        for idx, row in enumerate(all_vals):
+                            if len(row) > 1 and row[1].strip().lower() == word.strip().lower():
+                                row_idx = idx + 1
+                                break
+                                
+                        if row_idx != -1:
+                            r_vals = all_vals[row_idx - 1]
                             r_id = r_vals[0] if len(r_vals) > 0 else 1
                             srs_val = r_vals[9] if len(r_vals) > 9 else 0
                             new_r = [r_id, word, w_data.get('phonetic', ''), w_data.get('part_of_speech', ''), w_data.get('definition', ''), w_data.get('basic_sentence', ''), "", "", current_unit_tag, srs_val]
-                            active_worksheet.update(f"A{r_idx}:J{r_idx}", [new_r])
+                            active_worksheet.update(f"A{row_idx}:J{row_idx}", [new_r])
                         else:
+                            df_check = load_vocab_dataframe(active_worksheet)
                             next_id = len(df_check) + 1
                             new_r = [next_id, word, w_data.get('phonetic', ''), w_data.get('part_of_speech', ''), w_data.get('definition', ''), w_data.get('basic_sentence', ''), "", "", current_unit_tag, 0]
                             active_worksheet.append_row(new_r)
-                        
+                            
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        time.sleep(0.2)
+                        time.sleep(0.1)
                         
                     load_vocab_dataframe(active_worksheet, force_reload=True)
                     status_text.success(f"🎊 批次匯入完成！成功解析並匯入 {total_success_count} 個單字。")
@@ -389,7 +414,7 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 🚨 試算表資料修復與一鍵補齊中文專區")
-            st.warning("點擊下方按鈕，系統會瞬間為試算表內所有單字補齊正確的中文釋義與例句（極速完成，絕不限流）：")
+            st.warning("點擊下方按鈕，系統會瞬間為試算表內所有單字補齊正確的中文釋義與例句：")
             if st.button("🧹 一鍵快速補齊並更新雲端", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -397,23 +422,30 @@ elif main_menu == "📖 字庫管理與搜尋":
                 total_fix = len(words_to_fix)
                 fixed_count = 0
                 
+                all_vals = active_worksheet.get_all_values()
                 for idx, w in enumerate(words_to_fix):
                     status_text.text(f"🤖 正在補齊單字資料 ({idx+1}/{total_fix}): {w}")
                     row_match = df_vocab[df_vocab['word'] == w]
                     u_tag = row_match['unit_tag'].values[0] if not row_match.empty and 'unit_tag' in row_match.columns else "未分類"
                     
                     new_data = get_word_record_data_via_ai(w, level=selected_level)
-                    df_check = load_vocab_dataframe(active_worksheet)
-                    if not df_check.empty and w in df_check['word'].values:
-                        r_idx = df_check.index[df_check['word'] == w].tolist()[0] + 2
-                        r_vals = active_worksheet.row_values(r_idx)
+                    
+                    row_idx = -1
+                    for r_i, row in enumerate(all_vals):
+                        if len(row) > 1 and row[1].strip().lower() == w.strip().lower():
+                            row_idx = r_i + 1
+                            break
+                            
+                    if row_idx != -1:
+                        r_vals = all_vals[row_idx - 1]
                         r_id = r_vals[0] if len(r_vals) > 0 else 1
                         srs_val = r_vals[9] if len(r_vals) > 9 else 0
                         new_r = [r_id, w, new_data.get('phonetic', ''), new_data.get('part_of_speech', ''), new_data.get('definition', ''), new_data.get('basic_sentence', ''), "", "", u_tag, srs_val]
-                        active_worksheet.update(f"A{r_idx}:J{r_idx}", [new_r])
+                        active_worksheet.update(f"A{row_idx}:J{row_idx}", [new_r])
                         fixed_count += 1
+                        
                     progress_bar.progress((idx + 1) / total_fix)
-                    time.sleep(0.3)
+                    time.sleep(0.1)
                     
                 load_vocab_dataframe(active_worksheet, force_reload=True)
                 status_text.success(f"🎉 成功完成資料補齊！總共更新了 {fixed_count} 個單字。")
