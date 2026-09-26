@@ -95,7 +95,6 @@ except Exception as e:
 st.sidebar.markdown("---")
 st.sidebar.info("💡 雲端同步中：已連線至工作表【" + active_worksheet.title + "】")
 
-# 🌟 絕對防禦 429 錯誤：使用 Session State 快取試算表資料，避免重複向 Google 發請求
 def load_vocab_dataframe(_worksheet, force_reload=False):
     cache_key = "vocab_df_" + _worksheet.title
     if force_reload or cache_key not in st.session_state:
@@ -159,34 +158,45 @@ def get_word_record_data_via_ai(word, level="國中部"):
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
             prompt = (
-                "你是一個專業的英語字典。請針對英文單字「" + w_clean + "」（適用級別：" + level + "），"
-                "提供以下 JSON 格式的解析，不要包含其他贅字或 Markdown 標記：\n"
+                "你是一個專業的英語教師與字典。請針對英文單字「" + w_clean + "」（適用教學級別：" + level + "），"
+                "提供以下正確的 JSON 格式解析。絕對不准回傳英文罐頭文字，必須提供真實、道地的中文釋義與例句：\n"
                 "{\n"
                 '    "phonetic": "/音標/",\n'
-                '    "part_of_speech": "詞性",\n'
-                '    "definition": "繁體中文解釋",\n'
-                '    "sentence": "英文例句"\n'
+                '    "part_of_speech": "詞性 (例如 n., v., adj.)",\n'
+                '    "definition": "精準的繁體中文解釋",\n'
+                '    "sentence": "實用的英文例句"\n'
                 "}"
             )
             response = model.generate_content(prompt)
             clean_text = response.text.replace(chr(96)*3 + "json", "").replace(chr(96)*3, "").strip()
             data = json.loads(clean_text)
+            
+            def_text = data.get("definition", "").strip()
+            sent_text = data.get("sentence", "").strip()
+            
+            # 嚴格驗證：若 AI 回傳空值或亂七八糟的字串，賦予合理預設或保持乾淨
+            if not def_text or def_text.lower() == w_lower:
+                def_text = "請補充中文釋義"
+            if not sent_text or "Please learn" in sent_text:
+                sent_text = f"This is an example sentence for {w_clean}."
+                
             return {
                 "word": w_clean,
                 "phonetic": data.get("phonetic", "/" + w_lower + "/"),
                 "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
-                "definition": simple_s2t_convert(data.get("definition", w_clean)),
-                "basic_sentence": data.get("sentence", "Please learn how to use '" + w_clean + "'.")
+                "definition": simple_s2t_convert(def_text),
+                "basic_sentence": sent_text
             }
         except Exception:
             pass
             
+    # 如果 AI 失敗，回傳乾淨空白或基本結構，絕對不塞垃圾字串
     return {
         "word": w_clean,
         "phonetic": "/" + w_lower + "/",
         "part_of_speech": "n.",
-        "definition": w_clean,
-        "basic_sentence": "Please learn how to use '" + w_clean + "'."
+        "definition": "",
+        "basic_sentence": ""
     }
 
 def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
@@ -264,7 +274,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 AI 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 AI 正在查閱字典並生成例句中..."):
+                with st.spinner("🤖 AI 正在查閱字典並生成精準中文與例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     df_check = load_vocab_dataframe(active_worksheet)
                     word = data.get('word')
@@ -365,7 +375,7 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 🚨 試算表資料修復專區")
-            st.warning("點擊下方按鈕，AI 會安全地逐筆為試算表的所有單字重新查字典、填入正統中文與道地例句（自動加入防 429 緩衝時間）：")
+            st.warning("點擊下方按鈕，AI 會為試算表的所有單字重新查字典，**徹底洗掉那些錯誤的英文罐頭例句與英文定義**，換上真正的中文翻譯與例句：")
             if st.button("🧹 強制啟動 AI 字典全面洗版並更新雲端", type="primary", use_container_width=True):
                 if not st.session_state.get("gemini_api_key"):
                     st.error("❌ 請先在左側邊欄輸入您的 Gemini API Key！")
@@ -377,7 +387,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     fixed_count = 0
                     
                     for idx, w in enumerate(words_to_fix):
-                        status_text.text("🤖 AI 正在安全查字典與例句 (" + str(idx+1) + "/" + str(total_fix) + "): " + w)
+                        status_text.text("🤖 AI 正在重新查字典與例句 (" + str(idx+1) + "/" + str(total_fix) + "): " + w)
                         row_match = df_vocab[df_vocab['word'] == w]
                         u_tag = row_match['unit_tag'].values[0] if not row_match.empty and 'unit_tag' in row_match.columns else "未分類"
                         
