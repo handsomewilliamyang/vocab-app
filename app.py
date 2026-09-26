@@ -60,9 +60,13 @@ except Exception as e:
 
 st.sidebar.markdown("<h2>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
+
+# 這裡將選單名稱改為您要求的「單字記憶【國中部】」(會自動抓取目前的目標級別)
+flashcard_menu_name = f"🎯 單字記憶【{selected_level if 'selected_level' in locals() else '國中部'}】"
+
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
-    ["✨ 智慧單字新增", "📖 字庫管理與搜尋", "🎯 沉浸式閃卡複習", "🎮 拼字王挑戰遊戲"],
+    ["✨ 智慧單字新增", "📖 字庫管理與搜尋", flashcard_menu_name, "🎮 拼字王挑戰遊戲"],
     label_visibility="collapsed"
 )
 
@@ -152,7 +156,6 @@ def fetch_real_english_definition(word):
     """三大免費開源字典 API 串聯 (Datamuse -> Free Dictionary -> Wiktionary)"""
     w_clean = word.strip().lower()
     
-    # 引擎 1：Datamuse API (字庫極大，穩定)
     try:
         url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
         res_dm = requests.get(url_dm, timeout=3)
@@ -166,7 +169,6 @@ def fetch_real_english_definition(word):
     except Exception:
         pass
 
-    # 引擎 2：Free Dictionary API
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
         res_fd = requests.get(url_fd, timeout=3)
@@ -178,7 +180,6 @@ def fetch_real_english_definition(word):
     except Exception:
         pass
         
-    # 引擎 3：Wiktionary API (維基詞典，涵蓋片語與偏門字)
     try:
         url_wk = f"https://en.wiktionary.org/api/rest_v1/page/definition/{w_clean.replace(' ', '_')}"
         res_wk = requests.get(url_wk, timeout=3)
@@ -188,13 +189,12 @@ def fetch_real_english_definition(word):
                 for item in lang:
                     if 'definitions' in item and len(item['definitions']) > 0:
                         raw_html = item['definitions'][0]['definition']
-                        clean_text = re.sub(r'<[^>]+>', '', raw_html).strip() # 去除 HTML 標籤
+                        clean_text = re.sub(r'<[^>]+>', '', raw_html).strip()
                         if clean_text:
                             return clean_text
     except Exception:
         pass
 
-    # 若三大引擎全數失敗的極致保底
     return f"A common term referring to {word}."
 
 def generate_dynamic_single_sentence(word, definition):
@@ -262,7 +262,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 呼叫三大免費字典引擎串聯機制
     real_eng_def = fetch_real_english_definition(w_clean)
 
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
@@ -288,7 +287,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     
                 data = json.loads(raw_text)
                 
-                # 如果 AI 解釋為空或是無意義保底，就強制用串聯字典的結果取代
                 final_eng_def = data.get("english_definition", "")
                 if not final_eng_def or "A term or concept referring to" in final_eng_def:
                     final_eng_def = real_eng_def
@@ -304,7 +302,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
             except Exception:
                 time.sleep(1)
             
-    # 如果沒有 Gemini 或失敗，直接使用多重字典與動態例句組合
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower.replace(' ', '')}/",
@@ -557,7 +554,6 @@ elif main_menu == "📖 字庫管理與搜尋":
                     new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                     df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
                     
-                    # 避免洗掉已存在的良好例句
                     if not row.get('basic_sentence'):
                         df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
@@ -647,11 +643,10 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 else:
                                     st.error("❌ 修改失敗：找不到該單字")
 
-elif main_menu == "🎯 沉浸式閃卡複習":
+elif main_menu == flashcard_menu_name:
     if df_vocab.empty:
         st.warning("📭 目前雲端沒有單字！")
     else:
-        # 新增：讓閃卡也能依據單元來過濾
         unit_list_flash = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
         selected_flash_unit = st.selectbox("🎯 選擇要複習的單元：", unit_list_flash, key="flash_unit_select")
         
@@ -660,7 +655,6 @@ elif main_menu == "🎯 沉浸式閃卡複習":
         if df_filtered_flash.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            # 確保切換單元時，索引會重置，避免 out of bounds
             if "current_flash_unit" not in st.session_state or st.session_state.current_flash_unit != selected_flash_unit:
                 st.session_state.current_flash_unit = selected_flash_unit
                 st.session_state.flashcard_index = 0
@@ -675,35 +669,34 @@ elif main_menu == "🎯 沉浸式閃卡複習":
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
-                # 常駐顯示的中英文解釋與例句區塊
+                # 常駐顯示的中英文解釋與例句區塊 (字體放大)
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>📌 中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color: #2196F3; font-weight: bold;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
                 
-                # 更新：將例句顏色改為高對比度的明黃色 (#FFC107)，提升深淺色模式的閱讀性
                 if row.get('basic_sentence'):
-                    st.markdown(f"<p style='font-style: italic; font-weight: 500; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
                 
                 st.markdown("<br>", unsafe_allow_html=True)
-                # 多國口音發音按鈕區
-                st.markdown("<p style='text-align: center; font-weight: bold;'>🔊 點擊聆聽多國口音發音：</p>", unsafe_allow_html=True)
+                
+                # 發音按鈕區 (加上喇叭圖示，並移除了多餘的提示文字)
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
-                    if st.button("🇺🇸 美式發音 (US)", use_container_width=True):
+                    if st.button("🔊 美式發音 (US)", use_container_width=True):
                         try:
                             audio_us = generate_audio_bytes(row['word'], tld='com')
                             st.audio(audio_us, format="audio/mp3", autoplay=True)
                         except:
                             pass
                 with ac_col2:
-                    if st.button("🇬🇧 英式發音 (UK)", use_container_width=True):
+                    if st.button("🔊 英式發音 (UK)", use_container_width=True):
                         try:
                             audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
                             st.audio(audio_uk, format="audio/mp3", autoplay=True)
                         except:
                             pass
                 with ac_col3:
-                    if st.button("🇦🇺 澳洲發音 (AU)", use_container_width=True):
+                    if st.button("🔊 澳洲發音 (AU)", use_container_width=True):
                         try:
                             audio_au = generate_audio_bytes(row['word'], tld='com.au')
                             st.audio(audio_au, format="audio/mp3", autoplay=True)
