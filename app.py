@@ -71,14 +71,14 @@ main_menu = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
 
-# 2. 選擇目標語料庫級別（保留讓您切換）
+# 2. 選擇目標語料庫級別
 selected_level = st.sidebar.radio(
     "選擇目前目標級別：",
     ["國中部", "高中部", "TOEIC"],
     label_visibility="collapsed"
 )
 
-# API Key 常駐在背景隱藏讀取 st.secrets，不顯示輸入框
+# API Key 常駐在背景隱藏讀取 st.secrets
 hidden_api_key = st.secrets.get("gemini_api_key", "")
 if hidden_api_key and HAS_GEMINI:
     genai.configure(api_key=hidden_api_key)
@@ -528,28 +528,16 @@ elif main_menu == "📖 字彙管理":
             selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
-                load_vocab_dataframe(active_worksheet, force_reload=True)
-                st.success("✅ 快取已清除！")
-                time.sleep(0.5)
-                st.rerun()
-
-        st.markdown("---")
-        with st.container(border=True):
-            st.markdown("#### 🚨 終極字典聯網一鍵補齊專區")
-            st.warning("點擊下方按鈕，系統將透過『三大免費開源字典 API (Datamuse/FreeDict/Wiktionary)』為所有單字尋找最道地的英文解釋：")
-            if st.button("🧹 一鍵聯網補齊真實英文釋義", type="primary", use_container_width=True):
+            if st.button("🔄 重新整理與一鍵聯網補齊", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
-                status_text = st.empty()
                 
-                df_current = load_vocab_dataframe(active_worksheet).copy()
+                df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
                 total_fix = len(df_current)
                 fixed_count = 0
                 
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在從多重字典庫中搜尋 ({fixed_count+1}/{total_fix}): {w}")
                     
                     new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                     df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
@@ -559,11 +547,10 @@ elif main_menu == "📖 字彙管理":
                     
                     fixed_count += 1
                     progress_bar.progress(fixed_count / total_fix)
-                    time.sleep(0.5)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成真實字典釋義補齊！總共更新了 {fixed_count} 個單字。")
-                time.sleep(1.5)
+                st.success("✅ 重新整理與補齊完成！")
+                time.sleep(1)
                 st.rerun()
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
