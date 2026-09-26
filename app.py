@@ -14,6 +14,12 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 try:
+    import fitz  # PyMuPDF 用於高效解析 PDF
+    HAS_FITZ = True
+except ImportError:
+    HAS_FITZ = False
+
+try:
     import google.generativeai as genai
     HAS_GEMINI = True
 except ImportError:
@@ -422,47 +428,89 @@ if main_menu == "✨ 新增單字":
                     st.rerun()
 
     with col_input2:
-        st.subheader("📂 Word 檔案智慧匯入 (表格結構化解析)")
-        uploaded_docxs = st.file_uploader("上傳 Word 講義檔案", type=["docx"], accept_multiple_files=True)
-        if uploaded_docxs:
-            if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
+        st.subheader("📂 多格式檔案智慧匯入 (Word / PDF / 照片)")
+        uploaded_files = st.file_uploader("上傳 Word、PDF 講義或單字照片", type=["docx", "pdf", "png", "jpg", "jpeg"], accept_multiple_files=True)
+        if uploaded_files:
+            if st.button("📖 批次解析檔案並匯入", use_container_width=True):
                 extracted_data_list = []
-                with st.spinner("🔍 正在結構化解析 Word 表格欄位..."):
-                    for uploaded_docx in uploaded_docxs:
-                        temp_path = f"temp_{uploaded_docx.name}"
-                        try:
-                            with open(temp_path, "wb") as f:
-                                f.write(uploaded_docx.getbuffer())
-                            doc = docx.Document(temp_path)
-                            for table in doc.tables:
-                                for row in table.rows:
-                                    cells = row.cells
-                                    if len(cells) >= 3:
-                                        raw_word = cells[1].text.strip()
-                                        raw_def = cells[2].text.strip()
-                                    elif len(cells) == 2:
-                                        raw_word = cells[0].text.strip()
-                                        raw_def = cells[1].text.strip()
-                                    else:
-                                        continue
-                                        
-                                    w_cleaned = raw_word.split('\n')[0].strip()
-                                    d_cleaned = raw_def.split('\n')[0].strip()
-                                    
-                                    if (w_cleaned and 
-                                        len(w_cleaned) < 35 and 
-                                        not any(('\u4e00' <= c <= '\u9fff') for c in w_cleaned) and 
-                                        not any(char in w_cleaned for char in ['/', '[', ']', '(', ')', '=', '：', ':', '□'])):
-                                        if not any(item['word'].lower() == w_cleaned.lower() for item in extracted_data_list):
-                                            extracted_data_list.append({
-                                                "word": w_cleaned,
-                                                "definition": d_cleaned
-                                            })
-                            if os.path.exists(temp_path):
-                                os.remove(temp_path)
-                        except Exception:
-                            if os.path.exists(temp_path):
-                                os.remove(temp_path)
+                with st.spinner("🔍 正在透過多模態與檔案解析器萃取單字..."):
+                    for uploaded_file in uploaded_files:
+                        file_name = uploaded_file.name.lower()
+                        
+                        # 1. Word 檔案解析
+                        if file_name.endswith(".docx"):
+                            temp_path = f"temp_{uploaded_file.name}"
+                            try:
+                                with open(temp_path, "wb") as f:
+                                    f.write(uploaded_file.getbuffer())
+                                doc = docx.Document(temp_path)
+                                for table in doc.tables:
+                                    for row in table.rows:
+                                        cells = row.cells
+                                        if len(cells) >= 3:
+                                            raw_word, raw_def = cells[1].text.strip(), cells[2].text.strip()
+                                        elif len(cells) == 2:
+                                            raw_word, raw_def = cells[0].text.strip(), cells[1].text.strip()
+                                        else:
+                                            continue
+                                        w_c = raw_word.split('\n')[0].strip()
+                                        d_c = raw_def.split('\n')[0].strip()
+                                        if w_c and len(w_c) < 35 and not any(('\u4e00' <= c <= '\u9fff') for c in w_c):
+                                            if not any(item['word'].lower() == w_c.lower() for item in extracted_data_list):
+                                                extracted_data_list.append({"word": w_c, "definition": d_c})
+                                if os.path.exists(temp_path): os.remove(temp_path)
+                            except:
+                                if os.path.exists(temp_path): os.remove(temp_path)
+                                
+                        # 2. PDF 檔案解析
+                        elif file_name.endswith(".pdf") and HAS_FITZ:
+                            temp_path = f"temp_{uploaded_file.name}"
+                            try:
+                                with open(temp_path, "wb") as f:
+                                    f.write(uploaded_file.getbuffer())
+                                doc = fitz.open(temp_path)
+                                pdf_text = ""
+                                for page in doc:
+                                    pdf_text += page.get_text() + "\n"
+                                doc.close()
+                                if os.path.exists(temp_path): os.remove(temp_path)
+                                
+                                # 透過 Gemini 將純文字 PDF 結構化萃取
+                                if HAS_GEMINI and st.session_state.get("gemini_api_key"):
+                                    genai.configure(api_key=st.session_state["gemini_api_key"])
+                                    model = genai.GenerativeModel("gemini-1.5-flash")
+                                    prompt = f"從以下PDF文字中萃取出所有英文單字與其對應的中文釋義，嚴格以純 JSON 陣列格式回傳（範例：[{{\"word\": \"apple\", \"definition\": \"蘋果\"}}]）：\n{pdf_text[:4000]}"
+                                    res = model.generate_content(prompt)
+                                    raw_t = res.text.strip()
+                                    if "[" in raw_t and "]" in raw_t:
+                                        raw_t = raw_t[raw_t.find("["):raw_t.rfind("]") + 1]
+                                        parsed_items = json.loads(raw_t)
+                                        for pi in parsed_items:
+                                            if "word" in pi and "definition" in pi:
+                                                if not any(item['word'].lower() == pi['word'].lower() for item in extracted_data_list):
+                                                    extracted_data_list.append({"word": pi['word'].strip(), "definition": pi['definition'].strip()})
+                            except:
+                                if os.path.exists(temp_path): os.remove(temp_path)
+                                
+                        # 3. 照片 / 圖片檔解析 (Gemini Vision)
+                        elif file_name.endswith((".png", ".jpg", ".jpeg")) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+                            try:
+                                image_bytes = uploaded_file.getvalue()
+                                genai.configure(api_key=st.session_state["gemini_api_key"])
+                                model = genai.GenerativeModel("gemini-1.5-flash")
+                                image_part = {"mime_type": uploaded_file.type, "data": image_bytes}
+                                prompt = "請辨識這張圖片中的所有英文單字與中文釋義，嚴格以純 JSON 陣列格式回傳（範例：[{{\"word\": \"apple\", \"definition\": \"蘋果\"}}]）"
+                                response = model.generate_content([image_part, prompt])
+                                raw_t = response.text.strip()
+                                if "[" in raw_t and "]" in raw_t:
+                                    raw_t = raw_t[raw_t.find("["):raw_t.rfind("]") + 1]
+                                    parsed_items = json.loads(raw_t)
+                                    for pi in parsed_items:
+                                        if "word" in pi and "definition" in pi:
+                                            if not any(item['word'].lower() == pi['word'].lower() for item in extracted_data_list):
+                                                extracted_data_list.append({"word": pi['word'].strip(), "definition": pi['definition'].strip()})
+                            except:
+                                pass
                 
                 total_words_to_process = len(extracted_data_list)
                 if total_words_to_process > 0:
@@ -503,11 +551,11 @@ if main_menu == "✨ 新增單字":
                         progress_bar.progress((i + 1) / total_words_to_process)
                         
                     save_all_vocab_to_sheet(active_worksheet, df_current)
-                    st.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字。")
+                    st.success(f"🎊 檔案解析與匯入完成！成功辨識並寫入 {total_success_count} 個單字。")
                     time.sleep(1.5)
                     st.rerun()
                 else:
-                    st.warning("⚠️ 在上傳的 Word 表格中找不到符合的結構化單字。")
+                    st.warning("⚠️ 在上傳的檔案中找不到可識別的單字表格或內容。")
 
 elif main_menu == "📖 字彙管理":
     if df_vocab.empty:
@@ -722,7 +770,6 @@ elif main_menu == "🎮 我是拼字王":
                 st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
                 st.session_state.last_feedback = None
-                st.session_state.show_next_btn = False
 
             if st.session_state.game_index >= len(st.session_state.game_queue):
                 st.session_state.is_finished = True
