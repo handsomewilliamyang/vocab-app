@@ -98,7 +98,11 @@ try:
     try:
         active_worksheet = spreadsheet.worksheet(current_sheet_name)
     except Exception:
-        active_worksheet = spreadsheet.get_worksheet(0)
+        # 如果分頁不存在，自動嘗試建立或抓取第一個分頁
+        try:
+            active_worksheet = spreadsheet.add_worksheet(title=current_sheet_name, rows="1000", cols="10")
+        except Exception:
+            active_worksheet = spreadsheet.get_worksheet(0)
 except Exception as e:
     st.error(f"⚠️ Google Sheets 連線失敗：{e}")
     st.stop()
@@ -151,30 +155,33 @@ def simple_s2t_convert(text):
     return text
 
 def fetch_real_english_definition_and_example(word):
-    """步驟 1：從免費開源字典 API 內抓取英文釋義與例句"""
+    """步驟 1：從免費開源字典 API 內抓取英文釋義與例句（強化例外防護）"""
     w_clean = word.strip().lower()
     real_def = ""
     real_example = ""
 
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
-        res_fd = requests.get(url_fd, timeout=3)
+        res_fd = requests.get(url_fd, timeout=2)
         if res_fd.status_code == 200:
             data = res_fd.json()
-            meaning = data[0]['meanings'][0]
-            definition_obj = meaning['definitions'][0]
-            real_def = definition_obj.get('definition', '')
-            real_example = definition_obj.get('example', '')
+            if isinstance(data, list) and len(data) > 0:
+                meanings = data[0].get('meanings', [])
+                if len(meanings) > 0:
+                    definitions = meanings[0].get('definitions', [])
+                    if len(definitions) > 0:
+                        real_def = definitions[0].get('definition', '')
+                        real_example = definitions[0].get('example', '')
     except Exception:
         pass
         
     if not real_example or not real_def:
         try:
             url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
-            res_dm = requests.get(url_dm, timeout=3)
+            res_dm = requests.get(url_dm, timeout=2)
             if res_dm.status_code == 200:
                 data = res_dm.json()
-                if data and 'defs' in data[0]:
+                if isinstance(data, list) and len(data) > 0 and 'defs' in data[0]:
                     for raw_def in data[0]['defs']:
                         clean_def = raw_def.split('\t', 1)[-1]
                         if not real_def:
@@ -249,7 +256,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 步驟 1：先從字典內的資料抓取英文釋義與例句
+    # 步驟 1：先從免費開源字典 API 內抓取英文釋義與例句
     real_eng_def, real_example = fetch_real_english_definition_and_example(w_clean)
     
     final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
@@ -368,7 +375,7 @@ if main_menu == "✨ 新增單字":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在調用三大免費字典庫聯網生成中..."):
+                with st.spinner("🤖 正在處理中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -452,22 +459,13 @@ if main_menu == "✨ 新增單字":
                 total_words_to_process = len(extracted_data_list)
                 
                 if total_words_to_process > 0:
-                    st.info(f"📑 結構化解析完畢！共鎖定表格找到 **{total_words_to_process}** 個有效單字。")
-                    
                     progress_bar = st.progress(0)
-                    status_ui = st.empty()
-                    
                     df_current = load_vocab_dataframe(active_worksheet)
                     total_success_count = 0
                     
                     for i, item in enumerate(extracted_data_list):
                         word = item["word"]
                         raw_def = item["definition"]
-                        
-                        status_ui.markdown(
-                            f"**⏳ 匯入進度：** `{(i+1)} / {total_words_to_process}`\n\n"
-                            f"👉 目前正在串接多重字典處理： **{word}**\n\n"
-                        )
                         
                         w_data = get_word_record_data_via_ai(word, raw_def=raw_def, level=selected_level)
                         
@@ -497,13 +495,10 @@ if main_menu == "✨ 新增單字":
                             
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        time.sleep(0.5) 
                         
-                    status_ui.markdown("🔄 **正在將所有資料同步至 Google Sheets，請稍候...**")
                     save_all_vocab_to_sheet(active_worksheet, df_current)
-                    
-                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字。")
-                    time.sleep(2)
+                    st.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字。")
+                    time.sleep(1.5)
                     st.rerun()
                 else:
                     st.warning("⚠️ 在上傳的 Word 表格中找不到符合的結構化單字。")
@@ -525,7 +520,6 @@ elif main_menu == "📖 字彙管理":
                 
                 df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
                 
-                # 如果有選擇特定單元，就只針對該單元的項目處理；若選全部單字則處理全部
                 if selected_unit_filter != "全部單字":
                     target_indices = df_current[df_current['unit_tag'] == selected_unit_filter].index
                 else:
