@@ -95,7 +95,6 @@ except Exception as e:
 st.sidebar.markdown("---")
 st.sidebar.info(f"💡 雲端同步中：已連線至工作表【{active_worksheet.title}】")
 
-# 延長快取時間至 300 秒，避免頻繁讀取觸發 429 錯誤
 @st.cache_data(ttl=300, show_spinner=False)
 def get_vocab_from_sheets(_worksheet):
     try:
@@ -155,14 +154,15 @@ def get_word_record_data_via_ai(word, level="國中部"):
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
-            prompt = f"""
-            你是一個專業的英語字典。請針對英文單字「{w_clean}」（適用級別：{level}），提供以下 JSON 格式的解析，不要包含其他贅字：
-            {{
-                "phonetic": "/音標/",
-                "part_of_speech": "詞性 (例如 n., v., adj.)",
-                "definition": "精準的繁體中文解釋與翻譯",
-                "sentence": "一句道地的英文例句"
-            }}
-            """
+            prompt = (
+                f"你是一個專業的英語字典。請針對英文單字「{w_clean}」（適用級別：{level}），"
+                "提供以下 JSON 格式的解析，不要包含其他贅字：\n"
+                "{\n"
+                '    "phonetic": "/音標/",\n'
+                '    "part_of_speech": "詞性 (例如 n., v., adj.)",\n'
+                '    "definition": "精準的繁體中文解釋與翻譯",\n'
+                '    "sentence": "一句道地的英文例句"\n'
+                "}"
+            )
             response = model.generate_content(prompt)
             clean_text = response.text.replace("```json", "").replace("
