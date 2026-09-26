@@ -504,7 +504,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
                 st.session_state.quiz_feedback = None
-                st.session_state.user_input_val = "" # 完美控制輸入框數值
 
             # 檢查是否測驗結束
             if st.session_state.game_index >= len(st.session_state.game_queue):
@@ -538,7 +537,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 target_def = str(current_item['definition']).strip()
                 hint_masked = "".join([" _ " if c.isalpha() else "   " for c in target_word])
                 
-                st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
+                st.markdown(f"### 📊 進度 : 第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
                 
                 with st.container(border=True):
                     st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
@@ -562,34 +561,28 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         st.session_state.game_index += 1
                         st.rerun()
                 else:
-                    # 使用 session_state 綁定 value，確保切換題目時輸入框一定會被清空
-                    def on_input_change():
-                        st.session_state.user_input_val = st.session_state.temp_input_box
-
-                    user_ans = st.text_input("請輸入您的拼寫答案：", key="temp_input_box", on_change=on_input_change).strip().lower()
-                    
-                    col_btn1, col_btn2 = st.columns(2)
-                    with col_btn1:
-                        submit_ans = st.button("🚀 送出答案", type="primary", use_container_width=True)
-                    with col_btn2:
-                        skip_ans = st.button("⏭️ 略過 / 下一題", use_container_width=True)
+                    # 使用標準 st.form，提交後輸入框自動清空，完美解決殘留與報錯問題！
+                    with st.form(key=f"quiz_form_idx_{st.session_state.game_index}"):
+                        user_ans = st.text_input("請輸入您的拼寫答案：").strip().lower()
                         
-                    if submit_ans:
-                        current_typed = st.session_state.get("temp_input_box", "").strip().lower()
-                        if current_typed == target_word.lower():
-                            st.session_state.quiz_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
-                            st.session_state.temp_input_box = ""
-                            st.rerun()
-                        else:
-                            st.session_state.quiz_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
+                        col_btn1, col_btn2 = st.columns(2)
+                        with col_btn1:
+                            submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
+                        with col_btn2:
+                            skip_ans = st.form_submit_button("⏭️ 略過 / 下一題", use_container_width=True)
+                            
+                        if submit_ans:
+                            if user_ans == target_word.lower():
+                                st.session_state.quiz_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
+                                st.rerun()
+                            else:
+                                st.session_state.quiz_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
+                                if current_item not in st.session_state.wrong_answers:
+                                    st.session_state.wrong_answers.append(current_item)
+                                st.rerun()
+                                
+                        if skip_ans:
                             if current_item not in st.session_state.wrong_answers:
                                 st.session_state.wrong_answers.append(current_item)
-                            st.session_state.temp_input_box = ""
+                            st.session_state.quiz_feedback = {"type": "error", "msg": f"⏩ 已略過。本題正確答案為：`{target_word}`"}
                             st.rerun()
-                            
-                    if skip_ans:
-                        if current_item not in st.session_state.wrong_answers:
-                            st.session_state.wrong_answers.append(current_item)
-                        st.session_state.quiz_feedback = {"type": "error", "msg": f"⏩ 已略過。本題正確答案為：`{target_word}`"}
-                        st.session_state.temp_input_box = ""
-                        st.rerun()
