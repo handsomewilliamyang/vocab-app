@@ -61,19 +61,20 @@ except Exception as e:
 st.sidebar.markdown("<h2>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# 側邊欄級別選擇 (先讀取以便下方選單使用)
-selected_level = st.sidebar.radio(
-    "選擇目前目標級別：",
-    ["國中部", "高中部", "多益 (TOEIC)"],
+# 1. 先選擇主要功能模式
+main_menu = st.sidebar.radio(
+    "選擇主要功能：",
+    ["✨ 智慧單字新增", "📖 字庫管理與搜尋", "🎯 單字記憶", "🎮 拼字王挑戰遊戲"],
     label_visibility="collapsed"
 )
 
-# 讓選單顯示：「單字記憶【國中部】」、「單字記憶【高中部】」等
-flashcard_menu_name = f"🎯 單字記憶【{selected_level}】"
+st.sidebar.markdown("---")
+st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
 
-main_menu = st.sidebar.radio(
-    "選擇主要功能：",
-    ["✨ 智慧單字新增", "📖 字庫管理與搜尋", flashcard_menu_name, "🎮 拼字王挑戰遊戲"],
+# 2. 再選擇目標級別，讓使用者在同個模式下自由切換語料庫
+selected_level = st.sidebar.radio(
+    "選擇目前目標級別：",
+    ["國中部", "高中部", "多益 (TOEIC)"],
     label_visibility="collapsed"
 )
 
@@ -353,8 +354,7 @@ except Exception:
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
-# 模式名稱簡化顯示為「單字記憶【級別】」
-col_m2.metric(label="目前模式", value=f"單字記憶【{selected_level}】")
+col_m2.metric(label="目前模式", value=f"{main_menu}【{selected_level}】")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -644,9 +644,9 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 else:
                                     st.error("❌ 修改失敗：找不到該單字")
 
-elif main_menu == flashcard_menu_name:
+elif main_menu == "🎯 單字記憶":
     if df_vocab.empty:
-        st.warning("📭 目前雲端沒有單字！")
+        st.warning(f"📭 目前【{selected_level}】雲端沒有單字！")
     else:
         unit_list_flash = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
         selected_flash_unit = st.selectbox("🎯 選擇要複習的單元：", unit_list_flash, key="flash_unit_select")
@@ -670,7 +670,6 @@ elif main_menu == flashcard_menu_name:
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
-                # 常駐顯示的中英文解釋與例句區塊 (放大字體)
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>📌 中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
                 st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
@@ -680,7 +679,6 @@ elif main_menu == flashcard_menu_name:
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 喇叭圖示發音按鈕區 (無多餘提示文字)
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
                     if st.button("🔊 美式發音 (US)", use_container_width=True):
