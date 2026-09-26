@@ -28,14 +28,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🌟 內建常見國高中與多益核心單字的精準中文字義與例句庫（包含您剛才截圖中的所有單字）
+# 🌟 內建常見國高中與多益核心單字的精準中文字義與例句庫
 PRECISE_VOCAB_DB = {
     "call": {"pos": "v. / n.", "def": "打電話；叫喊；呼叫", "sentence": "I will call you after I finish my homework."},
-    "abroad": {"adv.", "def": "在國外；到國外", "sentence": "My cousin studied abroad in Canada for one year."},
+    "abroad": {"pos": "adv.", "def": "在國外；到國外", "sentence": "My cousin studied abroad in Canada for one year."},
     "garbage": {"pos": "n.", "def": "垃圾", "sentence": "Please put the garbage in the large bin outside."},
     "tip": {"pos": "n. / v.", "def": "小費；實用建議；給小費", "sentence": "The waiter gave us a useful tip about the local restaurant."},
     "already": {"pos": "adv.", "def": "已經", "sentence": "I have already finished my homework, so I can go out now."},
-    "wish": {"v. / n.", "def": "希望；祝願", "sentence": "I wish I could travel around Europe with my family."},
+    "wish": {"pos": "v. / n.", "def": "希望；祝願", "sentence": "I wish I could travel around Europe with my family."},
     "angry": {"pos": "adj.", "def": "生氣的；憤怒的", "sentence": "My brother was angry when he found out that I had used his computer."},
     "exciting": {"pos": "adj.", "def": "令人興奮的", "sentence": "The children found the roller coaster ride extremely exciting."},
     "online": {"pos": "adj. / adv.", "def": "線上；聯網的", "sentence": "Many students prefer taking online courses during winter break."},
@@ -220,15 +220,14 @@ def get_vocab_from_sheets(_worksheet):
     df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
     df_temp = df_temp[df_temp['word'].notna()]
     
-    # 🌟 自動智慧填補：如果雲端試算表中的中文或例句是空的，自動從精準字典庫中對應填入正確翻譯！
+    # 🌟 自動智慧填補：自動從精準字典庫中對應填入正確翻譯與例句！
     for idx, row in df_temp.iterrows():
         w_clean = str(row['word']).strip()
         w_lower = w_clean.lower()
         r_def = str(row['definition']).strip()
         r_sent = str(row['basic_sentence']).strip()
         
-        # 轉為空字串檢查
-        if r_def == "nan" or r_def == "":
+        if r_def == "nan" or r_def == "" or "請補充" in r_def or "請自訂" in r_def:
             if w_lower in PRECISE_VOCAB_DB:
                 df_temp.at[idx, 'definition'] = PRECISE_VOCAB_DB[w_lower]['def']
                 df_temp.at[idx, 'part_of_speech'] = PRECISE_VOCAB_DB[w_lower]['pos']
@@ -419,7 +418,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
                 get_vocab_from_sheets.clear()
-                st.success("✅ 快取已清除，已自動補上所有正確的中文翻譯與例句！")
+                st.success("✅ 快取已清除，已自動補上正確的中文翻譯！")
                 time.sleep(0.5)
                 st.rerun()
 
