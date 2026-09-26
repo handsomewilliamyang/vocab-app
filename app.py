@@ -498,9 +498,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
-                st.session_state.show_result = False
-                st.session_state.last_result_msg = ""
-                st.session_state.user_answer_text = ""
+                st.session_state.last_feedback = None
 
             # 檢查是否測驗結束
             if st.session_state.game_index >= len(st.session_state.game_queue):
@@ -545,41 +543,49 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         st.audio(audio, format="audio/mp3")
                     except: 
                         pass
-                
-                # 核心判斷：如果已經按下送出或略過，顯示結果與累積錯誤題數
-                if st.session_state.get("show_result", False):
-                    st.markdown(st.session_state.last_result_msg, unsafe_allow_html=True)
-                    st.markdown(f"### ❌ 目前累積錯誤題數：`{len(st.session_state.wrong_answers)}` 題")
-                    
-                    if st.button("➡️ 進入下一題", type="primary", use_container_width=True):
-                        st.session_state.show_result = False
-                        st.session_state.user_answer_text = ""
-                        st.session_state.game_index += 1
-                        st.rerun()
-                else:
-                    # 尚未作答時的輸入框與按鈕
-                    curr_idx = st.session_state.game_index
-                    user_ans = st.text_input("請輸入您的拼寫答案：", value=st.session_state.get("user_answer_text", ""), key=f"input_box_{curr_idx}")
-                    st.session_state.user_answer_text = user_ans
+
+                # 顯示上一題的即時回饋與累積錯誤題數
+                if st.session_state.get("last_feedback"):
+                    fb = st.session_state.last_feedback
+                    if fb["type"] == "success":
+                        st.success(fb["msg"])
+                    else:
+                        st.error(fb["msg"])
+                    st.markdown(f"### 🛑 目前累積錯誤題數：`{len(st.session_state.wrong_answers)}` 題")
+                    st.markdown("---")
+
+                # 採用標準 Form 表單，絕對不會連跳題，且送出後輸入框自動清空
+                with st.form(key=f"safe_quiz_form_{st.session_state.game_index}"):
+                    user_ans = st.text_input("請輸入您的拼寫答案：").strip().lower()
                     
                     col_btn1, col_btn2 = st.columns(2)
                     with col_btn1:
-                        if st.button("🚀 送出答案", type="primary", use_container_width=True):
-                            ans_cleaned = user_ans.strip().lower()
-                            if ans_cleaned == target_word.lower():
-                                st.session_state.last_result_msg = f"### 🎉 答對了！就是 `{target_word}`"
-                            else:
-                                if current_item not in st.session_state.wrong_answers:
-                                    st.session_state.wrong_answers.append(current_item)
-                                st.session_state.last_result_msg = f"### ❌ 答錯囉！正確答案是：`{target_word}`"
-                            
-                            st.session_state.show_result = True
-                            st.rerun()
-                            
+                        submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
                     with col_btn2:
-                        if st.button("⏭️ 略過本題", use_container_width=True):
+                        skip_ans = st.form_submit_button("⏭️ 略過本題", use_container_width=True)
+                        
+                    if submit_ans:
+                        if user_ans == target_word.lower():
+                            st.session_state.last_feedback = {
+                                "type": "success", 
+                                "msg": f"🎉 上一題答對了！就是 `{target_word}`"
+                            }
+                        else:
                             if current_item not in st.session_state.wrong_answers:
                                 st.session_state.wrong_answers.append(current_item)
-                            st.session_state.last_result_msg = f"### ⏩ 已略過。本題正確答案為：`{target_word}`"
-                            st.session_state.show_result = True
-                            st.rerun()
+                            st.session_state.last_feedback = {
+                                "type": "error", 
+                                "msg": f"❌ 上一題答錯囉！正確答案是：`{target_word}`"
+                            }
+                        st.session_state.game_index += 1
+                        st.rerun()
+                        
+                    if skip_ans:
+                        if current_item not in st.session_state.wrong_answers:
+                            st.session_state.wrong_answers.append(current_item)
+                        st.session_state.last_feedback = {
+                            "type": "error", 
+                            "msg": f"⏩ 上一題已略過。正確答案為：`{target_word}`"
+                        }
+                        st.session_state.game_index += 1
+                        st.rerun()
