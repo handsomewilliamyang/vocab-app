@@ -153,19 +153,30 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-def fetch_real_english_definition_and_example(word):
-    """步驟 1：嚴格從免費開源字典 API 內抓取真實英文釋義與例句"""
+def fetch_all_free_dictionaries(word):
+    """將三大免費開源字典 API (Free Dictionary, Datamuse, Wiktionary) 通通強力串聯"""
     w_clean = word.strip().lower()
     real_def = ""
     real_example = ""
+    phonetic = ""
+    pos = ""
 
+    # 1. 串聯 Free Dictionary API
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
         res_fd = requests.get(url_fd, timeout=3)
         if res_fd.status_code == 200:
             data = res_fd.json()
             if isinstance(data, list) and len(data) > 0:
-                for meaning in data[0].get('meanings', []):
+                entry = data[0]
+                if 'phonetic' in entry:
+                    phonetic = entry['phonetic']
+                elif 'phonetics' in entry and len(entry['phonetics']) > 0:
+                    phonetic = entry['phonetics'][0].get('text', '')
+                
+                for meaning in entry.get('meanings', []):
+                    if not pos:
+                        pos = meaning.get('partOfSpeech', '')
                     for definition_obj in meaning.get('definitions', []):
                         if not real_def:
                             real_def = definition_obj.get('definition', '')
@@ -177,44 +188,106 @@ def fetch_real_english_definition_and_example(word):
                         break
     except Exception:
         pass
-        
-    if not real_example or not real_def:
+
+    # 2. 串聯 Datamuse API 補強釋義與音標
+    if not real_def or not real_example:
         try:
-            url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
+            url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=dpr&max=1"
             res_dm = requests.get(url_dm, timeout=3)
             if res_dm.status_code == 200:
                 data = res_dm.json()
-                if isinstance(data, list) and len(data) > 0 and 'defs' in data[0]:
-                    for raw_def in data[0]['defs']:
-                        if '\t' in raw_def:
+                if isinstance(data, list) and len(data) > 0:
+                    item = data[0]
+                    if not phonetic and 'ipa' in item:
+                        phonetic = f"/{item['ipa']}/"
+                    if 'defs' in item:
+                        for raw_def in item['defs']:
                             parts = raw_def.split('\t', 1)
-                            clean_def = parts[1]
-                        else:
-                            clean_def = raw_def
-                        if not real_def:
-                            real_def = clean_def.capitalize()
+                            if not pos and len(parts) > 0:
+                                pos = parts[0]
+                            clean_d = parts[1] if len(parts) > 1 else raw_def
+                            if not real_def:
+                                real_def = clean_d.capitalize()
+                            if real_def:
+                                break
         except Exception:
             pass
 
-    return real_def, real_example
+    # 3. 串聯 Wiktionary API 補強
+    if not real_def:
+        try:
+            url_wk = f"https://en.wiktionary.org/api/rest_v1/page/definition/{w_clean.replace(' ', '_')}"
+            res_wk = requests.get(url_wk, timeout=3)
+            if res_wk.status_code == 200:
+                data = res_wk.json()
+                for lang in data.values():
+                    for item in lang:
+                        if 'definitions' in item and len(item['definitions']) > 0:
+                            raw_html = item['definitions'][0]['definition']
+                            clean_text = re.sub(r'<[^>]+>', '', raw_html).strip()
+                            if clean_text and not real_def:
+                                real_def = clean_text
+        except Exception:
+            pass
 
-def generate_safe_fallback_sentence(word, definition):
-    """最終備用方案：合乎文法的自然常模（絕不胡亂硬套）"""
+    return real_def, real_example, phonetic, pos
+
+def generate_multi_combination_fallback(word, definition):
+    """根據不同詞性與語意特徵組合成多重變化的自然例句常模"""
     w_clean = word.strip()
-    return f"We can observe how {w_clean} is applied in our daily life and studies."
+    w_lower = w_clean.lower()
+    d_clean = definition.strip()
+    
+    random.seed(w_lower)
+    
+    # 依據常見詞性與中文意義關鍵字挑選豐富多變的句型模板
+    if any(k in d_clean for k in ["吃", "喝", "烹", "食", "味"]):
+        templates = [
+            f"Many people love to {w_clean} with their family during holidays.",
+            f"It is always a great pleasure to {w_clean} at local restaurants.",
+            f"She decided to learn how to {w_clean} like a professional chef."
+        ]
+    elif any(k in d_clean for k in ["跑", "走", "動", "行", "飛", "去", "來"]):
+        templates = [
+            f"The athletes began to {w_clean} rapidly across the field.",
+            f"You need to {w_clean} carefully when exploring the slippery path.",
+            f"They planned to {w_clean} early in the morning to avoid heavy traffic."
+        ]
+    elif any(k in d_clean for k in ["想", "知", "學", "懂", "信", "看", "聽", "說", "讀", "寫"]):
+        templates = [
+            f"Students often try to {w_clean} deeply about complex topics.",
+            f"It takes time to fully {w_clean} what is happening around us.",
+            f"Teachers encourage everyone to {w_clean} actively during class discussions."
+        ]
+    elif any(k in d_clean for k in ["大", "小", "高", "低", "新", "舊", "好", "壞", "美", "快", "慢"]):
+        templates = [
+            f"Everyone noticed the remarkably {w_clean} features of the new design.",
+            f"Finding a truly {w_clean} option can sometimes be quite challenging.",
+            f"The results showed a {w_clean} improvement compared to last month."
+        ]
+    else:
+        templates = [
+            f"Experts have discussed the vital role of {w_clean} in modern society.",
+            f"We need to carefully examine how {w_clean} impacts our daily routine.",
+            f"A thorough understanding of {w_clean} opens up new possibilities for everyone."
+        ]
+        
+    return random.choice(templates)
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 步驟 1：優先從免費字典抓取真實釋義與例句
-    real_eng_def, real_example = fetch_real_english_definition_and_example(w_clean)
+    # 步驟 1：通通串聯三大免費字典優先抓取
+    real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
     
     final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
     final_sentence = real_example
+    final_phonetic = fetched_phonetic if fetched_phonetic else f"/{w_lower.replace(' ', '')}/"
+    final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else "n."
 
-    # 步驟 2：如果字典內沒有例句或釋義，交由 AI 引擎 (Gemini) 精準生成
+    # 步驟 2：如果字典內沒有完整取得，啟動 AI 引擎 (Gemini)
     if (not final_sentence or not real_eng_def) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
@@ -244,19 +317,23 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     ai_sent = data.get("sentence", "")
                     if ai_sent and len(ai_sent) > 5 and w_lower in ai_sent.lower():
                         final_sentence = ai_sent
+                if not fetched_phonetic and data.get("phonetic"):
+                    final_phonetic = data.get("phonetic")
+                if not fetched_pos and data.get("part_of_speech"):
+                    final_pos = simple_s2t_convert(data.get("part_of_speech"))
                 
                 break
             except Exception:
                 time.sleep(1)
 
-    # 步驟 3：最後防線
+    # 步驟 3：最後防線 - 採用多重組合變化的智慧常模例句
     if not final_sentence:
-        final_sentence = generate_safe_fallback_sentence(w_clean, cleaned_def)
+        final_sentence = generate_multi_combination_fallback(w_clean, cleaned_def)
 
     return {
         "word": w_clean,
-        "phonetic": f"/{w_lower.replace(' ', '')}/",
-        "part_of_speech": "n.",
+        "phonetic": final_phonetic,
+        "part_of_speech": final_pos,
         "definition": cleaned_def,
         "advanced_sentence": final_eng_def,
         "basic_sentence": final_sentence
