@@ -377,7 +377,8 @@ def play_audio_compact(text_to_speak, label_key="🔊"):
             background: transparent;
         }}
         .speak-btn {{
-            padding: 0.2rem 0.5rem;
+            width: 100%;
+            padding: 0.35rem 0.5rem;
             background-color: transparent;
             color: inherit;
             border: 1px solid rgba(128, 128, 128, 0.35);
@@ -395,7 +396,7 @@ def play_audio_compact(text_to_speak, label_key="🔊"):
     </style>
     </head>
     <body>
-        <button class="speak-btn" onclick="speakText()" title="播放發音">{label_key}</button>
+        <button class="speak-btn" onclick="speakText()">{label_key}</button>
         <script>
             function speakText() {{
                 if ('speechSynthesis' in window) {{
@@ -410,7 +411,7 @@ def play_audio_compact(text_to_speak, label_key="🔊"):
     </body>
     </html>
     """
-    components.html(html_code, height=35)
+    components.html(html_code, height=40)
 # =========================================================================
 
 st.title("📚 我愛背單字")
@@ -777,18 +778,10 @@ elif main_menu == "🎯 背誦單字":
             row = df_filtered_flash.iloc[st.session_state.flashcard_index]
             
             with st.container(border=True):
-                st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
-                st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
-                st.markdown("---")
-                st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
-                
-                if row.get('basic_sentence'):
-                    st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                
+                # 三個發音按鈕改至單字下方正中央，並與拼字王風格造型完全一致
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
                     try:
@@ -802,6 +795,13 @@ elif main_menu == "🎯 背誦單字":
                     try:
                         play_audio_compact(row['word'], "🔊 澳洲發音 (AU)")
                     except: pass
+                
+                st.markdown("---")
+                st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
+                
+                if row.get('basic_sentence'):
+                    st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             if c1.button("⬅️ 上一個", use_container_width=True):
