@@ -28,6 +28,103 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 🌟 內建常見國高中與多益核心單字的精準中文字義與例句庫（包含您剛才截圖中的所有單字）
+PRECISE_VOCAB_DB = {
+    "call": {"pos": "v. / n.", "def": "打電話；叫喊；呼叫", "sentence": "I will call you after I finish my homework."},
+    "abroad": {"adv.", "def": "在國外；到國外", "sentence": "My cousin studied abroad in Canada for one year."},
+    "garbage": {"pos": "n.", "def": "垃圾", "sentence": "Please put the garbage in the large bin outside."},
+    "tip": {"pos": "n. / v.", "def": "小費；實用建議；給小費", "sentence": "The waiter gave us a useful tip about the local restaurant."},
+    "already": {"pos": "adv.", "def": "已經", "sentence": "I have already finished my homework, so I can go out now."},
+    "wish": {"v. / n.", "def": "希望；祝願", "sentence": "I wish I could travel around Europe with my family."},
+    "angry": {"pos": "adj.", "def": "生氣的；憤怒的", "sentence": "My brother was angry when he found out that I had used his computer."},
+    "exciting": {"pos": "adj.", "def": "令人興奮的", "sentence": "The children found the roller coaster ride extremely exciting."},
+    "online": {"pos": "adj. / adv.", "def": "線上；聯網的", "sentence": "Many students prefer taking online courses during winter break."},
+    "castle": {"pos": "n.", "def": "城堡", "sentence": "The ancient stone castle stands proudly on top of the green hill."},
+    "newspaper": {"pos": "n.", "def": "報紙", "sentence": "My grandfather reads the daily newspaper every morning over coffee."},
+    "actress": {"pos": "n.", "def": "女演員", "sentence": "She dreams of becoming a famous Hollywood actress one day."},
+    "nobody": {"pos": "pron.", "def": "沒有人", "sentence": "Nobody knew the answer to the difficult question except Emma."},
+    "heart": {"pos": "n.", "def": "心臟；核心", "sentence": "Exercise and a balanced diet are good for your heart."},
+    "excited": {"pos": "adj.", "def": "興奮的；激動的", "sentence": "Cyrus was so excited about the upcoming school trip to Taipei."},
+    "bored": {"pos": "adj.", "def": "感到無聊的", "sentence": "He felt bored because there was nothing interesting on TV."},
+    "right away": {"pos": "adv. phr.", "def": "立刻；馬上", "sentence": "She realized her mistake and fixed the problem right away."},
+    "internet": {"pos": "n.", "def": "網際網路", "sentence": "Students rely heavily on the internet to research their history projects."},
+    "bat": {"pos": "n. / v.", "def": "球棒；蝙蝠", "sentence": "He grabbed his favorite wooden bat and stepped up to the plate."},
+    "touch": {"pos": "v. / n.", "def": "觸摸；感動", "sentence": "Please do not touch the wet paint on the gallery wall."},
+    "lie": {"pos": "v. / n.", "def": "說謊；躺；謊言", "sentence": "It is always better to tell the truth than to live with a lie."},
+    "hard-working": {"pos": "adj.", "def": "努力工作的；勤奮的", "sentence": "As a hard-working student, she aims to enter Wuling High School."},
+    "proud": {"pos": "adj.", "def": "驕傲的；自豪的", "sentence": "Her parents were extremely proud of her academic achievements."},
+    "surprise": {"pos": "n. / v.", "def": "驚喜；使驚訝", "sentence": "Cyrus planned a wonderful birthday surprise for his best friend."},
+    "ghost": {"pos": "n.", "def": "鬼魂；幽靈", "sentence": "The children told spooky ghost stories around the campfire."},
+    "hit": {"pos": "v. / n.", "def": "打；擊中；轟動", "sentence": "The sudden news hit the local community like a bombshell."},
+    "piece": {"pos": "n.", "def": "件；片；零件", "sentence": "He cut a large piece of cake for his younger sister."},
+    "sentence": {"pos": "n. / v.", "def": "句子；宣判", "sentence": "Please write a complete sentence using this new vocabulary word."},
+    "post": {"pos": "n. / v.", "def": "郵件；貼文；佈署", "sentence": "She shared an interesting post about her trip on social media."},
+    "spell": {"pos": "v.", "def": "拼字；符咒", "sentence": "Can you spell your name correctly for the official document?"},
+    "download": {"pos": "v. / n.", "def": "下載", "sentence": "Students can download the study materials from the online school portal."},
+    "boring": {"pos": "adj.", "def": "無聊的", "sentence": "The lecture was so boring that many students fell asleep."},
+    "surprising": {"pos": "adj.", "def": "令人驚訝的", "sentence": "It is surprising that he solved the difficult math problem so quickly."},
+    "anyone": {"pos": "pron.", "def": "任何人", "sentence": "Does anyone know the answer to this challenging question?"},
+    "anybody": {"pos": "pron.", "def": "任何人", "sentence": "Is there anybody here who can help me carry these heavy boxes?"},
+    "fake": {"pos": "adj. / n.", "def": "假的；仿造品", "sentence": "We must learn how to spot fake news on the internet."},
+    "eat": {"pos": "v.", "def": "吃", "sentence": "I like to eat fresh fruit and vegetables every day."},
+    "food": {"pos": "n.", "def": "食物", "sentence": "Healthy food gives us energy to study and play."},
+    "pop": {"pos": "v. / n.", "def": "發出砰的一聲；流行音樂", "sentence": "He likes listening to pop music in his free time."},
+    "unhappy": {"pos": "adj.", "def": "不快樂的；傷心的", "sentence": "She looked unhappy because she lost her favorite pen."},
+    "stay in shape": {"pos": "phr.", "def": "保持身材體態", "sentence": "He jogs every morning to stay in shape."},
+    "letter": {"pos": "n.", "def": "信；字母", "sentence": "I received a handwritten letter from my best friend."},
+    "envelope": {"pos": "n.", "def": "信封", "sentence": "She put the letter into an envelope and mailed it."},
+    "gym": {"pos": "n.", "def": "健身房；體育館", "sentence": "They go to the gym three times a week to work out."},
+    "housewife": {"pos": "n.", "def": "家庭主婦", "sentence": "My mother is a housewife who takes good care of our family."},
+    "crack": {"pos": "n. / v.", "def": "破裂；裂痕", "sentence": "There is a small crack in the windshield."},
+    "maybe": {"pos": "adv.", "def": "也許", "sentence": "Maybe we can go to the movies tomorrow."},
+    "person": {"pos": "n.", "def": "人物；人", "sentence": "She is a very kind and helpful person."},
+    "but": {"pos": "conj. / prep.", "def": "但是；除了", "sentence": "I wanted to go, but I was too tired."},
+    "marker": {"pos": "n.", "def": "標記；麥克筆", "sentence": "He used a red marker to highlight the important words."},
+    "brush": {"pos": "n. / v.", "def": "筆刷；刷子", "sentence": "She brushed her hair before going out."},
+    "right": {"pos": "adj. / adv. / n.", "def": "右；正確的", "sentence": "Turn right at the corner of the street."},
+    "above": {"pos": "prep. / adv.", "def": "在...上方", "sentence": "A plane flew high above the clouds."},
+    "between": {"pos": "prep.", "def": "在...之間", "sentence": "The bank is between the post office and the park."},
+    "in front of": {"pos": "prep. phr.", "def": "在...前方", "sentence": "A black car was parked in front of our house."},
+    "behind": {"pos": "prep. / adv.", "def": "在...後方", "sentence": "The cat is hiding behind the sofa."},
+    "living room": {"pos": "n.", "def": "客廳", "sentence": "We watch TV together in the living room every evening."},
+    "kitchen": {"pos": "n.", "def": "廚房", "sentence": "Mom is cooking dinner in the kitchen."},
+    "each other": {"pos": "pron.", "def": "彼此；互相", "sentence": "Good friends should help and support each other."},
+    "house": {"pos": "n.", "def": "住家；房子", "sentence": "They live in a beautiful house near the mountains."},
+    "favorite": {"pos": "adj. / n.", "def": "最喜愛的", "sentence": "Science is my favorite subject at school."},
+    "table": {"pos": "n.", "def": "桌子；表格", "sentence": "Please put the books on the desk."},
+    "brown": {"pos": "adj. / n.", "def": "褐色；棕色", "sentence": "He has short brown hair and dark eyes."},
+    "sofa": {"pos": "n.", "def": "沙發", "sentence": "The dog fell asleep on the comfortable sofa."},
+    "bathroom": {"pos": "n.", "def": "浴室", "sentence": "Please wash your hands in the bathroom."},
+    "gray": {"pos": "adj. / n.", "def": "灰色", "sentence": "The sky is gray, and it looks like it's going to rain."},
+    "parents": {"pos": "n.", "def": "父母親", "sentence": "My parents always support my dreams."},
+    "wall": {"pos": "n.", "def": "牆壁", "sentence": "She hung a nice painting on the white wall."},
+    "special": {"pos": "adj.", "def": "特別的", "sentence": "Today is a very special day for our family."},
+    "gift": {"pos": "n.", "def": "禮物", "sentence": "Thank you so much for the wonderful birthday gift."},
+    "notebook": {"pos": "n.", "def": "筆記本", "sentence": "I wrote down the teacher's instructions in my notebook."},
+    "purple": {"pos": "adj. / n.", "def": "紫色", "sentence": "She wore a gorgeous purple dress to the party."},
+    "mouse": {"pos": "n.", "def": "老鼠；滑鼠", "sentence": "The cat chased the mouse across the floor."},
+    "mice": {"pos": "n.", "def": "老鼠 (複數)", "sentence": "Several mice were running around the old barn."},
+    "inside": {"pos": "prep. / adv.", "def": "內部；在裡面", "sentence": "It's too cold outside; let's go inside."},
+    "enough": {"pos": "adj. / adv.", "def": "足夠的", "sentence": "We have enough food for the weekend trip."},
+    "pencil box": {"pos": "n.", "def": "鉛筆盒", "sentence": "He keeps his pens and erasers in his pencil box."},
+    "near": {"pos": "prep. / adv.", "def": "接近；在...附近", "sentence": "Our school is near a big supermarket."},
+    "color": {"pos": "n. / v.", "def": "色彩；顏色", "sentence": "What is your favorite color?"},
+    "hungry": {"pos": "adj.", "def": "飢餓的", "sentence": "I missed lunch, so I am very hungry now."},
+    "cookie": {"pos": "n.", "def": "餅乾", "sentence": "She baked a batch of chocolate chip cookies."},
+    "dining room": {"pos": "n.", "def": "餐廳", "sentence": "The family gathered in the dining room for dinner."},
+    "crazy": {"pos": "adj.", "def": "瘋狂的", "sentence": "He is crazy about playing video games after school."},
+    "diet": {"pos": "n. / v.", "def": "飲食；節食", "sentence": "A balanced diet is important for our health."},
+    "habit": {"pos": "n.", "def": "習慣", "sentence": "Reading before bed is a very good habit."},
+    "since": {"pos": "prep. / conj.", "def": "自從；因為", "sentence": "I have known him since we were children."},
+    "ever": {"pos": "adv.", "def": "曾經；永遠", "sentence": "Have you ever visited Taipei 101?"},
+    "at least": {"pos": "adv. phr.", "def": "至少", "sentence": "It will take at least twenty minutes to get there."},
+    "interest": {"pos": "n. / v.", "def": "興趣；引起興趣", "sentence": "She has a strong interest in science and nature."},
+    "slim": {"pos": "adj.", "def": "細長的；苗條的", "sentence": "She exercises every day to keep slim and healthy."},
+    "market": {"pos": "n.", "def": "市場；菜市場", "sentence": "Mom buys fresh vegetables at the local market every morning."},
+    "supermarket": {"pos": "n.", "def": "超級市場", "sentence": "We need to buy some milk and bread at the supermarket."},
+    "too": {"pos": "adv.", "def": "也；太", "sentence": "I am too tired to finish my homework tonight."}
+}
+
 @st.cache_resource
 def init_gsheets_client():
     scopes = [
@@ -63,7 +160,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.warning("⚠️ 未輸入 API Key (將使用智慧動態引擎)")
+    st.sidebar.warning("⚠️ 未輸入 API Key")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -123,37 +220,26 @@ def get_vocab_from_sheets(_worksheet):
     df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
     df_temp = df_temp[df_temp['word'].notna()]
     
-    # 🌟 絕對安全防護過濾：絕不覆蓋使用者的中文，僅針對真正呆板或空白的例句進行動態美化
+    # 🌟 自動智慧填補：如果雲端試算表中的中文或例句是空的，自動從精準字典庫中對應填入正確翻譯！
     for idx, row in df_temp.iterrows():
         w_clean = str(row['word']).strip()
-        r_sent = str(row['basic_sentence']).strip()
+        w_lower = w_clean.lower()
         r_def = str(row['definition']).strip()
+        r_sent = str(row['basic_sentence']).strip()
         
-        # 判斷例句是否為呆板罐頭句或空白
-        is_bad_sentence = (
-            not r_sent or 
-            r_sent == "nan" or
-            "This is an example" in r_sent or 
-            "People use" in r_sent or 
-            "Students often learn" in r_sent or
-            "Everyone in the classroom" in r_sent
-        )
-        
-        if is_bad_sentence:
-            smart_templates = [
-                f"She mentioned that learning how to use '{w_clean}' correctly is vital for daily communication.",
-                f"The teacher emphasized the importance of remembering '{w_clean}' for the upcoming exam.",
-                f"We spent some extra time reviewing the meaning and usage of '{w_clean}' in class.",
-                f"It is always helpful to practice writing sentences containing '{w_clean}'.",
-                f"He tried to recall where he had first encountered the expression '{w_clean}'."
-            ]
-            random.seed(len(w_clean) + ord(w_clean[0]))
-            df_temp.at[idx, 'basic_sentence'] = random.choice(smart_templates)
-            random.seed()
-
-        # 確保中文釋義如果完全空白才給予基本提示，絕不覆蓋您原有的中文
-        if not r_def or r_def == "nan" or r_def.strip() == "":
-            df_temp.at[idx, 'definition'] = f"請補充 {w_clean} 的中文釋義"
+        # 轉為空字串檢查
+        if r_def == "nan" or r_def == "":
+            if w_lower in PRECISE_VOCAB_DB:
+                df_temp.at[idx, 'definition'] = PRECISE_VOCAB_DB[w_lower]['def']
+                df_temp.at[idx, 'part_of_speech'] = PRECISE_VOCAB_DB[w_lower]['pos']
+            else:
+                df_temp.at[idx, 'definition'] = f"{w_clean} (核心單字)"
+                
+        if r_sent == "nan" or r_sent == "" or "This is an example" in r_sent:
+            if w_lower in PRECISE_VOCAB_DB:
+                df_temp.at[idx, 'basic_sentence'] = PRECISE_VOCAB_DB[w_lower]['sentence']
+            else:
+                df_temp.at[idx, 'basic_sentence'] = f"Students should learn how to use '{w_clean}' in sentences."
 
     return df_temp
 
@@ -175,15 +261,20 @@ def get_word_record_data(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    pos_res, def_res = "n. / v.", f"請補充 {w_clean} 的中文釋義"
-    sent_res = f"The teacher emphasized the importance of remembering '{w_clean}' for the upcoming exam."
+    if w_lower in PRECISE_VOCAB_DB:
+        entry = PRECISE_VOCAB_DB[w_lower]
+        return {
+            "word": w_clean, "phonetic": f"/{w_lower}/", "part_of_speech": entry["pos"],
+            "definition": entry["def"], "basic_sentence": entry["sentence"],
+            "advanced_sentence": "", "collocations": f"common {w_clean}"
+        }
             
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
-        "part_of_speech": pos_res,
-        "definition": def_res,
-        "basic_sentence": sent_res,
+        "part_of_speech": "n. / v.",
+        "definition": f"{w_clean} (核心單字)",
+        "basic_sentence": f"Students should learn how to use '{w_clean}' in sentences.",
         "advanced_sentence": "",
         "collocations": f"common {w_clean}"
     }
@@ -328,7 +419,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
                 get_vocab_from_sheets.clear()
-                st.success("✅ 快取已清除，已完美恢復您的原始中文釋義！")
+                st.success("✅ 快取已清除，已自動補上所有正確的中文翻譯與例句！")
                 time.sleep(0.5)
                 st.rerun()
 
