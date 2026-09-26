@@ -71,7 +71,7 @@ main_menu = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
 
-# 2. 選擇目標級別 (已將多益改為 TOEIC)
+# 2. 選擇目標語料庫級別
 selected_level = st.sidebar.radio(
     "選擇目前目標級別：",
     ["國中部", "高中部", "TOEIC"],
@@ -354,6 +354,7 @@ except Exception:
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
+# 右下角目前模式：僅顯示純文字與級別，不帶任何圖案
 col_m2.metric(label="目前模式", value=f"{main_menu}【{selected_level}】")
 
 st.markdown("<br>", unsafe_allow_html=True)
