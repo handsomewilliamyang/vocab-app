@@ -537,7 +537,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 target_def = str(current_item['definition']).strip()
                 hint_masked = "".join([" _ " if c.isalpha() else "   " for c in target_word])
                 
-                st.markdown(f"### 📊 進度 : 第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
+                st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
                 
                 with st.container(border=True):
                     st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
@@ -561,9 +561,11 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                         st.session_state.game_index += 1
                         st.rerun()
                 else:
-                    # 使用標準 st.form，提交後輸入框自動清空，完美解決殘留與報錯問題！
-                    with st.form(key=f"quiz_form_idx_{st.session_state.game_index}"):
-                        user_ans = st.text_input("請輸入您的拼寫答案：").strip().lower()
+                    # 核心解法：form 與 text_input 的 key 綁定當前題號 (game_index)
+                    # 當題號改變時，Streamlit 會自動銷毀舊表單並建立全新空白表單，絕對不會殘留文字！
+                    curr_idx = st.session_state.game_index
+                    with st.form(key=f"quiz_form_dynamic_{curr_idx}"):
+                        user_ans = st.text_input("請輸入您的拼寫答案：", key=f"user_input_field_{curr_idx}").strip().lower()
                         
                         col_btn1, col_btn2 = st.columns(2)
                         with col_btn1:
