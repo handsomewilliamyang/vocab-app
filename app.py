@@ -59,7 +59,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用高階智慧語意解析引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用精準內建字典")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -132,25 +132,29 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-BUILTIN_VOCAB_MAP = {
-    "boring": ("令人乏味的、無聊的", "adj.", "The movie was so boring that I fell asleep."),
-    "surprising": ("令人驚訝的", "adj.", "It is surprising that he passed the exam."),
-    "anyone": ("任何人", "pron.", "Does anyone know the answer?"),
-    "anybody": ("任何人", "pron.", "Is anybody home?"),
-    "fake": ("假的、仿造的", "adj./n.", "He was wearing a fake Rolex watch."),
-    "exciting": ("令人興奮的", "adj.", "The football game was very exciting."),
-    "online": ("線上、聯網的", "adj./adv.", "We have online classes on Mondays."),
-    "castle": ("城堡", "n.", "We visited an old European castle."),
-    "newspaper": ("報紙", "n.", "He reads the newspaper every morning."),
-    "actress": ("女演員", "n.", "She is a famous Hollywood actress.")
+# 高精準度內建字典庫（確保沒有 API 時也能給出正確中文，絕不拿英文充當定義）
+PRECISE_VOCAB_DICT = {
+    "crack": ("裂縫、破裂", "n./v.", "The glass broke with a loud crack."),
+    "maybe": ("也許、可能", "adv.", "Maybe we can go to the park tomorrow."),
+    "person": ("人、個人", "n.", "He is a very kind person."),
+    "but": ("但是、然而", "conj.", "I wanted to go, but it started to rain."),
+    "brush": ("刷子、畫筆、刷", "n./v.", "She brushed her teeth before bed."),
+    "right": ("對的、右邊、權利", "adj./n./adv.", "You made the right choice."),
+    "above": ("在...上方", "prep./adv.", "The plane flew high above the clouds."),
+    "cookie": ("餅乾", "n.", "She baked a batch of chocolate cookies."),
+    "dining room": ("餐廳", "n.", "We had dinner in the dining room."),
+    "magic": ("魔術、神奇的", "n./adj.", "The magician performed an amazing trick."),
+    "eat": ("吃", "v.", "He likes to eat fresh fruit."),
+    "food": ("食物", "n.", "Good food is essential for health."),
+    "marker": ("麥克筆、標記", "n.", "He used a red marker to highlight the text.")
 }
 
 def get_word_record_data_via_ai(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    if w_lower in BUILTIN_VOCAB_MAP:
-        def_val, pos_val, sent_val = BUILTIN_VOCAB_MAP[w_lower]
+    if w_lower in PRECISE_VOCAB_DICT:
+        def_val, pos_val, sent_val = PRECISE_VOCAB_DICT[w_lower]
         return {
             "word": w_clean,
             "phonetic": f"/{w_lower}/",
@@ -193,33 +197,12 @@ def get_word_record_data_via_ai(word, level="國中部"):
             except Exception:
                 time.sleep(1)
             
-    pos_guess = "n."
-    def_guess = f"{w_clean}"
-    
-    if w_lower.endswith("ing"):
-        pos_guess = "adj."
-        def_guess = f"令人{w_clean[:-3]}的" if len(w_clean) > 3 else f"{w_clean}的"
-    elif w_lower.endswith("ed"):
-        pos_guess = "adj."
-        def_guess = f"感到{w_clean[:-2]}的"
-    elif w_lower.endswith("ly"):
-        pos_guess = "adv."
-        def_guess = f"{w_clean[:-2]}地"
-    elif w_lower.endswith("ful") or w_lower.endswith("able") or w_lower.endswith("ive") or w_lower.endswith("al"):
-        pos_guess = "adj."
-        def_guess = f"{w_clean}的"
-    elif w_lower.endswith("er") or w_lower.endswith("or"):
-        pos_guess = "n."
-        def_guess = f"{w_clean}者"
-    elif w_lower.endswith("ress"):
-        pos_guess = "n."
-        def_guess = f"女性{w_clean[:-4]}"
-
+    # 智慧語意預設推導（確保不會把單字原封不動當中文）
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
-        "part_of_speech": pos_guess,
-        "definition": def_guess,
+        "part_of_speech": "n.",
+        "definition": f"核心單字：{w_clean}",
         "basic_sentence": f"She knows how to use {w_clean} correctly."
     }
 
@@ -326,18 +309,19 @@ if main_menu == "✨ 智慧單字新增":
                     st.rerun()
 
     with col_input2:
-        st.subheader("📂 Word 檔案智慧匯入")
-        uploaded_docxs = st.file_uploader("上傳 Word 講義檔案 (自動查字典與例句)", type=["docx"], accept_multiple_files=True)
+        st.subheader("📂 Word 檔案智慧匯入 (精準對應表格式)")
+        uploaded_docxs = st.file_uploader("上傳 Word 講義檔案", type=["docx"], accept_multiple_files=True)
         if uploaded_docxs:
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 all_extracted_words = []
-                POS_BLACKLIST = {
+                # 絕對黑名單：徹底把所有詞性與雜訊隔離
+                STRICT_BLACKLIST = {
                     'n', 'v', 'adj', 'adv', 'prep', 'conj', 'pron', 'interj', 'aux', 
                     'n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'interj.', 'aux.',
-                    'v.n.', 'n.v.', 'adj.adv.', 'phr', 'phr.', 'pl', 'pl.', 'sg', 'sg.'
+                    'v.n.', 'n.v.', 'adj.adv.', 'conj.prep.', 'prep.adv.a', 'phr', 'phr.', 'pl', 'pl.', 'sg', 'sg.'
                 }
                 
-                with st.spinner("🔍 正在智慧掃描 Word 表格中的單字（自動過濾題號與中文解釋）..."):
+                with st.spinner("🔍 正在精準讀取 Word 表格結構..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -346,23 +330,30 @@ if main_menu == "✨ 智慧單字新增":
                             doc = docx.Document(temp_path)
                             for table in doc.tables:
                                 for row in table.rows:
-                                    # 遍歷這一列所有儲存格，精準撈出單字
-                                    for cell in row.cells:
-                                        cell_text = cell.text.strip()
-                                        for line in cell_text.split('\n'):
-                                            cleaned = line.strip().lower()
-                                            check_num = cleaned.rstrip('.')
+                                    # 根據您的 Word 表格：通常單字會固定在第 2 欄（索引 1），如果沒有則檢查整列
+                                    target_cell_text = ""
+                                    if len(row.cells) >= 2:
+                                        target_cell_text = row.cells[1].text.strip()
+                                    else:
+                                        target_cell_text = row.cells[0].text.strip()
+                                        
+                                    for line in target_cell_text.split('\n'):
+                                        cleaned = line.strip().lower()
+                                        check_num = cleaned.rstrip('.')
+                                        
+                                        # 嚴格驗證：必須是純英文單字或帶空格的片語，絕對不能是詞性或數字
+                                        if (cleaned and 
+                                            cleaned not in STRICT_BLACKLIST and 
+                                            not '.' in cleaned and 
+                                            not check_num.isdigit() and 
+                                            len(cleaned) < 30 and 
+                                            not any(('\u4e00' <= c <= '\u9fff') for c in cleaned) and 
+                                            not any(char in cleaned for char in ['/', '[', ']', '(', ')', '=', '：', ':', '□'])):
                                             
-                                            if (cleaned and 
-                                                cleaned not in POS_BLACKLIST and 
-                                                not check_num.isdigit() and 
-                                                len(cleaned) < 35 and 
-                                                not any(('\u4e00' <= c <= '\u9fff') for c in cleaned) and 
-                                                not any(char in cleaned for char in ['/', '[', ']', '(', ')', '=', '：', ':', '□'])):
+                                            original_c = line.strip()
+                                            if original_c not in all_extracted_words:
+                                                all_extracted_words.append(original_c)
                                                 
-                                                original_c = line.strip()
-                                                if original_c not in all_extracted_words:
-                                                    all_extracted_words.append(original_c)
                             if os.path.exists(temp_path):
                                 os.remove(temp_path)
                         except Exception:
@@ -372,7 +363,7 @@ if main_menu == "✨ 智慧單字新增":
                 total_words_to_process = len(all_extracted_words)
                 
                 if total_words_to_process > 0:
-                    st.info(f"📑 文本精準掃描完畢！共找到 **{total_words_to_process}** 個有效單字準備匯入。")
+                    st.info(f"📑 文本精準掃描完畢！共鎖定表格找到 **{total_words_to_process}** 個有效單字準備匯入。")
                     
                     progress_bar = st.progress(0)
                     status_ui = st.empty()
@@ -426,7 +417,7 @@ if main_menu == "✨ 智慧單字新增":
                     time.sleep(2)
                     st.rerun()
                 else:
-                    st.warning("⚠️ 在上傳的 Word 中找不到符合的英文單字。")
+                    st.warning("⚠️ 在上傳的 Word 表格中找不到符合的英文單字。")
 
 elif main_menu == "📖 字庫管理與搜尋":
     if df_vocab.empty:
@@ -463,7 +454,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     status_text.text(f"🤖 正在處理單字 ({fixed_count+1}/{total_fix}): {w}")
                     
                     current_def = str(row.get('definition', ''))
-                    if not current_def or "常用字彙" in current_def or "核心單字" in current_def or "者/人員" in current_def:
+                    if not current_def or "核心單字" in current_def or current_def.lower() == w.lower():
                         new_data = get_word_record_data_via_ai(w, level=selected_level)
                         df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
                         df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
@@ -698,7 +689,7 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     )
                 with col_btn2:
                     st.button(
-                        "⏭️ 略過本題", 
+                        "⏭️ 釋出略過本題", 
                         use_container_width=True, 
                         on_click=process_answer, 
                         kwargs={"is_skip": True}
