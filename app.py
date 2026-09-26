@@ -28,9 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# -------------------------------------------------------------------------
-# 0. 高品質核心離線字典庫 (涵蓋國中、高中及多益常用單字)
-# -------------------------------------------------------------------------
 CORE_VOCAB_DICT = {
     "eat": {"pos": "v.", "def": "吃", "sentence": "I like to eat fresh fruit and vegetables every day."},
     "food": {"pos": "n.", "def": "食物", "sentence": "Healthy food gives us energy to study and play."},
@@ -502,10 +499,11 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
             # 初始化遊戲狀態
             if "game_started" not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
                 st.session_state.current_game_unit = selected_game_unit
-                st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records') # 隨機打亂
+                st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
                 st.session_state.game_index = 0
-                st.session_state.wrong_answers = [] # 記錄錯題
+                st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
+                st.session_state.quiz_feedback = None # 用來控制訊息顯示與切換
 
             # 檢查是否測驗結束
             if st.session_state.game_index >= len(st.session_state.game_queue):
@@ -542,7 +540,6 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
                 
                 with st.container(border=True):
-                    # 中文釋義字體放到最大
                     st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                     st.markdown(f"**🔤 拼字提示 (Spelling Hint)：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                     
@@ -552,36 +549,40 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                     except: 
                         pass
                 
-                # 答題表單
-                with st.form(key=f"quiz_form_{st.session_state.game_index}"):
-                    user_ans = st.text_input("請輸入您的拼寫答案：").strip().lower()
+                # 顯示上一題的答對錯訊息
+                if st.session_state.get("quiz_feedback"):
+                    fb = st.session_state.quiz_feedback
+                    if fb["type"] == "success":
+                        st.success(fb["msg"])
+                    else:
+                        st.error(fb["msg"])
+                    
+                    if st.button("➡️ 進入下一題", type="primary", use_container_width=True):
+                        st.session_state.quiz_feedback = None
+                        st.session_state.game_index += 1
+                        st.rerun()
+                else:
+                    # 使用 text_input 接收作答，透過 unique key 確保每次切換題目時輸入框都會自動清空
+                    user_ans = st.text_input("請輸入您的拼寫答案：", key=f"user_ans_{st.session_state.game_index}").strip().lower()
                     
                     col_btn1, col_btn2 = st.columns(2)
                     with col_btn1:
-                        submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
+                        submit_ans = st.button("🚀 送出答案", type="primary", use_container_width=True)
                     with col_btn2:
-                        skip_ans = st.form_submit_button("⏭️ 略過 / 下一題", use_container_width=True)
+                        skip_ans = st.button("⏭️ 略過 / 下一題", use_container_width=True)
                         
                     if submit_ans:
                         if user_ans == target_word.lower():
-                            st.success("🎉 答對了！")
-                            time.sleep(0.6)
-                            st.session_state.game_index += 1
+                            st.session_state.quiz_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
                             st.rerun()
                         else:
-                            st.error(f"❌ 答錯囉！正確答案是：{target_word}")
-                            # 記錄錯題（避免重複加入）
+                            st.session_state.quiz_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
                             if current_item not in st.session_state.wrong_answers:
                                 st.session_state.wrong_answers.append(current_item)
-                            time.sleep(1.2)
-                            st.session_state.game_index += 1
                             st.rerun()
                             
                     if skip_ans:
-                        # 略過也視為需要加強的錯題
                         if current_item not in st.session_state.wrong_answers:
                             st.session_state.wrong_answers.append(current_item)
-                        st.warning(f"⏩ 已略過。本題正確答案為：{target_word}")
-                        time.sleep(1.0)
-                        st.session_state.game_index += 1
+                        st.session_state.quiz_feedback = {"type": "error", "msg": f"⏩ 已略過。本題正確答案為：`{target_word}`"}
                         st.rerun()
