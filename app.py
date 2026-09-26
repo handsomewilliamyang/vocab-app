@@ -42,6 +42,10 @@ st.markdown("""
         padding-top: 10px !important;
         padding-bottom: 10px !important;
     }
+    /* 完美隱藏所有不必要的音訊長條播放器，讓畫面極簡乾淨 */
+    audio {
+        display: none !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -358,7 +362,7 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-def autoplay_audio_html(audio_bytes):
+def play_audio_silently(audio_bytes):
     b64 = base64.b64encode(audio_bytes).decode()
     md = f"""
         <audio autoplay="true">
@@ -748,21 +752,21 @@ elif main_menu == "🎯 背誦單字":
                     if st.button("🔊 美式發音 (US)", use_container_width=True):
                         try:
                             audio_us = generate_audio_bytes(row['word'], tld='com')
-                            autoplay_audio_html(audio_us)
+                            play_audio_silently(audio_us)
                         except:
                             pass
                 with ac_col2:
                     if st.button("🔊 英式發音 (UK)", use_container_width=True):
                         try:
                             audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
-                            autoplay_audio_html(audio_uk)
+                            play_audio_silently(audio_uk)
                         except:
                             pass
                 with ac_col3:
                     if st.button("🔊 澳洲發音 (AU)", use_container_width=True):
                         try:
                             audio_au = generate_audio_bytes(row['word'], tld='com.au')
-                            autoplay_audio_html(audio_au)
+                            play_audio_silently(audio_au)
                         except:
                             pass
             
@@ -840,7 +844,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         audio = generate_audio_bytes(target_word)
                         try: 
-                            autoplay_audio_html(audio)
+                            play_audio_silently(audio)
                         except: 
                             pass
                     else:
@@ -849,7 +853,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
                         try:
                             audio_def = generate_audio_bytes(target_adv_def)
-                            autoplay_audio_html(audio_def)
+                            play_audio_silently(audio_def)
                         except:
                             pass
 
