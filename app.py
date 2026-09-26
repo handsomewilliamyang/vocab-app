@@ -24,19 +24,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 注入自訂 CSS，讓 Streamlit 表格自動適應文長、自動換行、加大欄位空間
+# 注入自訂 CSS，讓表格儲存格文字自動換行與撐開高度
 st.markdown("""
     <style>
-    /* 讓表格儲存格文字自動換行、取消強制單行截斷 */
     .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
         white-space: normal !important;
         word-wrap: break-word !important;
         height: auto !important;
         padding-top: 10px !important;
         padding-bottom: 10px !important;
-    }
-    div[data-testid="stDataFrame"] {
-        width: 100% !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -158,7 +154,6 @@ def generate_dynamic_single_sentence(word, definition):
     random.seed(w_lower)
     is_plural = w_clean.lower().endswith("es") or (w_clean.lower().endswith("s") and w_clean.lower() not in ["bus", "class", "address", "always", "sometimes"]) or "複數" in d_clean
     
-    # 1.【介系詞系列】
     if w_lower in ["above", "below", "behind", "under", "between", "beside", "near", "inside", "outside", "across", "along", "through", "with", "without", "about", "from", "into", "onto"]:
         templates = [
             f"The adventurous travelers hiked {w_lower} the dense forest to reach the peak.",
@@ -168,7 +163,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 2.【副詞系列】
     elif w_lower in ["maybe", "perhaps", "actually", "probably", "certainly", "definitely"]:
         templates = [
             f"To be honest, I {w_lower} think we should reconsider our original plan.",
@@ -184,7 +178,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 3.【連接詞系列】
     elif w_lower in ["but", "yet", "and", "or", "so"]:
         templates = [
             f"The experiment faced several unexpected setbacks, {w_lower} the researchers refused to give up.",
@@ -200,7 +193,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 4.【動詞動作系列】
     elif any(k in d_clean for k in ["吃", "喝", "做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教", "去", "來", "幫助", "使用", "打破", "裂"]):
         templates = [
             f"It is essential to learn how to {w_clean} effectively in real-world situations.",
@@ -209,7 +201,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 5.【顏色系列】
     elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白", "灰", "棕", "紫", "粉", "橘"]):
         templates = [
             f"The interior designer chose a striking {w_clean} hue to brighten up the living room.",
@@ -217,7 +208,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 6.【建築結構/牆壁系列】
     elif any(k in d_clean for k in ["牆", "門", "窗", "地板", "天花板", "屋頂", "樓梯"]):
         templates = [
             f"Sunlight poured directly through the large glass {w_clean} into the studio.",
@@ -225,7 +215,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 7.【衛浴/廁所系列】
     elif any(k in d_clean for k in ["浴室", "廁所", "洗手間", "馬桶"]):
         templates = [
             f"Please ensure the {w_clean} is kept clean and well-ventilated after use.",
@@ -233,7 +222,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 8.【人物/職業系列】
     elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師", "家", "孩", "男", "女", "師", "長", "客"]):
         templates = [
             f"The dedicated {w_clean} worked tirelessly to ensure the project succeeded.",
@@ -241,7 +229,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 9.【地點/建築系列】
     elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "學校", "銀行", "店", "館", "園", "場", "站", "區", "餐廳"]):
         templates = [
             f"Locals often gather at this popular {w_clean} to socialize on weekends.",
@@ -249,7 +236,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 10.【物品/家具/食物系列】
     elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "筆記", "禮物", "鉛筆", "盒", "車", "包", "書", "筆", "機", "紙", "杯", "瓶", "衣", "鞋", "餅乾", "食物", "水", "蘋果", "麵包"]):
         templates = [
             f"She carefully unwrapped the delicate {w_clean} and placed it on the shelf.",
@@ -258,7 +244,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 11.【動物/生物系列】
     elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔", "牛", "羊", "馬", "豬", "蟲", "魔術"]):
         templates = [
             f"Researchers observed how the rare {w_clean} adapts to seasonal environmental shifts.",
@@ -266,7 +251,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 12.【形容詞特徵系列】
     elif any(k in d_clean for k in ["特別", "重要", "好", "壞", "大", "小", "高", "低", "長", "短", "新", "舊", "老", "少", "多", "餓", "累", "快樂", "傷心", "生氣", "忙", "冷", "熱", "漂亮", "聰明", "困難", "簡單", "清楚", "魔幻"]):
         templates = [
             f"It was a truly {w_clean} moment that everyone in the room will always remember.",
@@ -275,7 +259,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 13.【通用兜底句型】
     else:
         templates = [
             f"Experts have emphasized the growing significance of {w_clean} in modern studies.",
@@ -356,8 +339,9 @@ def save_all_vocab_to_sheet(_worksheet, df):
         return False, str(e)
 
 @st.cache_data(show_spinner=False)
-def generate_audio_bytes(text, lang='en'):
-    tts = gTTS(text=text, lang=lang)
+def generate_audio_bytes(text, tld='com'):
+    # tld: 'com' (美式), 'co.uk' (英式), 'com.au' (澳洲)
+    tts = gTTS(text=text, lang='en', tld=tld)
     fp = io.BytesIO()
     tts.write_to_fp(fp)
     return fp.getvalue()
@@ -602,10 +586,11 @@ elif main_menu == "📖 字庫管理與搜尋":
                 st.success("已成功刪除勾選的單字！")
                 st.rerun()
 
-        with st.expander("📋 單字總表與快速編輯（自動換行與寬度自適應）", expanded=True):
+        with st.expander("📋 單字總表與快速編輯（精緻適中寬度）", expanded=True):
+            # 寬度設定設為 False，呈現適中優雅的表格寬度
             st.dataframe(
                 filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence']],
-                use_container_width=True,
+                use_container_width=False,
                 hide_index=True,
                 column_config={
                     "id": st.column_config.NumberColumn("編號", width="small"),
@@ -669,6 +654,31 @@ elif main_menu == "🎯 沉浸式閃卡複習":
         with st.container(border=True):
             st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+            
+            # 多國口音發音按鈕區
+            st.markdown("<p style='text-align: center; font-weight: bold;'>🔊 點擊聆聽多國口音發音：</p>", unsafe_allow_html=True)
+            ac_col1, ac_col2, ac_col3 = st.columns(3)
+            with ac_col1:
+                if st.button("🇺🇸 美式發音 (US)", use_container_width=True):
+                    try:
+                        audio_us = generate_audio_bytes(row['word'], tld='com')
+                        st.audio(audio_us, format="audio/mp3", autoplay=True)
+                    except:
+                        pass
+            with ac_col2:
+                if st.button("🇬🇧 英式發音 (UK)", use_container_width=True):
+                    try:
+                        audio_uk = generate_audio_bytes(row['word'], tld='co.uk')
+                        st.audio(audio_uk, format="audio/mp3", autoplay=True)
+                    except:
+                        pass
+            with ac_col3:
+                if st.button("🇦🇺 澳洲發音 (AU)", use_container_width=True):
+                    try:
+                        audio_au = generate_audio_bytes(row['word'], tld='com.au')
+                        st.audio(audio_au, format="audio/mp3", autoplay=True)
+                    except:
+                        pass
             
         with st.expander("💡 詳細釋義與真實例句", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
