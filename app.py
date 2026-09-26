@@ -125,7 +125,6 @@ def get_vocab_from_sheets(_worksheet):
     df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
     df_temp = df_temp[df_temp['word'].notna()]
     
-    # 🌟 絕對尊重您的 Google 試算表：絕不覆蓋任何既有的中文或例句
     for idx, row in df_temp.iterrows():
         for col in df_temp.columns:
             val = str(df_temp.at[idx, col])
@@ -152,7 +151,7 @@ def get_word_record_data_via_ai(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 當上傳 Word 時，透過 AI 自動查出正確的中文翻譯與音標、詞性
+    # 讓 AI 同時查出音標、詞性、中文釋義與道地英文例句
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
@@ -161,7 +160,8 @@ def get_word_record_data_via_ai(word, level="國中部"):
             {{
                 "phonetic": "/音標/",
                 "part_of_speech": "詞性 (例如 n., v., adj.)",
-                "definition": "精準的繁體中文解釋與翻譯"
+                "definition": "精準的繁體中文解釋與翻譯",
+                "sentence": "一句道地的英文例句"
             }}
             """
             response = model.generate_content(prompt)
@@ -171,7 +171,8 @@ def get_word_record_data_via_ai(word, level="國中部"):
                 "word": w_clean,
                 "phonetic": data.get("phonetic", f"/{w_lower}/"),
                 "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "")),
-                "definition": simple_s2t_convert(data.get("definition", ""))
+                "definition": simple_s2t_convert(data.get("definition", "")),
+                "basic_sentence": data.get("sentence", f"Please learn how to use '{w_clean}'.")
             }
         except Exception:
             pass
@@ -180,7 +181,8 @@ def get_word_record_data_via_ai(word, level="國中部"):
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
         "part_of_speech": "",
-        "definition": ""
+        "definition": "",
+        "basic_sentence": f"Please learn how to use '{w_clean}'."
     }
 
 def upsert_word_to_sheet(data, unit_tag, _worksheet):
@@ -192,8 +194,6 @@ def upsert_word_to_sheet(data, unit_tag, _worksheet):
             row_values = _worksheet.row_values(row_idx)
             row_id = row_values[0] if len(row_values) > 0 else 1
             
-            # 保留原本試算表裡已經有的例句，只更新或補上 AI 查到的單字、音標、詞性與中文
-            existing_basic_sentence = row_values[5] if len(row_values) > 5 else ""
             existing_adv_sentence = row_values[6] if len(row_values) > 6 else ""
             existing_colloc = row_values[7] if len(row_values) > 7 else ""
             srs = row_values[9] if len(row_values) > 9 else 0
@@ -203,7 +203,8 @@ def upsert_word_to_sheet(data, unit_tag, _worksheet):
                 data.get('phonetic', '') or (row_values[2] if len(row_values) > 2 else ''), 
                 data.get('part_of_speech', '') or (row_values[3] if len(row_values) > 3 else ''), 
                 data.get('definition', '') or (row_values[4] if len(row_values) > 4 else ''), 
-                existing_basic_sentence, existing_adv_sentence, existing_colloc, 
+                data.get('basic_sentence', '') or (row_values[5] if len(row_values) > 5 else ''), 
+                existing_adv_sentence, existing_colloc, 
                 unit_tag, srs
             ]
             _worksheet.update(f'A{row_idx}:J{row_idx}', [new_row])
@@ -214,7 +215,8 @@ def upsert_word_to_sheet(data, unit_tag, _worksheet):
                 data.get('phonetic', ''), 
                 data.get('part_of_speech', ''), 
                 data.get('definition', ''), 
-                "", "", "", 
+                data.get('basic_sentence', ''), 
+                "", "", 
                 unit_tag, 0
             ]
             _worksheet.append_row(new_row)
@@ -287,11 +289,11 @@ if main_menu == "✨ 智慧單字新增":
 
     col_input1, col_input2 = st.columns(2, gap="large")
     with col_input1:
-        st.subheader("📝 單筆快速建檔 (AI 查字典)")
+        st.subheader("📝 單筆快速建檔 (AI 字典)")
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 AI 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 AI 正在查閱字典中..."):
+                with st.spinner("🤖 AI 正在查閱字典並生成例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     if upsert_word_to_sheet(data, current_unit_tag, active_worksheet):
                         st.success(f"🎉 成功新增單字：{single_word}")
@@ -302,7 +304,7 @@ if main_menu == "✨ 智慧單字新增":
 
     with col_input2:
         st.subheader("📂 Word 檔案智慧查字典匯入")
-        uploaded_docxs = st.file_uploader("上傳 Word 講義檔案 (自動辨識並查字典)", type=["docx"], accept_multiple_files=True)
+        uploaded_docxs = st.file_uploader("上傳 Word 講義檔案 (自動查字典與例句)", type=["docx"], accept_multiple_files=True)
         if uploaded_docxs:
             if st.button("📖 AI 批次解析 Word 並查字典", use_container_width=True):
                 total_success_count = 0
@@ -339,7 +341,7 @@ if main_menu == "✨ 智慧單字新增":
                             total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
                         
-                    status_text.success(f"🎊 批次匯入完成！成功透過 AI 字典解析並匯入 {total_success_count} 個單字。")
+                    status_text.success(f"🎊 批次匯入完成！成功透過 AI 字典解析並匯入 {total_success_count} 個單字與例句。")
                     time.sleep(1)
                     st.rerun()
                 else:
@@ -359,7 +361,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
                 get_vocab_from_sheets.clear()
-                st.success("✅ 快取已清除，已完美保留您的例句與試算表資料！")
+                st.success("✅ 快取已清除！")
                 time.sleep(0.5)
                 st.rerun()
 
