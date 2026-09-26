@@ -20,7 +20,7 @@ except ImportError:
     HAS_GEMINI = False
 
 st.set_page_config(
-    page_title="我愛背單字 (雲端拼字測驗版)",
+    page_title="我愛背單字",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -343,7 +343,8 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-st.title("📚 我愛背單字 (雲端拼字測驗版)")
+# 標題已改為「我愛背單字」
+st.title("📚 我愛背單字")
 
 try:
     df_vocab = load_vocab_dataframe(active_worksheet)
@@ -354,7 +355,7 @@ except Exception:
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
-# 右下角目前模式：僅顯示純文字與級別，不帶任何圖案
+# 右下角目前模式：僅顯示純文字與級別，無任何小圖案
 col_m2.metric(label="目前模式", value=f"{main_menu}【{selected_level}】")
 
 st.markdown("<br>", unsafe_allow_html=True)
