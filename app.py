@@ -153,6 +153,31 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
+# 🚫 呆板例句過濾黑名單正規表示式
+BAD_SENTENCE_PATTERNS = [
+    r"\bwe often use (?:the )?word\b",
+    r"\bpeople use .* in daily life\b",
+    r"\bthis is an example\b",
+    r"\bin daily life\b",
+    r"\bwhenever someone asks for assistance\b",
+    r"\bpractical applications of\b",
+    r"\bexperts have emphasized the growing significance of\b"
+]
+
+def is_bad_example_sentence(sentence, word=""):
+    s = str(sentence or "").strip().lower()
+    if not s or s == "nan" or len(s) < 8:
+        return True
+    # 檢查是否含有呆板字典贅字
+    if any(re.search(pattern, s) for pattern in BAD_SENTENCE_PATTERNS):
+        return True
+    # 檢查單字是否確實融入句中
+    if word:
+        w_low = word.strip().lower()
+        if w_low not in s and w_low.replace(' ', '') not in s.replace(' ', ''):
+            return True
+    return False
+
 def fetch_tatoeba_example(word):
     """透過 Tatoeba 開源真實例句庫搜尋道地英文例句"""
     w_clean = word.strip().lower()
@@ -165,9 +190,10 @@ def fetch_tatoeba_example(word):
             results = data.get('results', [])
             for item in results:
                 sent = item.get('text', '').strip()
-                if sent and w_clean in sent.lower():
+                # 嚴格過濾品質不佳或呆板的例句
+                if sent and not is_bad_example_sentence(sent, w_clean):
                     words_in_sent = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", sent)
-                    if 5 <= len(words_in_sent) <= 25:
+                    if 6 <= len(words_in_sent) <= 25:
                         return sent
     except Exception:
         pass
@@ -203,8 +229,10 @@ def fetch_all_free_dictionaries(word):
                     for definition_obj in meaning.get('definitions', []):
                         if not real_def:
                             real_def = definition_obj.get('definition', '')
-                        if not real_example:
-                            real_example = definition_obj.get('example', '')
+                        ex_candidate = definition_obj.get('example', '')
+                        # 嚴格檢查例句品質，拒絕呆板例句
+                        if ex_candidate and not is_bad_example_sentence(ex_candidate, w_clean):
+                            real_example = ex_candidate
                         if real_def and real_example:
                             break
                     if real_def and real_example:
@@ -288,46 +316,30 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     final_phonetic = fetched_phonetic if fetched_phonetic else f"/{w_lower.replace(' ', '')}/"
     final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else "n."
 
-    # 步驟 2：若仍缺少例句或釋義，且有填寫 API Key，交由 Gemini AI 補充
-    if (not final_sentence or not real_eng_def) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+    # 步驟 2：如果抓回來的例句被過濾掉（即空白或不符合品質），且有填寫 API Key，優先由 Gemini AI 生成道地例句
+    if is_bad_example_sentence(final_sentence, w_clean) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
                 genai.configure(api_key=st.session_state["gemini_api_key"])
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
-                    f"你是一個專業的英語字典。請針對單字「{w_clean}」（中文解釋：{cleaned_def}），"
-                    "嚴格回傳純 JSON 格式，不含其他文字：\n"
-                    "{\n"
-                    '    "phonetic": "/音標/",\n'
-                    '    "part_of_speech": "詞性",\n'
-                    '    "english_definition": "簡明的英文釋義",\n'
-                    '    "sentence": "一句絕對符合文法且單字必須自然融入句中的道地英文例句"\n'
-                    "}"
+                    f"You are an experienced English teacher. Create ONE natural, everyday English sentence for the word '{w_clean}' (meaning: {cleaned_def}). "
+                    "Requirements: "
+                    "- Do NOT use dictionary-style meta language like 'We often use the word...' or 'People use...'. "
+                    "- Use a realistic, clear context suitable for students. "
+                    "- Return ONLY the English sentence, with no markdown or explanations."
                 )
                 response = model.generate_content(prompt)
-                raw_text = response.text.strip()
+                ai_sent = response.text.strip().strip('"“”')
                 
-                if "{" in raw_text and "}" in raw_text:
-                    raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
-                    
-                data = json.loads(raw_text)
-                
-                if not real_eng_def:
-                    final_eng_def = data.get("english_definition", final_eng_def)
-                if not final_sentence:
-                    ai_sent = data.get("sentence", "")
-                    if ai_sent and len(ai_sent) > 5 and w_lower in ai_sent.lower():
-                        final_sentence = ai_sent
-                if not fetched_phonetic and data.get("phonetic"):
-                    final_phonetic = data.get("phonetic")
-                if not fetched_pos and data.get("part_of_speech"):
-                    final_pos = simple_s2t_convert(data.get("part_of_speech"))
-                break
+                if ai_sent and not is_bad_example_sentence(ai_sent, w_clean):
+                    final_sentence = ai_sent
+                    break
             except Exception:
                 time.sleep(1)
 
-    # 步驟 3：最後防線（常模模板）
-    if not final_sentence or w_lower in final_sentence.lower() == False:
+    # 步驟 3：最後防線（若 AI 沒開或失敗，使用智慧常模語意模板）
+    if is_bad_example_sentence(final_sentence, w_clean):
         final_sentence = generate_smart_natural_sentence(w_clean, cleaned_def)
 
     return {
@@ -406,7 +418,7 @@ if main_menu == "✨ 新增單字":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在處理中..."):
+                with st.spinner("🤖 正在處理中 (過濾劣質例句並由 AI/Tatoeba 優化)..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -540,7 +552,7 @@ elif main_menu == "📖 字彙管理":
             selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 重新整理與一鍵聯網補齊", type="primary", use_container_width=True):
+            if st.button("🔄 一鍵全面過濾並汰換呆板例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
                 
@@ -556,17 +568,20 @@ elif main_menu == "📖 字彙管理":
                     row = df_current.loc[idx]
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
+                    current_sent = str(row.get('basic_sentence', '')).strip()
                     
-                    new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
-                    df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
-                    df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
+                    # 檢查如果例句品質不佳，強制重新抓取與洗牌
+                    if is_bad_example_sentence(current_sent, w):
+                        new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
+                        df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
+                        df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
                     fixed_count += 1
                     if total_fix > 0:
                         progress_bar.progress(fixed_count / total_fix)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success("✅ 重新整理與補齊完成！")
+                st.success("✅ 例句品質全面升級與過濾完成！")
                 time.sleep(1)
                 st.rerun()
 
