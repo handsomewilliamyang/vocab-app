@@ -149,43 +149,49 @@ def get_word_record_data_via_ai(word, level="國中部"):
             "basic_sentence": f"Please enter API key."
         }
 
-    try:
-        genai.configure(api_key=st.session_state["gemini_api_key"])
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        prompt = (
-            f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（適用級別：{level}），"
-            "嚴格回傳以下純 JSON 格式，絕對不要包含任何其他文字或標記：\n"
-            "{\n"
-            '    "phonetic": "/音標/",\n'
-            '    "part_of_speech": "詞性",\n'
-            '    "definition": "繁體中文含義",\n'
-            '    "sentence": "英文例句"\n'
-            "}"
-        )
-        response = model.generate_content(prompt)
-        raw_text = response.text.strip()
-        
-        if "{" in raw_text and "}" in raw_text:
-            start_idx = raw_text.find("{")
-            end_idx = raw_text.rfind("}") + 1
-            raw_text = raw_text[start_idx:end_idx]
+    for attempt in range(3):
+        try:
+            genai.configure(api_key=st.session_state["gemini_api_key"])
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            prompt = (
+                f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（適用級別：{level}），"
+                "嚴格回傳以下純 JSON 格式，絕對不要包含任何其他文字或標記：\n"
+                "{\n"
+                '    "phonetic": "/音標/",\n'
+                '    "part_of_speech": "詞性",\n'
+                '    "definition": "繁體中文含義",\n'
+                '    "sentence": "英文例句"\n'
+                "}"
+            )
+            response = model.generate_content(prompt)
+            raw_text = response.text.strip()
             
-        data = json.loads(raw_text)
-        return {
-            "word": w_clean,
-            "phonetic": data.get("phonetic", f"/{w_lower}/"),
-            "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
-            "definition": simple_s2t_convert(data.get("definition", f"{w_clean}")),
-            "basic_sentence": data.get("sentence", f"Example for {w_clean}.")
-        }
-    except Exception as e:
-        return {
-            "word": w_clean,
-            "phonetic": f"/{w_lower}/",
-            "part_of_speech": "n.",
-            "definition": f"{w_clean} (AI解析失敗)",
-            "basic_sentence": f"Example sentence for {w_clean}."
-        }
+            if "{" in raw_text and "}" in raw_text:
+                start_idx = raw_text.find("{")
+                end_idx = raw_text.rfind("}") + 1
+                raw_text = raw_text[start_idx:end_idx]
+                
+            data = json.loads(raw_text)
+            return {
+                "word": w_clean,
+                "phonetic": data.get("phonetic", f"/{w_lower}/"),
+                "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
+                "definition": simple_s2t_convert(data.get("definition", f"{w_clean}")),
+                "basic_sentence": data.get("sentence", f"Example for {w_clean}.")
+            }
+        except Exception as e:
+            if "429" in str(e) or "ResourceExhausted" in str(e):
+                time.sleep(4 * (attempt + 1))  # 遇到頻率限制自動等待遞增秒數
+            else:
+                time.sleep(1)
+                
+    return {
+        "word": w_clean,
+        "phonetic": f"/{w_lower}/",
+        "part_of_speech": "n.",
+        "definition": f"{w_clean} (API限流休息中)",
+        "basic_sentence": f"Example sentence for {w_clean}."
+    }
 
 def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
     try:
@@ -328,7 +334,7 @@ if main_menu == "✨ 智慧單字新增":
                         
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        time.sleep(0.8)
+                        time.sleep(2.0)  # 增加緩衝避免 API 觸發頻率限制
                         
                     load_vocab_dataframe(active_worksheet, force_reload=True)
                     status_text.success(f"🎊 批次匯入完成！成功透過 AI 字典解析並匯入 {total_success_count} 個單字。")
@@ -358,7 +364,7 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 🚨 試算表資料修復與一鍵補齊中文專區")
-            st.warning("點擊下方按鈕，AI 會為試算表內所有單字重新查字典，自動填入正確的中文釋義與例句：")
+            st.warning("點擊下方按鈕，AI 會為試算表內所有單字重新查字典，自動填入正確的中文釋義與例句（會自動控制速度避免超速）：")
             if st.button("🧹 強制啟動 AI 字典全面補齊並更新雲端", type="primary", use_container_width=True):
                 if not st.session_state.get("gemini_api_key"):
                     st.error("❌ 請先在左側邊欄輸入您的 Gemini API Key！")
@@ -370,7 +376,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     fixed_count = 0
                     
                     for idx, w in enumerate(words_to_fix):
-                        status_text.text(f"🤖 AI 正在補齊單字資料 ({idx+1}/{total_fix}): {w}")
+                        status_text.text(f"🤖 AI 正在安全補齊單字資料 ({idx+1}/{total_fix}): {w}")
                         row_match = df_vocab[df_vocab['word'] == w]
                         u_tag = row_match['unit_tag'].values[0] if not row_match.empty and 'unit_tag' in row_match.columns else "未分類"
                         
@@ -385,7 +391,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                             active_worksheet.update(f"A{r_idx}:J{r_idx}", [new_r])
                             fixed_count += 1
                         progress_bar.progress((idx + 1) / total_fix)
-                        time.sleep(1.0)
+                        time.sleep(2.5)  # 確保每秒請求不超過 Google 免費限制
                         
                     load_vocab_dataframe(active_worksheet, force_reload=True)
                     status_text.success(f"🎉 成功完成 AI 資料補齊！總共更新了 {fixed_count} 個單字。")
