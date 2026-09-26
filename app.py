@@ -24,6 +24,24 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 注入自訂 CSS，讓 Streamlit 表格自動適應文長、自動換行、加大欄位空間
+st.markdown("""
+    <style>
+    /* 讓表格儲存格文字自動換行、取消強制單行截斷 */
+    .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        height: auto !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+    }
+    /* 擴大表格外框與捲動區塊，提供最寬敞的閱讀空間 */
+    div[data-testid="stDataFrame"] {
+        width: 100% !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 @st.cache_resource
 def init_gsheets_client():
     scopes = [
@@ -584,9 +602,21 @@ elif main_menu == "📖 字庫管理與搜尋":
                 st.success("已成功刪除勾選的單字！")
                 st.rerun()
 
-        with st.expander("📋 單字總表與快速編輯（畫面已隱藏分類 Tag，空間全留給例句）", expanded=True):
-            # 畫面顯示故意不包含 unit_tag，把寬度空間全數留給 basic_sentence（真實例句）
-            st.dataframe(filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence']], use_container_width=True, hide_index=True)
+        with st.expander("📋 單字總表與快速編輯（表格已設定自動換行與寬度自適應）", expanded=True):
+            # 透過 column_config 設定各欄位寬度與自動撐開比例，確保例句欄位擁有最大空間
+            st.dataframe(
+                filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence']],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "id": st.column_config.NumberColumn("編號", width="small"),
+                    "word": st.column_config.TextColumn("單字", width="medium"),
+                    "phonetic": st.column_config.TextColumn("音標", width="small"),
+                    "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
+                    "definition": st.column_config.TextColumn("中文釋義", width="medium"),
+                    "basic_sentence": st.column_config.TextColumn("真實例句 (自動換行)", width="large"),
+                }
+            )
             
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
@@ -607,7 +637,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''))
                                 
                             edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
-                            edit_basic = st.text_area("真實例句 (Basic Sentence - 空間已最大化)", value=target_row.get('basic_sentence', ''))
+                            edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''))
                             
                             submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
                             
