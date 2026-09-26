@@ -168,7 +168,7 @@ BAD_SENTENCE_PATTERNS = [
 
 def is_bad_example_sentence(sentence, word=""):
     s = str(sentence or "").strip().lower()
-    if not s or s == "nan" or len(s) < 10:
+    if not s or s == "nan" or len(s) < 8:
         return True
     if any(re.search(pattern, s) for pattern in BAD_SENTENCE_PATTERNS):
         return True
@@ -178,30 +178,120 @@ def is_bad_example_sentence(sentence, word=""):
             return True
     return False
 
+def fetch_tatoeba_example(word):
+    w_clean = word.strip().lower()
+    try:
+        url = f"https://api.tatoeba.org/unstable/sentences?q={w_clean}&from=eng&limit=5"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            results = data.get('results', [])
+            for item in results:
+                sent = item.get('text', '').strip()
+                if sent and not is_bad_example_sentence(sent, w_clean):
+                    words_in_sent = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", sent)
+                    if 6 <= len(words_in_sent) <= 25:
+                        return sent
+    except Exception:
+        pass
+    return ""
+
+def fetch_all_free_dictionaries(word):
+    w_clean = word.strip().lower()
+    real_def = ""
+    real_example = ""
+    phonetic = ""
+    pos = ""
+
+    try:
+        url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
+        res_fd = requests.get(url_fd, timeout=3)
+        if res_fd.status_code == 200:
+            data = res_fd.json()
+            if isinstance(data, list) and len(data) > 0:
+                entry = data[0]
+                if 'phonetic' in entry:
+                    phonetic = entry['phonetic']
+                elif 'phonetics' in entry and len(entry['phonetics']) > 0:
+                    for p in entry['phonetics']:
+                        if p.get('text'):
+                            phonetic = p.get('text')
+                            break
+                
+                for meaning in entry.get('meanings', []):
+                    if not pos:
+                        pos = meaning.get('partOfSpeech', '')
+                    for definition_obj in meaning.get('definitions', []):
+                        if not real_def:
+                            real_def = definition_obj.get('definition', '')
+                        ex_candidate = definition_obj.get('example', '')
+                        if ex_candidate and not is_bad_example_sentence(ex_candidate, w_clean):
+                            real_example = ex_candidate
+                        if real_def and real_example:
+                            break
+                    if real_def and real_example:
+                        break
+    except Exception:
+        pass
+
+    if not real_def:
+        try:
+            url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=dpref&max=1"
+            res_dm = requests.get(url_dm, timeout=3)
+            if res_dm.status_code == 200:
+                data = res_dm.json()
+                if isinstance(data, list) and len(data) > 0:
+                    item = data[0]
+                    if not phonetic and 'ipa' in item:
+                        phonetic = f"/{item['ipa']}/"
+                    if 'defs' in item:
+                        for raw_def in item['defs']:
+                            parts = raw_def.split('\t', 1)
+                            if not pos and len(parts) > 0:
+                                pos = parts[0]
+                            clean_d = parts[1] if len(parts) > 1 else raw_def
+                            if not real_def:
+                                real_def = clean_d.capitalize()
+                            if real_def:
+                                break
+        except Exception:
+            pass
+
+    if not real_example:
+        tatoeba_sent = fetch_tatoeba_example(w_clean)
+        if tatoeba_sent:
+            real_example = tatoeba_sent
+
+    return real_def, real_example, phonetic, pos
+
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    final_eng_def = f"A term associated with {w_clean}."
-    final_sentence = f"Please study the usage of {w_clean} carefully in context."
-    final_phonetic = f"/{w_lower.replace(' ', '')}/"
-    final_pos = "n."
+    # 1. 先連結外部免費電子字典
+    real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
+    
+    final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
+    final_sentence = real_example
+    final_phonetic = fetched_phonetic if fetched_phonetic else f"/{w_lower.replace(' ', '')}/"
+    final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else "n."
 
-    if HAS_GEMINI and st.session_state.get("gemini_api_key"):
+    # 2. 若外部字典缺漏，再聯動 AI 進行補齊
+    if (not final_eng_def or is_bad_example_sentence(final_sentence, w_clean)) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
                 genai.configure(api_key=st.session_state["gemini_api_key"])
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
-                    f"You are an expert English lexicographer and teacher. For the English word '{w_clean}' (Traditional Chinese meaning: {cleaned_def}), "
-                    "generate unique, natural data tailored specifically to this word. "
-                    "Return data in strict JSON format with no markdown formatting around it:\n"
+                    f"You are an expert English lexicographer. For the word '{w_clean}' (Traditional Chinese meaning: {cleaned_def}), "
+                    "provide data in strict JSON format with no markdown formatting around it:\n"
                     "{\n"
                     '  "phonetic": "/ipa/",\n'
                     '  "part_of_speech": "pos",\n'
-                    '  "english_definition": "A clear, precise English definition for this specific word.",\n'
-                    '  "sentence": "Two distinct, natural, everyday English sentences combined into one string that naturally use the word in different contexts."\n'
+                    '  "english_definition": "A clear, simple English definition.",\n'
+                    '  "sentence": "A natural, grammatically flawless, everyday English example sentence using the word."\n'
                     "}"
                 )
                 response = model.generate_content(prompt)
@@ -210,19 +300,24 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
                 data = json.loads(raw_text)
                 
-                if data.get("english_definition"):
+                if not real_eng_def and data.get("english_definition"):
                     final_eng_def = data.get("english_definition")
-                if data.get("sentence"):
+                if is_bad_example_sentence(final_sentence, w_clean) and data.get("sentence"):
                     ai_sent = data.get("sentence").strip('"“”')
                     if not is_bad_example_sentence(ai_sent, w_clean):
                         final_sentence = ai_sent
-                if data.get("phonetic"):
+                if not fetched_phonetic and data.get("phonetic"):
                     final_phonetic = data.get("phonetic")
-                if data.get("part_of_speech"):
+                if not fetched_pos and data.get("part_of_speech"):
                     final_pos = simple_s2t_convert(data.get("part_of_speech"))
                 break
             except Exception:
                 time.sleep(1)
+
+    if not final_eng_def:
+        final_eng_def = f"A term associated with {w_clean}."
+    if is_bad_example_sentence(final_sentence, w_clean):
+        final_sentence = f"It is important to understand how to use '{w_clean}' correctly in practice."
 
     return {
         "word": w_clean,
@@ -300,7 +395,7 @@ if main_menu == "✨ 新增單字":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在為此單字生成專屬雙句與釋義..."):
+                with st.spinner("🤖 正在透過外部字典與 AI 處理資料..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -484,19 +579,22 @@ elif main_menu == "📖 字彙管理":
                     row = df_current.loc[idx]
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
+                    current_sent = str(row.get('basic_sentence', '')).strip()
+                    current_adv = str(row.get('advanced_sentence', '')).strip()
                     
-                    new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
-                    df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
-                    df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
-                    df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
-                    df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
+                    if is_bad_example_sentence(current_sent, w) or not current_adv:
+                        new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
+                        df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
+                        df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
+                        df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
+                        df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
                     
                     fixed_count += 1
                     if total_fix > 0:
                         progress_bar.progress(fixed_count / total_fix)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success("✅ 資料重組完成！所有單字的專屬雙句與釋義已全面更新。")
+                st.success("✅ 資料重組完成！")
                 time.sleep(1)
                 st.rerun()
 
@@ -531,7 +629,7 @@ elif main_menu == "📖 字彙管理":
                     "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
                     "definition": st.column_config.TextColumn("中文釋義", width="medium"),
                     "advanced_sentence": st.column_config.TextColumn("英文釋義", width="large"),
-                    "basic_sentence": st.column_config.TextColumn("專屬雙句例句", width="large"),
+                    "basic_sentence": st.column_config.TextColumn("真實例句", width="large"),
                 }
             )
             
@@ -555,7 +653,7 @@ elif main_menu == "📖 字彙管理":
                                 
                             edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
                             edit_adv = st.text_input("英文釋義 (English Def)", value=target_row.get('advanced_sentence', ''))
-                            edit_basic = st.text_area("專屬雙句 (Sentence)", value=target_row.get('basic_sentence', ''))
+                            edit_basic = st.text_area("真實例句 (Sentence)", value=target_row.get('basic_sentence', ''))
                             
                             submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
                             
@@ -608,7 +706,7 @@ elif main_menu == "🎯 背誦單字":
                 st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
                 
                 if row.get('basic_sentence'):
-                    st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 專屬雙句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
@@ -647,7 +745,7 @@ elif main_menu == "🎮 我是拼字王":
     if df_vocab.empty:
         st.warning("📭 目前沒有足夠的單字來進行遊戲！")
     else:
-        game_mode = st.radio("選擇遊戲模式：", ["🎯 標準模式 (中文提示 + 發音)", "🔥 進階挑戰模式 (聽英文解釋拼單字)", "🌟 專家測驗模式 (無提示雙句克漏字 10選1)"], horizontal=True)
+        game_mode = st.radio("選擇遊戲模式：", ["🎯 標準模式 (中文提示 + 發音)", "🔥 進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
         st.markdown("---")
         
         unit_list_game = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
@@ -678,18 +776,16 @@ elif main_menu == "🎮 我是拼字王":
                 total_q = len(st.session_state.game_queue)
                 wrong_q = len(st.session_state.wrong_answers)
                 correct_q = total_q - wrong_q
-                score_pct = int((correct_q / total_q) * 100) if total_q > 0 else 0
                 
-                col_res1, col_res2, col_res3 = st.columns(3)
+                col_res1, col_res2 = st.columns(2)
                 col_res1.metric(label="總題數", value=f"{total_q} 題")
                 col_res2.metric(label="答對題數", value=f"{correct_q} 題")
-                col_res3.metric(label="總成績", value=f"{score_pct} 分")
                 
                 if wrong_q > 0:
                     st.markdown("---")
-                    st.markdown(f"### ❌ 總共錯誤題數：{wrong_q} 題（錯題總複習）：")
+                    st.markdown(f"### ❌ 總共錯誤題數：{wrong_q} 題（錯題與英文解釋總複習）：")
                     for w_item in st.session_state.wrong_answers:
-                        st.markdown(f"- **單字：** `{w_item['word']}` | **中文：** {w_item.get('definition', '無')} \n  - 📖 **專屬雙句：** _{w_item.get('basic_sentence', '無')}_")
+                        st.markdown(f"- **單字：** `{w_item['word']}` | **中文：** {w_item['definition']} \n  - 📖 **英文解釋：** _{w_item.get('advanced_sentence', '無')}_")
                 else:
                     st.success("🏆 太神啦！全部答對，完美過關！")
 
@@ -701,102 +797,61 @@ elif main_menu == "🎮 我是拼字王":
                 target_word = str(current_item['word']).strip()
                 target_def = str(current_item['definition']).strip() if str(current_item['definition']).strip() else "(尚無中文釋義)"
                 target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or "No English definition provided."
-                target_sent = str(current_item.get('basic_sentence', '')).strip() or f"Please learn the word {target_word} carefully."
+                hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
                 
                 st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
                 
-                if game_mode.startswith("🌟 專家"):
-                    all_words = df_filtered_game['word'].tolist()
-                    distractors = [w for w in all_words if w.lower() != target_word.lower()]
-                    selected_distractors = random.sample(distractors, min(9, len(distractors)))
-                    options = selected_distractors + [target_word]
-                    random.seed(target_word + str(st.session_state.game_index))
-                    random.shuffle(options)
-                    
-                    masked_sent = re.sub(re.escape(target_word), "_____", target_sent, flags=re.IGNORECASE)
-                    if masked_sent == target_sent:
-                        masked_sent = f"Context for the target word: " + target_sent.replace(target_word, "_____")
-                    
-                    with st.container(border=True):
-                        st.markdown("<h3 style='color: #FF9800;'>🌟 專家測驗模式 (克漏字選填)</h3>", unsafe_allow_html=True)
-                        st.markdown(f"**📖 請根據下方雙句語意，選出正確的填空單字：**")
-                        st.markdown(f"> **{masked_sent}**")
-                        st.markdown(f"> *Hint: {target_adv_def}*")
-
-                    if st.session_state.get("last_feedback"):
-                        fb = st.session_state.last_feedback
-                        if fb["type"] == "success":
-                            st.success(fb["msg"])
-                        else:
-                            st.error(fb["msg"])
-                        
-                        if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
-                            st.session_state.last_feedback = None
-                            st.session_state.game_index += 1
-                            st.rerun()
+                with st.container(border=True):
+                    if game_mode.startswith("🎯 標準"):
+                        st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
+                        audio = generate_audio_bytes(target_word)
+                        try: 
+                            st.audio(audio, format="audio/mp3")
+                        except: 
+                            pass
                     else:
-                        st.markdown("#### 🔘 請選擇正確答案：")
-                        cols = st.columns(2)
-                        for idx, opt in enumerate(options):
-                            col_target = cols[idx % 2]
-                            if col_target.button(f"{idx+1}. {opt}", key=f"expert_opt_{st.session_state.game_index}_{idx}_{opt}", use_container_width=True):
-                                if opt.lower() == target_word.lower():
-                                    st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
-                                else:
-                                    if current_item not in st.session_state.wrong_answers:
-                                        st.session_state.wrong_answers.append(current_item)
-                                    st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (中文: {target_def})"}
-                                st.rerun()
+                        st.markdown(f"<h2 style='color: #2196F3;'>🔥 進階聽力提示：請聆聽英文解釋並拼出單字</h2>", unsafe_allow_html=True)
+                        st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
+                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
+                        try:
+                            audio_def = generate_audio_bytes(target_adv_def)
+                            st.audio(audio_def, format="audio/mp3")
+                        except:
+                            pass
+
+                if st.session_state.get("last_feedback"):
+                    fb = st.session_state.last_feedback
+                    if fb["type"] == "success":
+                        st.success(fb["msg"])
+                    else:
+                        st.error(fb["msg"])
+                    
+                    if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
+                        st.session_state.last_feedback = None
+                        st.session_state.game_index += 1
+                        st.rerun()
                 else:
-                    hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
-                    with st.container(border=True):
-                        if game_mode.startswith("🎯 標準"):
-                            st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                            st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                            audio = generate_audio_bytes(target_word)
-                            try: st.audio(audio, format="audio/mp3")
-                            except: pass
-                        else:
-                            st.markdown(f"<h2 style='color: #2196F3;'>🔥 進階聽力提示：請聆聽英文解釋並拼出單字</h2>", unsafe_allow_html=True)
-                            st.markdown(f"**📖 英文解釋：** `{target_adv_def}`")
-                            st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
-                            try:
-                                audio_def = generate_audio_bytes(target_adv_def)
-                                st.audio(audio_def, format="audio/mp3")
-                            except: pass
-
-                    if st.session_state.get("last_feedback"):
-                        fb = st.session_state.last_feedback
-                        if fb["type"] == "success":
-                            st.success(fb["msg"])
-                        else:
-                            st.error(fb["msg"])
+                    with st.form(key=f"quiz_form_{st.session_state.game_index}"):
+                        user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
                         
-                        if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
-                            st.session_state.last_feedback = None
-                            st.session_state.game_index += 1
-                            st.rerun()
-                    else:
-                        with st.form(key=f"quiz_form_{st.session_state.game_index}"):
-                            user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
+                        col_btn1, col_btn2 = st.columns(2)
+                        with col_btn1:
+                            submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
+                        with col_btn2:
+                            skip_ans = st.form_submit_button("⏭️ 略過本題", use_container_width=True)
                             
-                            col_btn1, col_btn2 = st.columns(2)
-                            with col_btn1:
-                                submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
-                            with col_btn2:
-                                skip_ans = st.form_submit_button("⏭️ 略過本題", use_container_width=True)
-                                
-                            if submit_ans:
-                                if user_ans == target_word.lower():
-                                    st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
-                                else:
-                                    if current_item not in st.session_state.wrong_answers:
-                                        st.session_state.wrong_answers.append(current_item)
-                                    st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
-                                st.rerun()
-                                
-                            if skip_ans:
+                        if submit_ans:
+                            if user_ans == target_word.lower():
+                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
+                            else:
                                 if current_item not in st.session_state.wrong_answers:
                                     st.session_state.wrong_answers.append(current_item)
-                                st.session_state.last_feedback = {"type": "error", "msg": f"⏩ 已略過。正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
-                                st.rerun()
+                                st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
+                            st.rerun()
+                            
+                        if skip_ans:
+                            if current_item not in st.session_state.wrong_answers:
+                                st.session_state.wrong_answers.append(current_item)
+                            st.session_state.last_feedback = {"type": "error", "msg": f"⏩ 已略過。正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
+                            st.rerun()
