@@ -141,7 +141,6 @@ def generate_dynamic_single_sentence(word, definition):
     random.seed(w_lower)
     is_plural = w_clean.lower().endswith("es") or (w_clean.lower().endswith("s") and w_clean.lower() not in ["bus", "class", "address", "always", "sometimes"]) or "複數" in d_clean
     
-    # 1.【介系詞系列】
     if w_lower in ["above", "below", "behind", "under", "between", "beside", "near", "inside", "outside", "across", "along", "through", "with", "without", "about", "from", "into", "onto"]:
         templates = [
             f"The little bird flew gracefully {w_lower} the tall trees.",
@@ -151,7 +150,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 2.【副詞系列】
     elif w_lower in ["maybe", "perhaps", "actually", "probably", "certainly", "definitely"]:
         templates = [
             f"{w_clean.capitalize()}, it would be a better idea to stay home today.",
@@ -166,7 +164,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 3.【連接詞系列】
     elif w_lower in ["but", "yet", "and", "or", "so"]:
         return f"He practiced very hard for the game, {w_lower} he still felt a little nervous before it started."
     elif w_lower in ["however", "therefore", "moreover"]:
@@ -174,7 +171,6 @@ def generate_dynamic_single_sentence(word, definition):
     elif w_lower in ["although", "though", "because", "since", "if", "when", "while"]:
         return f"{w_clean.capitalize()} the situation was highly challenging, the team never gave up on their goals."
 
-    # 4.【顏色系列】
     elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白", "灰", "棕", "紫", "粉", "橘"]):
         templates = [
             f"She decided to paint her bedroom with a beautiful {w_clean} tone.",
@@ -183,7 +179,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 5.【建築結構/牆壁系列】(避免跟房間混淆)
     elif any(k in d_clean for k in ["牆", "門", "窗", "地板", "天花板", "屋頂", "樓梯"]):
         if is_plural:
             templates = [
@@ -197,7 +192,6 @@ def generate_dynamic_single_sentence(word, definition):
             ]
         return random.choice(templates)
 
-    # 6.【衛浴/廁所獨立系列】(避免說去廁所休息)
     elif any(k in d_clean for k in ["浴室", "廁所", "洗手間", "馬桶"]):
         templates = [
             f"Please make sure to wash your hands in the {w_clean} before having dinner.",
@@ -205,7 +199,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
 
-    # 7.【人物/職業系列】
     elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師", "家", "孩", "男", "女", "師", "長", "客"]):
         if is_plural:
             templates = [
@@ -219,7 +212,6 @@ def generate_dynamic_single_sentence(word, definition):
             ]
         return random.choice(templates)
         
-    # 8.【地點/建築系列】(排除廁所後的一般地點)
     elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "學校", "銀行", "店", "館", "園", "場", "站", "區"]):
         if is_plural:
             templates = [
@@ -233,7 +225,6 @@ def generate_dynamic_single_sentence(word, definition):
             ]
         return random.choice(templates)
         
-    # 9.【物品/家具系列】
     elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "筆記", "禮物", "鉛筆", "盒", "車", "包", "書", "筆", "機", "紙", "杯", "瓶", "衣", "鞋"]):
         if is_plural:
             templates = [
@@ -247,7 +238,6 @@ def generate_dynamic_single_sentence(word, definition):
             ]
         return random.choice(templates)
         
-    # 10.【動物/生物系列】
     elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔", "牛", "羊", "馬", "豬", "蟲"]):
         if is_plural:
             templates = [
@@ -261,7 +251,6 @@ def generate_dynamic_single_sentence(word, definition):
             ]
         return random.choice(templates)
         
-    # 11.【形容詞特徵系列】(加入 special 等廣泛形容詞)
     elif any(k in d_clean for k in ["特別", "重要", "好", "壞", "大", "小", "高", "低", "長", "短", "新", "舊", "老", "少", "多", "餓", "累", "快樂", "傷心", "生氣", "忙", "冷", "熱", "漂亮", "聰明", "困難", "簡單", "清楚"]):
         templates = [
             f"Everyone agreed that this was a truly {w_clean} experience for the whole team.",
@@ -270,7 +259,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 12.【食物/飲品系列】
     elif any(k in d_clean for k in ["吃", "喝", "食物", "餅乾", "水", "蘋果", "麵包", "茶", "咖啡", "肉", "果", "菜", "蛋", "奶", "湯", "飯"]):
         templates = [
             f"Having some fresh {w_clean} is a great way to start your energetic morning.",
@@ -278,7 +266,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 13.【動詞動作系列】
     elif w_lower.endswith("ing") or any(k in d_clean for k in ["做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教", "去", "來", "幫助", "使用"]):
         if w_lower.endswith("ing"):
             templates = [
@@ -293,7 +280,6 @@ def generate_dynamic_single_sentence(word, definition):
             ]
             return random.choice(templates)
             
-    # 14.【極致通用兜底句型】(徹底移除 "Can you give me an example..." 這種不自然的對話)
     else:
         if is_plural:
             templates = [
@@ -371,7 +357,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
                 str(row.get('basic_sentence', '')),
                 str(row.get('advanced_sentence', '')),
                 str(row.get('collocations', '')),
-                str(row.get('unit_tag', '')),
+                str(row.get('unit_tag', '') if pd.notna(row.get('unit_tag')) else ''),
                 str(row.get('srs_stage', 0))
             ])
         _worksheet.update(rows)
@@ -403,18 +389,15 @@ col_m2.metric(label="目前模式", value=f"{main_menu} ({selected_level})")
 st.markdown("<br>", unsafe_allow_html=True)
 
 if main_menu == "✨ 智慧單字新增":
-    col_u1, col_u2 = st.columns(2)
-    with col_u1:
-        if selected_level == "國中部":
-            semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
-        elif selected_level == "高中部":
-            semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
-        else:
-            semester = st.selectbox("選擇階段：", ["多益核心", "多益進階", "商用英文"])
-    with col_u2:
-        unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
-        
+    if selected_level == "國中部":
+        semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+    elif selected_level == "高中部":
+        semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+    else:
+        semester = st.selectbox("選擇階段：", ["多益核心", "多益進階", "商用英文"])
+    unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     current_unit_tag = f"{semester} > {unit}"
+    
     st.info(f"📌 即時同步至 Google Sheets 【{active_worksheet.title}】分頁：**{current_unit_tag}**")
     st.markdown("---")
 
@@ -435,8 +418,7 @@ if main_menu == "✨ 智慧單字新增":
                         df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
                         df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence', '')
-                        if not str(df_current.at[idx, 'unit_tag']).strip():
-                            df_current.at[idx, 'unit_tag'] = current_unit_tag
+                        df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
                         next_id = len(df_current) + 1
                         new_row = pd.DataFrame([{
@@ -535,8 +517,7 @@ if main_menu == "✨ 智慧單字新增":
                             df_current.at[idx, 'part_of_speech'] = w_data.get('part_of_speech', '')
                             df_current.at[idx, 'definition'] = simple_s2t_convert(w_data.get('definition', ''))
                             df_current.at[idx, 'basic_sentence'] = w_data.get('basic_sentence', '')
-                            if not str(df_current.at[idx, 'unit_tag']).strip():
-                                df_current.at[idx, 'unit_tag'] = current_unit_tag
+                            df_current.at[idx, 'unit_tag'] = current_unit_tag
                         else:
                             next_id = len(df_current) + 1
                             new_row = pd.DataFrame([{
@@ -571,49 +552,17 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
     else:
         unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else []
-        unit_list = ["全部單字"] + unit_list
+        unit_list = ["全部單字"] + [u for u in unit_list if u.strip() != ""]
         
         col_f1, col_f2 = st.columns([1.5, 1])
         with col_f1:
-            selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
+            selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🔄 重新整理畫面快取", type="primary", use_container_width=True):
                 load_vocab_dataframe(active_worksheet, force_reload=True)
                 st.success("✅ 快取已清除！")
                 time.sleep(0.5)
-                st.rerun()
-
-        st.markdown("---")
-        with st.container(border=True):
-            st.markdown("#### 🚨 試算表單句情境完美修復專區")
-            st.warning("點擊下方按鈕，系統會將所有有問題或備用樣板的例句全數轉換為「高精度分類、完全符合文理邏輯的單一情境句」，並且**絕對保留原本的中文字義與 Tag**：")
-            if st.button("🧹 一鍵完美升級情境組合例句", type="primary", use_container_width=True):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                df_current = load_vocab_dataframe(active_worksheet).copy()
-                total_fix = len(df_current)
-                fixed_count = 0
-                
-                for idx, row in df_current.iterrows():
-                    w = str(row['word']).strip()
-                    d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在為單字分配情境句型 ({fixed_count+1}/{total_fix}): {w}")
-                    
-                    current_sent = str(row.get('basic_sentence', ''))
-                    # 把包含舊萬用句型、錯誤分類(去浴室休息)、或是假對話句型(Can you give me...) 全部洗乾淨重新生成
-                    if not current_sent or "Can you give me" in current_sent or "Understanding the concept of" in current_sent or "bathroom to rest" in current_sent:
-                        new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
-                        df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
-                    
-                    fixed_count += 1
-                    progress_bar.progress(fixed_count / total_fix)
-                    time.sleep(0.01)
-                    
-                save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成情境單句全面升級與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
-                time.sleep(1.5)
                 st.rerun()
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
@@ -635,8 +584,9 @@ elif main_menu == "📖 字庫管理與搜尋":
                 st.success("已成功刪除勾選的單字！")
                 st.rerun()
 
-        with st.expander("📋 單字總表與快速編輯", expanded=True):
-            st.dataframe(filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'unit_tag']], use_container_width=True, hide_index=True)
+        with st.expander("📋 單字總表與快速編輯（畫面已隱藏分類 Tag，空間全留給例句）", expanded=True):
+            # 畫面顯示故意不包含 unit_tag，把寬度空間全數留給 basic_sentence（真實例句）
+            st.dataframe(filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence']], use_container_width=True, hide_index=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
@@ -657,7 +607,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''))
                                 
                             edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
-                            edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''))
+                            edit_basic = st.text_area("真實例句 (Basic Sentence - 空間已最大化)", value=target_row.get('basic_sentence', ''))
                             
                             submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
                             
