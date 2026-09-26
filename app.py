@@ -4,6 +4,7 @@ import json
 import os
 import time
 import docx
+import random
 from gtts import gTTS
 import io
 
@@ -59,7 +60,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用邏輯嚴謹的詞性對應例句引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用動態情境排列組合引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -132,85 +133,156 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-def generate_three_extended_sentences(word, definition):
+def generate_dynamic_single_sentence(word, definition):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     d_clean = definition.strip()
     
+    # 透過單字本身作為隨機種子，確保同一個單字配到的場景是固定的，但不同單字會有不同的情境
+    random.seed(w_lower)
+    
     is_plural = w_clean.lower().endswith("es") or (w_clean.lower().endswith("s") and w_clean.lower() not in ["bus", "class", "address"]) or "複數" in d_clean
     
-    # 針對特殊詞性或常見介系詞、副詞給予絕對符合邏輯的句型
-    if w_lower in ["above", "below", "behind", "under", "between", "beside", "near", "inside", "outside"]:
-        s1 = f"1. The airplane is flying high {w_clean} the thick clouds."
-        s2 = f"2. We can see a bright light shining right {w_clean} us."
-        s3 = f"3. A peaceful shadow fell quietly {w_clean} the valley."
-    elif w_lower in ["maybe", "perhaps", "actually", "usually", "always", "often", "sometimes"]:
-        s1 = f"1. {w_clean.capitalize()} we can try a different approach to solve this issue."
-        s2 = f"2. She {w_lower} enjoys taking a long walk after dinner."
-        s3 = f"3. It is {w_lower} a good idea to double-check everything."
-    elif w_lower in ["but", "however", "although", "because", "if", "when"]:
-        s1 = f"1. I wanted to finish the work on time, {w_lower} unexpected issues came up."
-        s2 = f"2. {w_clean.capitalize()} you need any help, just let me know."
-        s3 = f"3. Everything went smoothly {w_lower} we started the project."
-    elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師"]):
+    # 【介系詞系列】提供多種不同場景，動態排列組合
+    if w_lower in ["above", "below", "behind", "under", "between", "beside", "near", "inside", "outside", "across", "along", "through"]:
+        templates = [
+            f"The little bird flew gracefully {w_lower} the tall trees.",
+            f"We decided to have a picnic right {w_lower} the beautiful river.",
+            f"He accidentally dropped his keys {w_lower} the wooden desk.",
+            f"A mysterious shadow quietly passed {w_lower} the old building.",
+            f"You can find a small hidden garden just {w_lower} the main street.",
+            f"They built a strong fence completely {w_lower} the farm."
+        ]
+        return random.choice(templates)
+        
+    # 【副詞系列】
+    elif w_lower in ["maybe", "perhaps", "actually", "probably"]:
+        templates = [
+            f"{w_clean.capitalize()}, it would be a better idea to stay home today.",
+            f"{w_clean.capitalize()}, she already knows the real answer to this difficult question.",
+            f"We should {w_lower} consider taking a different route to avoid the traffic."
+        ]
+        return random.choice(templates)
+        
+    elif w_lower in ["usually", "always", "often", "sometimes", "never"]:
+        templates = [
+            f"My family {w_lower} goes out for a big dinner on Friday nights.",
+            f"A successful person {w_lower} tries to learn from their past mistakes.",
+            f"I {w_lower} take a short walk in the park after finishing my homework."
+        ]
+        return random.choice(templates)
+        
+    # 【連接詞系列】
+    elif w_lower in ["but", "yet"]:
+        return f"He practiced very hard for the game, {w_lower} he still felt a little nervous before it started."
+    elif w_lower in ["however", "therefore", "moreover"]:
+        return f"The weather forecast predicted heavy rain; {w_lower}, we decided to cancel the outdoor trip."
+    elif w_lower in ["although", "though", "because", "since", "if", "when", "while"]:
+        return f"{w_clean.capitalize()} the situation was highly challenging, the team never gave up on their goals."
+        
+    # 【人物/職業系列】
+    elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師", "家"]):
         if is_plural:
-            s1 = f"1. All the friendly {w_clean} in our class are always ready to help others."
-            s2 = f"2. Most of the experienced {w_clean} shared their stories with us."
-            s3 = f"3. We met several kind {w_clean} during our trip abroad."
+            templates = [
+                f"All the {w_clean} gathered in the hall to celebrate the annual festival.",
+                f"Those experienced {w_clean} gave us a lot of valuable advice for our future career."
+            ]
         else:
-            s1 = f"1. Everyone in our class respects this kind {w_clean} because of helpful actions."
-            s2 = f"2. She is such a reliable {w_clean} that everyone turns to for advice."
-            s3 = f"3. We met a very talented {w_clean} at the conference yesterday."
-    elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "浴室", "餐廳", "學校", "銀行"]):
+            templates = [
+                f"The kind {w_clean} helped the lost child find the way back home safely.",
+                f"We met a very talented {w_clean} who shared amazing stories with us."
+            ]
+        return random.choice(templates)
+        
+    # 【地點/建築系列】
+    elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "浴室", "餐廳", "學校", "銀行", "店"]):
         if is_plural:
-            s1 = f"1. We visited several clean and modern {w_clean} located downtown."
-            s2 = f"2. There are many quiet {w_clean} available for studying around here."
-            s3 = f"3. They explored historical {w_clean} throughout the old city."
+            templates = [
+                f"They visited several famous {w_clean} during their long vacation in Europe.",
+                f"The city government plans to renovate all the old {w_clean} in this historical district."
+            ]
         else:
-            s1 = f"1. We visited a very clean and modern {w_clean} located downtown."
-            s2 = f"2. This cozy {w_clean} makes everyone feel completely at home."
-            s3 = f"3. You can easily find a quiet {w_clean} near the central station."
-    elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白", "灰", "棕", "紫"]):
-        s1 = f"1. She decided to paint her bedroom with a bright {w_clean} tone."
-        s2 = f"2. He prefers wearing a stylish jacket with a dark {w_clean} shade."
-        s3 = f"3. The artist blended different hues to create a wonderful {w_clean} effect."
-    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "筆記", "禮物", "鉛筆", "盒"]):
+            templates = [
+                f"We found a very cozy and quiet {w_clean} to rest after a long day of walking.",
+                f"The newly opened {w_clean} at the corner has a really wonderful atmosphere."
+            ]
+        return random.choice(templates)
+        
+    # 【物品/家具系列】
+    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "筆記", "禮物", "鉛筆", "盒", "車"]):
         if is_plural:
-            s1 = f"1. There are several brand new {w_clean} placed carefully on the wooden shelves."
-            s2 = f"2. She carefully packed all her personal {w_clean} into large boxes."
-            s3 = f"3. We need to buy some extra {w_clean} for the upcoming event."
+            templates = [
+                f"Please put all these heavy {w_clean} into the storage room carefully.",
+                f"She received many wonderful {w_clean} from her friends on her birthday."
+            ]
         else:
-            s1 = f"1. There is a brand new {w_clean} placed carefully on the wooden shelf."
-            s2 = f"2. She received a lovely {w_clean} from her best friend today."
-            s3 = f"3. Please keep your {w_clean} clean and organized on the desk."
-    elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚"]):
+            templates = [
+                f"There is a beautiful wooden {w_clean} placed right in the center of the room.",
+                f"He bought a very expensive {w_clean} as a reward for his hard work this year."
+            ]
+        return random.choice(templates)
+        
+    # 【動物/生物系列】
+    elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔"]):
         if is_plural:
-            s1 = f"1. We spotted several small wild {w_clean} running quickly across the yard."
-            s2 = f"2. You can often see cute {w_clean} playing around the garden."
-            s3 = f"3. Farmers noticed unusual {w_clean} moving fast along the road."
+            templates = [
+                f"We saw some cute {w_clean} playing happily together in the garden.",
+                f"It is deeply important to protect these rare {w_clean} from losing their natural habitats."
+            ]
         else:
-            s1 = f"1. We spotted a small wild {w_clean} running quickly across the yard."
-            s2 = f"2. A tiny {w_clean} suddenly appeared across the garden."
-            s3 = f"3. The children watched a fast {w_clean} running down the road."
-    elif any(k in d_clean for k in ["餓", "累", "快樂", "傷心", "生氣", "忙", "冷", "熱", "漂亮", "聰明"]):
-        s1 = f"1. After working hard all morning, I really feel quite {w_clean}."
-        s2 = f"2. She looked exceptionally {w_clean} when she heard the good news."
-        s3 = f"3. Why do you always seem so {w_clean} during afternoon sessions?"
-    elif any(k in d_clean for k in ["吃", "喝", "食物", "餅乾", "水", "蘋果"]):
-        s1 = f"1. He always enjoys having some fresh {w_clean} during afternoon break."
-        s2 = f"2. We ordered some delicious {w_clean} at the night market."
-        s3 = f"3. Always remember to wash your {w_clean} thoroughly before eating."
+            templates = [
+                f"A small, energetic {w_clean} suddenly jumped out from the green bushes.",
+                f"My sister adopted a lovely {w_clean} from the local animal shelter yesterday."
+            ]
+        return random.choice(templates)
+        
+    # 【形容詞系列：情緒/狀態/特徵】
+    elif any(k in d_clean for k in ["餓", "累", "快樂", "傷心", "生氣", "忙", "冷", "熱", "漂亮", "聰明", "重要", "困難", "好", "壞"]):
+        templates = [
+            f"After staying up all night, everybody felt extremely {w_clean} the next morning.",
+            f"She looked incredibly {w_clean} when she walked confidently onto the stage.",
+            f"It is completely normal to feel {w_clean} when you are facing such a huge challenge."
+        ]
+        return random.choice(templates)
+        
+    # 【食物/飲品系列】
+    elif any(k in d_clean for k in ["吃", "喝", "食物", "餅乾", "水", "蘋果", "麵包", "茶", "咖啡", "肉"]):
+        templates = [
+            f"Having some fresh {w_clean} is a great way to start your energetic morning.",
+            f"We ordered some delicious {w_clean} to share while watching the late-night movie."
+        ]
+        return random.choice(templates)
+        
+    # 【動詞動作系列】
+    elif w_lower.endswith("ing") or any(k in d_clean for k in ["做", "跑", "走", "看", "聽", "寫", "買", "賣"]):
+        if w_lower.endswith("ing"):
+            templates = [
+                f"He spends at least two hours {w_lower} every single day to improve his skills.",
+                f"We really enjoyed {w_lower} together during our beautiful summer vacation."
+            ]
+            return random.choice(templates)
+        else:
+            templates = [
+                f"It takes a lot of time and daily practice to {w_clean} perfectly.",
+                f"They decided to {w_clean} together as a team in order to achieve the final goal.",
+                f"Make sure you remember to {w_clean} before you leave the building."
+            ]
+            return random.choice(templates)
+            
+    # 【通用兜底句型】
     else:
         if is_plural:
-            s1 = f"1. People frequently talk about {w_clean} in their daily conversations."
-            s2 = f"2. Experts shared valuable insights regarding {w_clean} at the seminar."
-            s3 = f"3. We explored various aspects of {w_clean} during our studies."
+            templates = [
+                f"People often discuss different types of {w_clean} in their daily conversations.",
+                f"There are many new {w_clean} introduced in this chapter of the textbook."
+            ]
+            return random.choice(templates)
         else:
-            s1 = f"1. It is a great pleasure to learn and talk about {w_clean} with friends."
-            s2 = f"2. She gave a wonderful presentation explaining how to use {w_clean} clearly."
-            s3 = f"3. We always keep {w_clean} in mind when solving problems."
-
-    return f"{s1}\n{s2}\n{s3}"
+            templates = [
+                f"Understanding the concept of {w_clean} is very helpful for passing this lesson.",
+                f"Can you give me a clear example of how to use '{w_clean}' in a standard sentence?"
+            ]
+            return random.choice(templates)
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
@@ -225,12 +297,12 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
                     f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（中文解釋為：{cleaned_def}，適用級別：{level}），"
-                    "請提供 3 種語意邏輯絕對正確且符合該單字詞性的道地英文例句。"
+                    "請提供一句語意邏輯絕對正確、符合該單字真實詞性與用法的道地英文例句。"
                     "嚴格回傳以下純 JSON 格式，絕對不要包含任何其他文字或標記：\n"
                     "{\n"
                     '    "phonetic": "/音標/",\n'
                     '    "part_of_speech": "詞性",\n'
-                    '    "sentence": "1. 第一句例句\\n2. 第二句例句\\n3. 第三句例句"\n'
+                    '    "sentence": "一句道地的英文例句"\n'
                     "}"
                 )
                 response = model.generate_content(prompt)
@@ -247,7 +319,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     "phonetic": data.get("phonetic", f"/{w_lower.replace(' ', '')}/"),
                     "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
                     "definition": cleaned_def,
-                    "basic_sentence": data.get("sentence", generate_three_extended_sentences(w_clean, cleaned_def))
+                    "basic_sentence": data.get("sentence", generate_dynamic_single_sentence(w_clean, cleaned_def))
                 }
             except Exception:
                 time.sleep(1)
@@ -257,7 +329,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         "phonetic": f"/{w_lower.replace(' ', '')}/",
         "part_of_speech": "n.",
         "definition": cleaned_def,
-        "basic_sentence": generate_three_extended_sentences(w_clean, cleaned_def)
+        "basic_sentence": generate_dynamic_single_sentence(w_clean, cleaned_def)
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
@@ -328,7 +400,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在查閱字典並生成邏輯正確的 3 種擴展例句中..."):
+                with st.spinner("🤖 正在查閱字典並生成最佳組合例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -369,7 +441,7 @@ if main_menu == "✨ 智慧單字新增":
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 extracted_data_list = []
                 
-                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動確保每句邏輯與詞性完全正確）..."):
+                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動匹配最高還原度情境例句）..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -464,7 +536,7 @@ if main_menu == "✨ 智慧單字新增":
                     status_ui.markdown("🔄 **正在將所有資料同步至 Google Sheets，請稍候...**")
                     save_all_vocab_to_sheet(active_worksheet, df_current)
                     
-                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字與邏輯正確的擴展例句。")
+                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字。")
                     time.sleep(2)
                     st.rerun()
                 else:
@@ -490,9 +562,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 試算表例句邏輯優化與一鍵升級專區")
-            st.warning("點擊下方按鈕，系統會為所有舊資料重新檢查詞性與文法邏輯，確保 3 種擴展例句 100% 自然道地，並且**絕對完整保護與保留原有的 unit_tag 與中文解釋**：")
-            if st.button("🧹 一鍵全面升級邏輯正確例句", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 試算表單句情境完美修復專區")
+            st.warning("點擊下方按鈕，系統會將所有有問題的例句全部轉換為「隨機組合但完全符合文理邏輯的單一情境句」，並且**絕對保留原本的中文字義與 Tag**：")
+            if st.button("🧹 一鍵完美升級情境組合例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -503,10 +575,11 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在優化邏輯例句 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在為單字分配情境句型 ({fixed_count+1}/{total_fix}): {w}")
                     
                     current_sent = str(row.get('basic_sentence', ''))
-                    if not current_sent or "explaining above" in current_sent or not current_sent.startswith("1."):
+                    # 把包含以前的萬用句型、有邏輯錯誤，或是上一版 3 句式展開（包含換行或 1.）的資料洗掉，全數換回一句
+                    if not current_sent or "\n" in current_sent or "1." in current_sent or "explaining above" in current_sent:
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
@@ -515,7 +588,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     time.sleep(0.01)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成邏輯例句優化與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成情境單句升級與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
@@ -560,7 +633,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''))
                                 
                             edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
-                            edit_basic = st.text_area("真實例句 (支援 3 種擴展句型)", value=target_row.get('basic_sentence', ''))
+                            edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''))
                             
                             submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
                             
@@ -594,12 +667,9 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
             
-        with st.expander("💡 詳細釋義與 3 種擴展例句", expanded=True):
+        with st.expander("💡 詳細釋義與真實例句", expanded=True):
             st.markdown(f"**中文釋義：** {row['definition']}")
-            st.markdown("**實用例句（三種情境變化）：**")
-            for sentence_line in str(row.get('basic_sentence', '')).split('\n'):
-                if sentence_line.strip():
-                    st.markdown(f"- {sentence_line.strip()}")
+            st.markdown(f"**例句：** {row.get('basic_sentence','')}")
         
         c1, c2 = st.columns(2)
         if c1.button("⬅️ 上一個", use_container_width=True):
