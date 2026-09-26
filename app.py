@@ -362,7 +362,7 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-# ================= 🎨 完美融入 Streamlit 風格的發音按鈕元件 =================
+# ================= 🌟 極簡精緻、和諧美觀的發音按鈕元件 =================
 def custom_audio_button(audio_bytes, label):
     b64 = base64.b64encode(audio_bytes).decode()
     html_code = f"""
@@ -382,24 +382,24 @@ def custom_audio_button(audio_bytes, label):
             align-items: center;
         }}
         
-        /* 💡 自動適配 Streamlit 的 Light/Dark 模式色彩 */
+        /* 🎨 極簡融合風格設計 (無沉重外框、柔和圓角與微光陰影) */
         :root {{
-            --btn-bg: #ffffff;
-            --btn-text: #31333F;
-            --btn-border: #d5d6dc;
-            --btn-hover-bg: #f8f9fa;
-            --btn-hover-border: #ff4b4b;
-            --btn-hover-text: #ff4b4b;
+            --bg-color: #f8f9fa;
+            --text-color: #374151;
+            --border-color: #e5e7eb;
+            --hover-bg: #f3f4f6;
+            --hover-border: #d1d5db;
+            --hover-text: #2563eb;
         }}
         
         @media (prefers-color-scheme: dark) {{
             :root {{
-                --btn-bg: #262730;
-                --btn-text: #fafafa;
-                --btn-border: #41424C;
-                --btn-hover-bg: #31323B;
-                --btn-hover-border: #ff4b4b;
-                --btn-hover-text: #ff4b4b;
+                --bg-color: #1f2937;
+                --text-color: #f3f4f6;
+                --border-color: #374151;
+                --hover-bg: #374151;
+                --hover-border: #4b5563;
+                --hover-text: #60a5fa;
             }}
         }}
 
@@ -407,24 +407,33 @@ def custom_audio_button(audio_bytes, label):
             width: 100%;
             height: 100%;
             box-sizing: border-box;
-            background-color: var(--btn-bg);
-            color: var(--btn-text);
-            border: 1px solid var(--btn-border);
-            border-radius: 8px;
-            font-size: 15px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 14px;
             font-weight: 500;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             cursor: pointer;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }}
+        
         button:hover {{
-            background-color: var(--btn-hover-bg);
-            border-color: var(--btn-hover-border);
-            color: var(--btn-hover-text);
+            background-color: var(--hover-bg);
+            border-color: var(--hover-border);
+            color: var(--hover-text);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            transform: translateY(-1px);
         }}
+        
         button:active {{
-            transform: scale(0.98);
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
         }}
     </style>
     </head>
