@@ -5,7 +5,8 @@ import os
 import time
 import docx
 import random
-import requests  # 新增：用來串接免費字典 API
+import requests
+import re  # 新增：用來過濾維基詞典的 HTML 標籤
 from gtts import gTTS
 import io
 
@@ -25,7 +26,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 注入自訂 CSS，讓表格儲存格文字自動換行與撐開高度
+# 注入自訂 CSS
 st.markdown("""
     <style>
     .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
@@ -74,7 +75,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用即時免費字典 API")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用「多重免費字典串聯」引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -148,17 +149,52 @@ def simple_s2t_convert(text):
     return text
 
 def fetch_real_english_definition(word):
-    """串接免費開源字典 API (Free Dictionary API) 獲取真實英文釋義"""
+    """三大免費開源字典 API 串聯 (Datamuse -> Free Dictionary -> Wiktionary)"""
+    w_clean = word.strip().lower()
+    
+    # 引擎 1：Datamuse API (字庫極大，穩定)
     try:
-        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word.strip()}"
-        response = requests.get(url, timeout=3)
-        if response.status_code == 200:
-            data = response.json()
-            # 提取第一個詞性的第一個釋義
-            real_def = data[0]['meanings'][0]['definitions'][0]['definition']
-            return real_def
+        url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=d&max=1"
+        res_dm = requests.get(url_dm, timeout=3)
+        if res_dm.status_code == 200:
+            data = res_dm.json()
+            if data and 'defs' in data[0]:
+                raw_def = data[0]['defs'][0]
+                clean_def = raw_def.split('\t', 1)[-1] if '\t' in raw_def else raw_def
+                if clean_def:
+                    return clean_def.capitalize()
     except Exception:
         pass
+
+    # 引擎 2：Free Dictionary API
+    try:
+        url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
+        res_fd = requests.get(url_fd, timeout=3)
+        if res_fd.status_code == 200:
+            data = res_fd.json()
+            real_def = data[0]['meanings'][0]['definitions'][0]['definition']
+            if real_def:
+                return real_def
+    except Exception:
+        pass
+        
+    # 引擎 3：Wiktionary API (維基詞典，涵蓋片語與偏門字)
+    try:
+        url_wk = f"https://en.wiktionary.org/api/rest_v1/page/definition/{w_clean.replace(' ', '_')}"
+        res_wk = requests.get(url_wk, timeout=3)
+        if res_wk.status_code == 200:
+            data = res_wk.json()
+            for lang in data.values():
+                for item in lang:
+                    if 'definitions' in item and len(item['definitions']) > 0:
+                        raw_html = item['definitions'][0]['definition']
+                        clean_text = re.sub(r'<[^>]+>', '', raw_html).strip() # 去除 HTML 標籤
+                        if clean_text:
+                            return clean_text
+    except Exception:
+        pass
+
+    # 若三大引擎全數失敗的極致保底
     return f"A common term referring to {word}."
 
 def generate_dynamic_single_sentence(word, definition):
@@ -173,131 +209,46 @@ def generate_dynamic_single_sentence(word, definition):
         templates = [
             f"The adventurous travelers hiked {w_lower} the dense forest to reach the peak.",
             f"We managed to set up our camp safely right {w_lower} the massive cliff.",
-            f"The secret passage is hidden securely {w_lower} the old stone wall.",
-            f"Light streamed gently {w_lower} the cracks of the wooden shutters."
+            f"The secret passage is hidden securely {w_lower} the old stone wall."
         ]
         return random.choice(templates)
         
     elif w_lower in ["maybe", "perhaps", "actually", "probably", "certainly", "definitely"]:
         templates = [
             f"To be honest, I {w_lower} think we should reconsider our original plan.",
-            f"She {w_lower} surprised everyone by finishing the difficult project ahead of schedule.",
-            f"It is {w_lower} vital that we double-check all the details before submission."
+            f"She {w_lower} surprised everyone by finishing the difficult project ahead of schedule."
         ]
         return random.choice(templates)
         
     elif w_lower in ["usually", "always", "often", "sometimes", "never", "seldom", "rarely"]:
-        templates = [
-            f"Despite her busy schedule, she {w_lower} finds time to read inspirational books.",
-            f"Our team {w_lower} gathers on Monday mornings to discuss weekly milestones."
-        ]
-        return random.choice(templates)
+        return f"Despite her busy schedule, she {w_lower} finds time to read inspirational books."
         
     elif w_lower in ["but", "yet", "and", "or", "so"]:
-        templates = [
-            f"The experiment faced several unexpected setbacks, {w_lower} the researchers refused to give up.",
-            f"You can choose to work on the report now, {w_lower} you can finish it tomorrow morning."
-        ]
-        return random.choice(templates)
-    elif w_lower in ["however", "therefore", "moreover"]:
-        return f"The initial results looked quite promising; {w_lower}, we need further testing to confirm."
-    elif w_lower in ["although", "though", "because", "since", "if", "when", "while"]:
-        templates = [
-            f"{w_clean.capitalize()} the weather conditions turned severe, the flight departed on time.",
-            f"We decided to postpone the outdoor event {w_lower} heavy rain was forecasted."
-        ]
-        return random.choice(templates)
+        return f"The experiment faced several unexpected setbacks, {w_lower} the researchers refused to give up."
 
-    elif any(k in d_clean for k in ["吃", "喝", "做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教", "去", "來", "幫助", "使用", "打破", "裂"]):
-        templates = [
-            f"It is essential to learn how to {w_clean} effectively in real-world situations.",
-            f"They gathered together to {w_clean} and share their creative ideas with each other.",
-            f"She always tries her best to {w_clean} whenever someone asks for assistance."
-        ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["吃", "喝", "做", "跑", "走", "看", "聽", "寫", "買", "賣", "說", "想", "玩", "學", "教"]):
+        return f"It is essential to learn how to {w_clean} effectively in real-world situations."
 
-    elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白", "灰", "棕", "紫", "粉", "橘"]):
-        templates = [
-            f"The interior designer chose a striking {w_clean} hue to brighten up the living room.",
-            f"He wore a classic suit accented with a subtle {w_clean} tie for the interview."
-        ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白"]):
+        return f"The interior designer chose a striking {w_clean} hue to brighten up the living room."
 
-    elif any(k in d_clean for k in ["牆", "門", "窗", "地板", "天花板", "屋頂", "樓梯"]):
-        templates = [
-            f"Sunlight poured directly through the large glass {w_clean} into the studio.",
-            f"They decorated the old brick {w_clean} with vintage posters and photographs."
-        ]
-        return random.choice(templates)
-
-    elif any(k in d_clean for k in ["浴室", "廁所", "洗手間", "馬桶"]):
-        templates = [
-            f"Please ensure the {w_clean} is kept clean and well-ventilated after use.",
-            f"Visitors can find the public {w_clean} just past the main reception desk."
-        ]
-        return random.choice(templates)
-
-    elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師", "家", "孩", "男", "女", "師", "長", "客"]):
-        templates = [
-            f"The dedicated {w_clean} worked tirelessly to ensure the project succeeded.",
-            f"We were deeply impressed by how friendly and helpful the local {w_clean} were."
-        ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友", "學生", "老師"]):
+        return f"The dedicated {w_clean} worked tirelessly to ensure the project succeeded."
         
-    elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "學校", "銀行", "店", "館", "園", "場", "站", "區", "餐廳"]):
-        templates = [
-            f"Locals often gather at this popular {w_clean} to socialize on weekends.",
-            f"We spent hours exploring the charming old {w_clean} located downtown."
-        ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "學校", "銀行", "店"]):
+        return f"Locals often gather at this popular {w_clean} to socialize on weekends."
         
-    elif any(k in d_clean for k in ["筆記本", "書", "紙", "筆", "鉛筆", "本子"]):
-        if is_plural:
-            templates = [
-                f"He always keeps several neat {w_clean} on his desk for daily notes.",
-                f"She organized all her old {w_clean} neatly on the wooden bookshelf."
-            ]
-        else:
-            templates = [
-                f"She opened her brand new {w_clean} and began jotting down important ideas.",
-                f"He always carries a small {w_clean} with him to write down sudden inspirations."
-            ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["筆記本", "書", "紙", "筆"]):
+        return f"She opened her brand new {w_clean} and began jotting down important ideas."
 
-    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "禮物", "盒", "車", "包", "杯", "瓶", "衣", "鞋"]):
-        if is_plural:
-            templates = [
-                f"Please put all these heavy {w_clean} into the storage room carefully.",
-                f"She received many wonderful {w_clean} from her friends on her birthday."
-            ]
-        else:
-            templates = [
-                f"There is a beautiful wooden {w_clean} placed right in the center of the room.",
-                f"He bought a very expensive {w_clean} as a reward for his hard work this year."
-            ]
-        return random.choice(templates)
-
-    elif any(k in d_clean for k in ["餅乾", "食物", "水", "蘋果", "麵包", "茶", "咖啡", "肉", "果", "菜", "蛋", "奶", "湯", "飯"]):
-        templates = [
-            f"Having some fresh {w_clean} is a great way to start your energetic morning.",
-            f"We ordered some delicious {w_clean} to share while watching the late-night movie."
-        ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["餅乾", "食物", "水", "蘋果", "麵包", "茶", "咖啡", "肉", "果"]):
+        return f"Having some fresh {w_clean} is a great way to start your energetic morning."
         
-    elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔", "牛", "羊", "馬", "豬", "蟲", "魔術"]):
-        templates = [
-            f"Researchers observed how the rare {w_clean} adapts to seasonal environmental shifts.",
-            f"A fascinating documentary about {w_clean} captured our attention all evening."
-        ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["鼠", "動物", "貓", "狗", "鳥", "魚", "兔"]):
+        return f"Researchers observed how the rare {w_clean} adapts to seasonal environmental shifts."
         
-    elif any(k in d_clean for k in ["特別", "重要", "好", "壞", "大", "小", "高", "低", "長", "短", "新", "舊", "老", "少", "多", "餓", "累", "快樂", "傷心", "生氣", "忙", "冷", "熱", "漂亮", "聰明", "困難", "簡單", "清楚", "魔幻"]):
-        templates = [
-            f"It was a truly {w_clean} moment that everyone in the room will always remember.",
-            f"She approached the challenge with a remarkably {w_clean} perspective.",
-            f"Finding a reliable solution to this issue proved to be quite {w_clean}."
-        ]
-        return random.choice(templates)
+    elif any(k in d_clean for k in ["特別", "重要", "好", "壞", "大", "小", "高", "低", "長", "短", "新", "舊"]):
+        return f"She approached the challenge with a remarkably {w_clean} perspective."
         
     else:
         templates = [
@@ -311,7 +262,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 先行使用免費字典 API 獲取真實的英文解釋
+    # 呼叫三大免費字典引擎串聯機制
     real_eng_def = fetch_real_english_definition(w_clean)
 
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
@@ -320,27 +271,24 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                 genai.configure(api_key=st.session_state["gemini_api_key"])
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
-                    f"你是一個專業的英語字典。請針對英文單字或片語「{w_clean}」（中文解釋：{cleaned_def}），"
-                    "提供一句道地的英文例句，並確認其英文釋義。\n"
+                    f"你是一個專業的英語字典。請針對單字「{w_clean}」（中文解釋：{cleaned_def}），"
                     "嚴格回傳純 JSON 格式，不含其他文字：\n"
                     "{\n"
                     '    "phonetic": "/音標/",\n'
                     '    "part_of_speech": "詞性",\n'
                     '    "english_definition": "簡明的英文釋義",\n'
-                    '    "sentence": "道地的英文例句"\n'
+                    '    "sentence": "一句道地的英文例句"\n'
                     "}"
                 )
                 response = model.generate_content(prompt)
                 raw_text = response.text.strip()
                 
                 if "{" in raw_text and "}" in raw_text:
-                    start_idx = raw_text.find("{")
-                    end_idx = raw_text.rfind("}") + 1
-                    raw_text = raw_text[start_idx:end_idx]
+                    raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
                     
                 data = json.loads(raw_text)
                 
-                # 如果 AI 沒有給出有效的解釋，就採用免費字典 API 的結果
+                # 如果 AI 解釋為空或是無意義保底，就強制用串聯字典的結果取代
                 final_eng_def = data.get("english_definition", "")
                 if not final_eng_def or "A term or concept referring to" in final_eng_def:
                     final_eng_def = real_eng_def
@@ -354,9 +302,9 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     "basic_sentence": data.get("sentence", generate_dynamic_single_sentence(w_clean, cleaned_def))
                 }
             except Exception:
-                time.sleep(1) # 如果被限制，稍等一下再試或直接走下方備用方案
+                time.sleep(1)
             
-    # 如果沒有設定 Gemini，或是上面失敗了，自動使用免費真實字典解釋 + 動態例句組合
+    # 如果沒有 Gemini 或失敗，直接使用多重字典與動態例句組合
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower.replace(' ', '')}/",
@@ -431,7 +379,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在調用真實字典資料庫與例句生成..."):
+                with st.spinner("🤖 正在調用三大免費字典庫聯網生成中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -515,7 +463,7 @@ if main_menu == "✨ 智慧單字新增":
                 total_words_to_process = len(extracted_data_list)
                 
                 if total_words_to_process > 0:
-                    st.info(f"📑 結構化解析完畢！共鎖定表格找到 **{total_words_to_process}** 個有效單字與中文解釋。")
+                    st.info(f"📑 結構化解析完畢！共鎖定表格找到 **{total_words_to_process}** 個有效單字。")
                     
                     progress_bar = st.progress(0)
                     status_ui = st.empty()
@@ -526,12 +474,10 @@ if main_menu == "✨ 智慧單字新增":
                     for i, item in enumerate(extracted_data_list):
                         word = item["word"]
                         raw_def = item["definition"]
-                        remaining_words = total_words_to_process - (i + 1)
                         
                         status_ui.markdown(
                             f"**⏳ 匯入進度：** `{(i+1)} / {total_words_to_process}`\n\n"
-                            f"👉 目前正在串接真實字典庫處理： **{word}** (中文: {raw_def})\n\n"
-                            f"🎯 還剩下 **{remaining_words}** 個單字即可完成！"
+                            f"👉 目前正在串接多重字典處理： **{word}**\n\n"
                         )
                         
                         w_data = get_word_record_data_via_ai(word, raw_def=raw_def, level=selected_level)
@@ -562,7 +508,7 @@ if main_menu == "✨ 智慧單字新增":
                             
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        time.sleep(1) # 免費 API 也需要稍微緩衝一下
+                        time.sleep(0.5) 
                         
                     status_ui.markdown("🔄 **正在將所有資料同步至 Google Sheets，請稍候...**")
                     save_all_vocab_to_sheet(active_worksheet, df_current)
@@ -593,9 +539,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 單字真實英文釋義一鍵補齊專區")
-            st.warning("點擊下方按鈕，系統將透過『免費開源字典 API』為所有現有單字補齊最道地的英文解釋：")
-            if st.button("🧹 一鍵補齊真實英文釋義", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 終極字典聯網一鍵補齊專區")
+            st.warning("點擊下方按鈕，系統將透過『三大免費開源字典 API (Datamuse/FreeDict/Wiktionary)』為所有單字尋找最道地的英文解釋：")
+            if st.button("🧹 一鍵聯網補齊真實英文釋義", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -606,7 +552,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在從字典資料庫獲取解釋 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在從多重字典庫中搜尋 ({fixed_count+1}/{total_fix}): {w}")
                     
                     new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                     df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
@@ -617,7 +563,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     
                     fixed_count += 1
                     progress_bar.progress(fixed_count / total_fix)
-                    time.sleep(1) # 給免費字典 API 緩衝時間
+                    time.sleep(0.5)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
                 status_text.success(f"🎉 成功完成真實字典釋義補齊！總共更新了 {fixed_count} 個單字。")
