@@ -215,29 +215,10 @@ def get_word_record_data_via_ai(word, level="國中部"):
         "basic_sentence": f"This is an example sentence for {w_clean}."
     }
 
-def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
-    try:
-        all_vals = _worksheet.get_all_values()
-        row_idx = -1
-        for idx, row in enumerate(all_vals):
-            if len(row) > 1 and row[1].strip().lower() == target_word.strip().lower():
-                row_idx = idx + 1
-                break
-        
-        if row_idx == -1:
-            return False, "找不到該單字"
-            
-        row_values = all_vals[row_idx - 1]
-        row_id = row_values[0] if len(row_values) > 0 else 1
-        unit_tag = row_values[8] if len(row_values) > 8 else "未分類"
-        srs = row_values[9] if len(row_values) > 9 else 0
-        
-        new_row = [row_id, new_word, new_phonetic, new_pos, simple_s2t_convert(new_def), new_basic, new_adv, new_coll, unit_tag, srs]
-        _worksheet.update(f"A{row_idx}:J{row_idx}", [new_row])
-        load_vocab_dataframe(_worksheet, force_reload=True)
-        return True, "成功"
-    except Exception as e:
-        return False, str(e)
+def update_row_safely(_worksheet, row_idx, row_data):
+    # 使用安全的單一儲存格寫入，避開新版 gspread 的 update 語法相容性問題
+    for col_idx, val in enumerate(row_data, start=1):
+        _worksheet.update_cell(row_idx, col_idx, str(val))
 
 def delete_words_from_sheet(_worksheet, word_list):
     if not word_list: return
@@ -315,7 +296,7 @@ if main_menu == "✨ 智慧單字新增":
                         r_id = r_vals[0] if len(r_vals) > 0 else 1
                         srs_val = r_vals[9] if len(r_vals) > 9 else 0
                         new_r = [r_id, word, data.get('phonetic', ''), data.get('part_of_speech', ''), data.get('definition', ''), data.get('basic_sentence', ''), "", "", current_unit_tag, srs_val]
-                        active_worksheet.update(f"A{row_idx}:J{row_idx}", [new_r])
+                        update_row_safely(active_worksheet, row_idx, new_r)
                     else:
                         df_check = load_vocab_dataframe(active_worksheet)
                         next_id = len(df_check) + 1
@@ -375,7 +356,7 @@ if main_menu == "✨ 智慧單字新增":
                             r_id = r_vals[0] if len(r_vals) > 0 else 1
                             srs_val = r_vals[9] if len(r_vals) > 9 else 0
                             new_r = [r_id, word, w_data.get('phonetic', ''), w_data.get('part_of_speech', ''), w_data.get('definition', ''), w_data.get('basic_sentence', ''), "", "", current_unit_tag, srs_val]
-                            active_worksheet.update(f"A{row_idx}:J{row_idx}", [new_r])
+                            update_row_safely(active_worksheet, row_idx, new_r)
                         else:
                             df_check = load_vocab_dataframe(active_worksheet)
                             next_id = len(df_check) + 1
@@ -441,7 +422,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                         r_id = r_vals[0] if len(r_vals) > 0 else 1
                         srs_val = r_vals[9] if len(r_vals) > 9 else 0
                         new_r = [r_id, w, new_data.get('phonetic', ''), new_data.get('part_of_speech', ''), new_data.get('definition', ''), new_data.get('basic_sentence', ''), "", "", u_tag, srs_val]
-                        active_worksheet.update(f"A{row_idx}:J{row_idx}", [new_r])
+                        update_row_safely(active_worksheet, row_idx, new_r)
                         fixed_count += 1
                         
                     progress_bar.progress((idx + 1) / total_fix)
@@ -496,16 +477,23 @@ elif main_menu == "📖 字庫管理與搜尋":
                             submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
                             
                             if submit_table_edit:
-                                success, msg = update_single_word_in_sheet(
-                                    active_worksheet, target_row['word'],
-                                    edit_word, edit_phonetic, edit_pos, edit_def, edit_basic, target_row.get('advanced_sentence',''), target_row.get('collocations','')
-                                )
-                                if success:
+                                all_vals = active_worksheet.get_all_values()
+                                row_idx = -1
+                                for idx, row in enumerate(all_vals):
+                                    if len(row) > 1 and row[1].strip().lower() == target_row['word'].strip().lower():
+                                        row_idx = idx + 1
+                                        break
+                                if row_idx != -1:
+                                    r_vals = all_vals[row_idx - 1]
+                                    r_id = r_vals[0] if len(r_vals) > 0 else 1
+                                    srs_val = r_vals[9] if len(r_vals) > 9 else 0
+                                    new_r = [r_id, edit_word, edit_phonetic, edit_pos, simple_s2t_convert(edit_def), edit_basic, target_row.get('advanced_sentence',''), target_row.get('collocations',''), target_row.get('unit_tag','未分類'), srs_val]
+                                    update_row_safely(active_worksheet, row_idx, new_r)
                                     st.success("✅ 雲端修改成功！")
                                     time.sleep(0.5)
                                     st.rerun()
                                 else:
-                                    st.error(f"❌ 修改失敗：{msg}")
+                                    st.error("❌ 修改失敗：找不到該單字行")
 
 elif main_menu == "🎯 沉浸式閃卡複習":
     if df_vocab.empty:
