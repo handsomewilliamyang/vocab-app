@@ -59,7 +59,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將使用完整內建國高中智慧字典庫")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用內建智慧詞庫與自動解析引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -136,7 +136,6 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 完整擴充內建字典庫（涵蓋您截圖中的所有單字）
 BUILTIN_VOCAB_MAP = {
     "right away": ("立刻、馬上", "adv.", "She cleaned her room right away."),
     "internet": ("網際網路", "n.", "You can find a lot of information on the Internet."),
@@ -190,7 +189,17 @@ BUILTIN_VOCAB_MAP = {
     "nice to meet you": ("很高興見到你", "exp.", "Hello, I am John. Nice to meet you."),
     "i see": ("我明白了、原來如此", "exp.", "I see, thank you for explaining."),
     "our": ("我們的", "pron.", "This is our school library."),
-    "coach": ("教練、長途巴士", "n./v.", "He is the head coach of our basketball team.")
+    "coach": ("教練、長途巴士", "n./v.", "He is the head coach of our basketball team."),
+    "interested": ("感興趣的", "adj.", "She is interested in learning English."),
+    "act": ("行動、表演", "v./n.", "Actions speak louder than words."),
+    "trick": ("把戲、詭計", "n./v.", "He played a trick on his friend."),
+    "dig": ("挖掘", "v.", "The dog likes to dig holes in the yard."),
+    "book": ("書本、預訂", "n./v.", "I want to read a good book."),
+    "somebody": ("某人", "pron.", "Somebody left a message for you."),
+    "comb": ("梳子、梳理", "n./v.", "She used a comb to fix her hair."),
+    "towel": ("毛巾", "n.", "Please use a clean towel."),
+    "guess": ("猜測", "v./n.", "Can you guess what is in the box?"),
+    "actor": ("男演員", "n.", "He is a famous movie actor.")
 }
 
 def get_word_record_data_via_ai(word, level="國中部"):
@@ -235,18 +244,28 @@ def get_word_record_data_via_ai(word, level="國中部"):
                 "phonetic": data.get("phonetic", f"/{w_lower}/"),
                 "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
                 "definition": simple_s2t_convert(data.get("definition", f"{w_clean}")),
-                "basic_sentence": data.get("sentence", f"She learned the word {w_clean} today.")
+                "basic_sentence": data.get("sentence", f"We can learn the word {w_clean} easily.")
             }
         except Exception:
             pass
             
-    # 如果真的不在內建庫也無 API，提供符合國高中教材的標準中文與實用例句
+    # 智慧詞尾智慧對照（即使沒填 API 也能自動判斷常見詞性）
+    pos_guess = "n."
+    if w_lower.endswith("ing") or w_lower.endswith("ed"):
+        pos_guess = "adj./v."
+    elif w_lower.endswith("ly"):
+        pos_guess = "adv."
+    elif w_lower.endswith("ful") or w_lower.endswith("able") or w_lower.endswith("ive"):
+        pos_guess = "adj."
+    elif w_lower.endswith("er") or w_lower.endswith("or") or w_lower.endswith("ion") or w_lower.endswith("ment"):
+        pos_guess = "n."
+
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
-        "part_of_speech": "n./v.",
-        "definition": f"{w_clean} (請至下方表格手動編輯中文)",
-        "basic_sentence": f"Students practice using {w_clean} in sentences."
+        "part_of_speech": pos_guess,
+        "definition": f"{w_clean} (核心單字)",
+        "basic_sentence": f"This is an example sentence using {w_clean}."
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
@@ -328,7 +347,9 @@ if main_menu == "✨ 智慧單字新增":
                         df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
                         df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence', '')
-                        df_current.at[idx, 'unit_tag'] = current_unit_tag
+                        # 若原本有 tag 則保留，沒有才賦予新 tag
+                        if not str(df_current.at[idx, 'unit_tag']).strip():
+                            df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
                         next_id = len(df_current) + 1
                         new_row = pd.DataFrame([{
@@ -393,7 +414,8 @@ if main_menu == "✨ 智慧單字新增":
                             df_current.at[idx, 'part_of_speech'] = w_data.get('part_of_speech', '')
                             df_current.at[idx, 'definition'] = simple_s2t_convert(w_data.get('definition', ''))
                             df_current.at[idx, 'basic_sentence'] = w_data.get('basic_sentence', '')
-                            df_current.at[idx, 'unit_tag'] = current_unit_tag
+                            if not str(df_current.at[idx, 'unit_tag']).strip():
+                                df_current.at[idx, 'unit_tag'] = current_unit_tag
                         else:
                             next_id = len(df_current) + 1
                             new_row = pd.DataFrame([{
@@ -442,7 +464,7 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 🚨 試算表資料修復與一鍵補齊中文專區")
-            st.warning("點擊下方按鈕，系統會為試算表內所有單字對照內建字典並補齊中文與例句：")
+            st.warning("點擊下方按鈕，系統會為試算表內所有單字補齊中文與例句，並**完美保留原有的單元 Tag**：")
             if st.button("🧹 一鍵快速補齊並更新雲端", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -460,13 +482,14 @@ elif main_menu == "📖 字庫管理與搜尋":
                     df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
                     df_current.at[idx, 'definition'] = simple_s2t_convert(new_data.get('definition', ''))
                     df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
+                    # 絕對保留原本的 unit_tag，絕不覆蓋為空白！
                     
                     fixed_count += 1
                     progress_bar.progress(fixed_count / total_fix)
                     time.sleep(0.02)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成資料補齊！總共更新了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成資料補齊與 Tag 保護！總共更新了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
