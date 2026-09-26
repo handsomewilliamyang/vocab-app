@@ -28,7 +28,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-CORE_VOCAB_DICT = {
+# 🌟 內建超豐富的本地精確字典庫（包含單字、詞性、中文釋義與真實例句），徹底擺脫外部 API 依賴！
+LOCAL_RICH_VOCAB_DB = {
+    "piece": {"pos": "n.", "def": "件；片；零件", "sentence": "He cut a large piece of cake for his younger sister."},
+    "sentence": {"pos": "n. / v.", "def": "句子；宣判", "sentence": "Please write a complete sentence using this new vocabulary word."},
+    "post": {"pos": "n. / v.", "def": "郵件；貼文；佈署", "sentence": "She shared an interesting post about her trip on social media."},
+    "spell": {"pos": "v.", "def": "拼字；符咒", "sentence": "Can you spell your name correctly for the official document?"},
+    "download": {"pos": "v. / n.", "def": "下載", "sentence": "Students can download the study materials from the online school portal."},
+    "boring": {"pos": "adj.", "def": "無聊的", "sentence": "The lecture was so boring that many students fell asleep."},
+    "surprising": {"pos": "adj.", "def": "令人驚訝的", "sentence": "It is surprising that he solved the difficult math problem so quickly."},
+    "anyone": {"pos": "pron.", "def": "任何人", "sentence": "Does anyone know the answer to this challenging question?"},
+    "anybody": {"pos": "pron.", "def": "任何人", "sentence": "Is there anybody here who can help me carry these heavy boxes?"},
+    "fake": {"pos": "adj. / n.", "def": "假的；仿造品", "sentence": "We must learn how to spot fake news on the internet."},
     "eat": {"pos": "v.", "def": "吃", "sentence": "I like to eat fresh fruit and vegetables every day."},
     "food": {"pos": "n.", "def": "食物", "sentence": "Healthy food gives us energy to study and play."},
     "pop": {"pos": "v. / n.", "def": "發出砰的一聲；流行音樂", "sentence": "He likes listening to pop music in his free time."},
@@ -123,7 +134,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.warning("⚠️ 未輸入 API Key (將自動改用線上字典備援)")
+    st.sidebar.warning("⚠️ 未輸入 API Key (將優先使用內建高級字典庫)")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -202,19 +213,20 @@ def get_word_record_data(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    if w_lower in CORE_VOCAB_DICT:
-        entry = CORE_VOCAB_DICT[w_lower]
+    # 1. 優先查閱我們擴充豐富的本地精確字典庫
+    if w_lower in LOCAL_RICH_VOCAB_DB:
+        entry = LOCAL_RICH_VOCAB_DB[w_lower]
         return {
             "word": w_clean, "phonetic": f"/{w_lower}/", "part_of_speech": entry["pos"],
             "definition": entry["def"], "basic_sentence": entry["sentence"],
             "advanced_sentence": "", "collocations": f"common {w_clean}"
         }
         
-    pos_res, def_res = "n.", "請手動補上中文釋義"
+    pos_res, def_res = "n. / v.", "請手動補上中文釋義"
     sent_res = ""
     ai_success = False
     
-    # 1. 嘗試使用 Gemini AI
+    # 2. 嘗試使用 Gemini AI
     if HAS_GEMINI and st.session_state.get('gemini_api_key'):
         try:
             genai.configure(api_key=st.session_state.gemini_api_key)
@@ -245,35 +257,14 @@ def get_word_record_data(word, level="國中部"):
         except Exception:
             pass
             
-    # 2. 如果 AI 失敗，強制串聯線上免費字典 API 抓取真實外國例句
-    if not ai_success or not sent_res:
-        try:
-            url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(w_lower)}"
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=3) as response:
-                data = json.loads(response.read().decode())
-                if isinstance(data, list) and len(data) > 0:
-                    meanings = data[0].get("meanings", [])
-                    if meanings:
-                        pos_res = meanings[0].get("partOfSpeech", "n.") + "."
-                        for m in meanings:
-                            for d in m.get("definitions", []):
-                                if "example" in d:
-                                    sent_res = d["example"]
-                                    break
-                            if sent_res:
-                                break
-        except Exception:
-            pass
-            
-    # 3. 絕對保底：如果連線上字典也沒抓到例句，就根據所選級別給予優質的情境句，絕不再用呆板的 People use
+    # 3. 如果 AI 沒有生效，給予乾淨優雅的高品質保底句，絕不出現 People use
     if not sent_res:
         if level == "高中部":
-            sent_res = f"Hardly had Cyrus and Emma encountered the word '{w_clean}' before they mastered its advanced usage for the exam."
+            sent_res = f"As students prepared for the exam, they carefully analyzed the meaning and usage of '{w_clean}'."
         elif level == "多益 (TOEIC)":
-            sent_res = f"The management team reviewed the project report regarding '{w_clean}' during this morning's corporate meeting."
+            sent_res = f"The department manager discussed the new policy regarding '{w_clean}' during the corporate conference."
         else:
-            sent_res = f"Students often learn how to use '{w_clean}' correctly while practicing English reading every day."
+            sent_res = f"Everyone in the classroom tried to understand the definition of '{w_clean}'."
             
     return {
         "word": w_clean,
@@ -402,7 +393,6 @@ if main_menu == "✨ 智慧單字新增":
                                             w_data = get_word_record_data(cleaned, level=selected_level)
                                             if upsert_word_to_sheet(w_data, current_unit_tag, active_worksheet):
                                                 total_success_count += 1
-                                            time.sleep(1.2) # 防呆限速
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
                     except Exception:
@@ -424,7 +414,7 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 強制全面洗刷呆板例句", type="primary", use_container_width=True):
+            if st.button("🔄 一鍵徹底清洗呆板例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 fixed_count = 0
@@ -442,11 +432,13 @@ elif main_menu == "📖 字庫管理與搜尋":
                         not r_sent or 
                         "This is an example" in r_sent or 
                         "People use" in r_sent or 
-                        "中文釋義待補" in r_def
+                        "Students often learn" in r_sent or
+                        "中文釋義待補" in r_def or
+                        "請手動補上中文釋義" in r_def
                     )
                     
                     if is_bad_sentence:
-                        status_text.text(f"⏳ 正在重新產生優質例句: {r_word} ...")
+                        status_text.text(f"⏳ 正在重新清洗單字: {r_word} ...")
                         new_data = get_word_record_data(r_word, level=selected_level)
                         
                         update_single_word_in_sheet(
@@ -454,12 +446,11 @@ elif main_menu == "📖 字庫管理與搜尋":
                             row['phonetic'], new_data["part_of_speech"], new_data["definition"], new_data["basic_sentence"], row.get('advanced_sentence',''), row.get('collocations','')
                         )
                         fixed_count += 1
-                        time.sleep(1.2)
                         
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 洗刷完成！已成功替換 {fixed_count} 筆例句。")
+                st.success(f"🎊 清洗完成！已成功完美更新 {fixed_count} 筆資料。")
                 time.sleep(1)
                 st.rerun()
 
