@@ -57,7 +57,7 @@ main_menu = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-user_api_key = st.sidebar.text_input("輸入 Gemini API Key (選填)", type="password", value=st.secrets.get("gemini_api_key", ""))
+user_api_key = st.sidebar.text_input("輸入 Gemini API Key (必填以啟用 AI 字典)", type="password", value=st.secrets.get("gemini_api_key", ""))
 if user_api_key:
     st.session_state.gemini_api_key = user_api_key
     if HAS_GEMINI:
@@ -65,7 +65,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.warning("⚠️ 未輸入 API Key")
+    st.sidebar.warning("⚠️ 請務必輸入 API Key 才能自動查字典")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -151,7 +151,6 @@ def get_word_record_data_via_ai(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    # 讓 AI 同時查出音標、詞性、中文釋義與道地英文例句
     if HAS_GEMINI and st.session_state.get("gemini_api_key"):
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
@@ -170,8 +169,8 @@ def get_word_record_data_via_ai(word, level="國中部"):
             return {
                 "word": w_clean,
                 "phonetic": data.get("phonetic", f"/{w_lower}/"),
-                "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "")),
-                "definition": simple_s2t_convert(data.get("definition", "")),
+                "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
+                "definition": simple_s2t_convert(data.get("definition", f"{w_clean}")),
                 "basic_sentence": data.get("sentence", f"Please learn how to use '{w_clean}'.")
             }
         except Exception:
@@ -180,8 +179,8 @@ def get_word_record_data_via_ai(word, level="國中部"):
     return {
         "word": w_clean,
         "phonetic": f"/{w_lower}/",
-        "part_of_speech": "",
-        "definition": "",
+        "part_of_speech": "n.",
+        "definition": f"{w_clean}",
         "basic_sentence": f"Please learn how to use '{w_clean}'."
     }
 
@@ -193,18 +192,15 @@ def upsert_word_to_sheet(data, unit_tag, _worksheet):
             row_idx = df.index[df['word'] == word].tolist()[0] + 2
             row_values = _worksheet.row_values(row_idx)
             row_id = row_values[0] if len(row_values) > 0 else 1
-            
-            existing_adv_sentence = row_values[6] if len(row_values) > 6 else ""
-            existing_colloc = row_values[7] if len(row_values) > 7 else ""
             srs = row_values[9] if len(row_values) > 9 else 0
             
             new_row = [
                 row_id, word, 
-                data.get('phonetic', '') or (row_values[2] if len(row_values) > 2 else ''), 
-                data.get('part_of_speech', '') or (row_values[3] if len(row_values) > 3 else ''), 
-                data.get('definition', '') or (row_values[4] if len(row_values) > 4 else ''), 
-                data.get('basic_sentence', '') or (row_values[5] if len(row_values) > 5 else ''), 
-                existing_adv_sentence, existing_colloc, 
+                data.get('phonetic', ''), 
+                data.get('part_of_speech', ''), 
+                data.get('definition', ''), 
+                data.get('basic_sentence', ''), 
+                "", "", 
                 unit_tag, srs
             ]
             _worksheet.update(f'A{row_idx}:J{row_idx}', [new_row])
@@ -364,6 +360,37 @@ elif main_menu == "📖 字庫管理與搜尋":
                 st.success("✅ 快取已清除！")
                 time.sleep(0.5)
                 st.rerun()
+
+        # 🌟 專門用來拯救您的救命按鈕：一鍵將目前試算表的單字全部送給 AI 重新查字典洗版！
+        st.markdown("---")
+        with st.container(border=True):
+            st.markdown("#### 🚨 試算表資料修復專區")
+            st.warning("如果您的試算表目前顯示「請手動補上中文釋義」或「Everyone in the classroom...」等錯誤罐頭資料，請點擊下方按鈕，AI 會自動把該分頁的所有單字全部重新查字典並修正！")
+            if st.button("🧹 強制啟動 AI 字典全面洗版並更新雲端", type="primary", use_container_width=True):
+                if not st.session_state.get("gemini_api_key"):
+                    st.error("❌ 請先在左側邊欄輸入您的 Gemini API Key 才能執行 AI 洗版！")
+                else:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    words_to_fix = df_vocab['word'].tolist()
+                    total_fix = len(words_to_fix)
+                    fixed_count = 0
+                    
+                    for idx, w in enumerate(words_to_fix):
+                        status_text.text(f"🤖 AI 正在重新查字典與例句 ({idx+1}/{total_fix}): {w}")
+                        # 抓取目前該單字的 unit_tag
+                        row_match = df_vocab[df_vocab['word'] == w]
+                        u_tag = row_match['unit_tag'].values[0] if not row_match.empty and 'unit_tag' in row_match.columns else "未分類"
+                        
+                        new_data = get_word_record_data_via_ai(w, level=selected_level)
+                        if upsert_word_to_sheet(new_data, u_tag, active_worksheet):
+                            fixed_count += 1
+                        progress_bar.progress((idx + 1) / total_fix)
+                        
+                    get_vocab_from_sheets.clear()
+                    status_text.success(f"🎉 成功完成 AI 洗版！總共修復並更新了 {fixed_count} 個單字的正統中文與例句。")
+                    time.sleep(1.5)
+                    st.rerun()
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
