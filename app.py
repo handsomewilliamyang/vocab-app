@@ -22,7 +22,7 @@ except ImportError:
     HAS_GEMINI = False
 
 st.set_page_config(
-    page_title="我愛背單字 (雲端同步版)",
+    page_title="我愛背單字 (雲端完整版)",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -150,22 +150,19 @@ def auto_translate_english_to_chinese(word):
 
 def fetch_sentence(word):
     w_clean = word.strip()
-    w_lower = w_clean.lower()
-    search_root = w_lower[:4] if len(w_lower) >= 4 else w_lower
-
     if HAS_GEMINI and st.session_state.get('gemini_api_key'):
         try:
             genai.configure(api_key=st.session_state.gemini_api_key)
             model = genai.GenerativeModel('gemini-1.5-flash')
-            prompt = f"Write a single, practical, everyday English sentence using the word '{w_clean}'. Return ONLY the English sentence."
+            prompt = f"Write a single, natural, and practical everyday English sentence using the word '{w_clean}'. Return ONLY the English sentence without quotes, explanations, or labels."
             response = model.generate_content(prompt)
             if response.text:
                 clean_res = response.text.strip().replace('"', '').replace('\n', '')
-                if search_root in clean_res.lower():
+                if len(clean_res) > 5:
                     return clean_res
         except:
             pass
-    return f"Students should learn common {w_clean}."
+    return f"I see a {w_clean} here."
 
 def get_word_record_data(word):
     w_clean = word.strip()
@@ -329,21 +326,27 @@ elif main_menu == "📖 字庫管理與搜尋":
                     
                     if not r_def or "(待補充" in str(r_def) or not re.search(r'[\u4e00-\u9fa5]', str(r_def)):
                         new_def = auto_translate_english_to_chinese(str(r_word))
-                        if new_def != r_def: needs_update = True
+                        needs_update = True
                     else:
                         new_def = r_def
                         
+                    if not r_sent or "This is an example" in str(r_sent):
+                        new_sent = fetch_sentence(str(r_word))
+                        needs_update = True
+                    else:
+                        new_sent = r_sent
+                        
                     if needs_update:
-                        status_text.text(f"⏳ 正在修復雲端資料: {r_word} ...")
+                        status_text.text(f"⏳ AI 正在強化資料: {r_word} ...")
                         update_single_word_in_sheet(
                             active_worksheet, r_word, r_word, 
-                            row['phonetic'], row['part_of_speech'], new_def, r_sent, row.get('advanced_sentence',''), row.get('collocations','')
+                            row['phonetic'], row['part_of_speech'], new_def, new_sent, row.get('advanced_sentence',''), row.get('collocations','')
                         )
                         updated_count += 1
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 掃描完成！已透過 AI 補齊 {updated_count} 筆雲端資料。")
+                st.success(f"🎊 掃描完成！已透過 AI 完美升級 {updated_count} 筆單字的例句與翻譯。")
                 time.sleep(1)
                 st.rerun()
 
@@ -433,17 +436,25 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
     if df_vocab.empty:
         st.warning("📭 目前沒有足夠的單字來進行遊戲！")
     else:
-        row = df_vocab.sample(1).iloc[0]
-        w = str(row['word']).strip()
-        st.markdown(f"### 🎯 挑戰單字：`{w}`")
-        st.markdown(f"**📌 中文釋義：** `{row.get('definition','')}`")
-        audio = generate_audio_bytes(w)
-        try: st.audio(audio, format="audio/mp3")
-        except: pass
+        unit_list_game = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
+        selected_game_unit = st.selectbox("選擇遊戲挑戰的單元範圍：", unit_list_game, key="game_unit_select")
         
-        ans = st.text_input("請輸入拼寫：").strip().lower()
-        if st.button("送出"):
-            if ans == w.lower():
-                st.success("答對了！")
-            else:
-                st.error(f"答錯了，正確答案是 {w}")
+        df_filtered_game = df_vocab if selected_game_unit == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_game_unit]
+        
+        if df_filtered_game.empty:
+            st.warning("📭 該分類中沒有單字！")
+        else:
+            row = df_filtered_game.sample(1).iloc[0]
+            w = str(row['word']).strip()
+            st.markdown(f"### 🎯 挑戰單字：`{w}`")
+            st.markdown(f"**📌 中文釋義：** `{row.get('definition','')}`")
+            audio = generate_audio_bytes(w)
+            try: st.audio(audio, format="audio/mp3")
+            except: pass
+            
+            ans = st.text_input("請輸入拼寫：").strip().lower()
+            if st.button("送出"):
+                if ans == w.lower():
+                    st.success("答對了！")
+                else:
+                    st.error(f"答錯了，正確答案是 {w}")
