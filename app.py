@@ -22,7 +22,7 @@ except ImportError:
     HAS_GEMINI = False
 
 st.set_page_config(
-    page_title="我愛背單字 (雲端穩定同步版)",
+    page_title="我愛背單字 (雲端拼字測驗版)",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -40,6 +40,7 @@ CORE_VOCAB_DICT = {
     "letter": {"pos": "n.", "def": "信；字母", "sentence": "I received a handwritten letter from my best friend."},
     "envelope": {"pos": "n.", "def": "信封", "sentence": "She put the letter into an envelope and mailed it."},
     "gym": {"pos": "n.", "def": "健身房；體育館", "sentence": "They go to the gym three times a week to work out."},
+    "housewife": {"pos": "n.", "def": "家庭主婦", "sentence": "My mother is a housewife who takes good care of our family."},
     "crack": {"pos": "n. / v.", "def": "破裂；裂痕", "sentence": "There is a small crack in the windshield."},
     "maybe": {"pos": "adv.", "def": "也許", "sentence": "Maybe we can go to the movies tomorrow."},
     "person": {"pos": "n.", "def": "人物；人", "sentence": "She is a very kind and helpful person."},
@@ -293,7 +294,7 @@ def generate_audio_bytes(text, lang='en'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
-st.title("📚 我愛背單字 (雲端穩定同步版)")
+st.title("📚 我愛背單字 (雲端拼字測驗版)")
 
 df_vocab = get_vocab_from_sheets(active_worksheet)
 total_words = len(df_vocab)
@@ -379,7 +380,6 @@ elif main_menu == "📖 字庫管理與搜尋":
             selected_unit_filter = st.selectbox("依學習單元篩選：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            # 安全修復按鈕：只修復「空白」或「呆板預設字串」的例句，絕對不碰您原本正常的例句！
             if st.button("🔄 安全修復空白或呆板例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -390,9 +390,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     w_lower = r_word.lower()
                     r_sent = str(row['basic_sentence']).strip()
                     
-                    # 嚴格判斷：只有當例句是空白、或包含呆板預設字串時才進行修復
                     is_bad_sentence = (not r_sent or "This is an example" in r_sent or "%s" in r_sent)
-                    
                     if is_bad_sentence:
                         if w_lower in CORE_VOCAB_DICT:
                             entry = CORE_VOCAB_DICT[w_lower]
@@ -402,11 +400,10 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 row['phonetic'], entry["pos"], entry["def"], entry["sentence"], row.get('advanced_sentence',''), row.get('collocations','')
                             )
                             fixed_count += 1
-                    
                     progress_bar.progress((idx + 1) / len(df_vocab))
                 
                 status_text.empty()
-                st.success(f"🎊 修復完成！已成功幫您補齊 {fixed_count} 筆原本空白或呆板的例句（原本正常的例句已完美保留）。")
+                st.success(f"🎊 修復完成！已成功幫您補齊 {fixed_count} 筆例句。")
                 time.sleep(1)
                 st.rerun()
 
@@ -433,8 +430,6 @@ elif main_menu == "📖 字庫管理與搜尋":
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
                 st.markdown("#### ✏️ 雲端單字快速編輯修正")
-                st.caption("💡 提示：您可以在這裡修改任何單字與中文釋義，變更將直接儲存至 Google Sheets。")
-                
                 if not filtered_df.empty:
                     word_options = {f"{row['word']} ({row['definition']})": row for _, row in filtered_df.iterrows()}
                     selected_option = st.selectbox("選擇要編輯的單字：", list(word_options.keys()), key="table_edit_select")
@@ -504,17 +499,89 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
         if df_filtered_game.empty:
             st.warning("📭 該分類中沒有單字！")
         else:
-            row = df_filtered_game.sample(1).iloc[0]
-            w = str(row['word']).strip()
-            st.markdown(f"### 🎯 挑戰單字：`{w}`")
-            st.markdown(f"**📌 中文釋義：** `{row.get('definition','')}`")
-            audio = generate_audio_bytes(w)
-            try: st.audio(audio, format="audio/mp3")
-            except: pass
-            
-            ans = st.text_input("請輸入拼寫：").strip().lower()
-            if st.button("送出"):
-                if ans == w.lower():
-                    st.success("答對了！")
+            # 初始化遊戲狀態
+            if "game_started" not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
+                st.session_state.current_game_unit = selected_game_unit
+                st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records') # 隨機打亂
+                st.session_state.game_index = 0
+                st.session_state.wrong_answers = [] # 記錄錯題
+                st.session_state.is_finished = False
+
+            # 檢查是否測驗結束
+            if st.session_state.game_index >= len(st.session_state.game_queue):
+                st.session_state.is_finished = True
+
+            if st.session_state.get("is_finished", False):
+                st.balloons()
+                st.markdown("## 🎉 測驗圓滿結束！")
+                total_q = len(st.session_state.game_queue)
+                wrong_q = len(st.session_state.wrong_answers)
+                correct_q = total_q - wrong_q
+                
+                col_res1, col_res2 = st.columns(2)
+                col_res1.metric(label="總題數", value=f"{total_q} 題")
+                col_res2.metric(label="答對題數", value=f"{correct_q} 題")
+                
+                if wrong_q > 0:
+                    st.markdown("---")
+                    st.markdown("### ❌ 錯題訂正專區（需加強複習）：")
+                    for w_item in st.session_state.wrong_answers:
+                        st.markdown(f"- **中文釋義：** {w_item['definition']} ➡️ **正確英文單字：** `{w_item['word']}`")
                 else:
-                    st.error(f"答錯了，正確答案是 {w}")
+                    st.success("🏆 太神啦！全部答對，完美過關！")
+
+                if st.button("🔄 重新挑戰本單元", type="primary", use_container_width=True):
+                    del st.session_state["game_started"]
+                    st.rerun()
+            else:
+                current_item = st.session_state.game_queue[st.session_state.game_index]
+                target_word = str(current_item['word']).strip()
+                target_def = str(current_item['definition']).strip()
+                hint_masked = "".join([" _ " if c.isalpha() else "   " for c in target_word])
+                
+                st.markdown(f"### 📊 進度：第 `{st.session_state.game_index + 1}` 題 / 共 `{len(st.session_state.game_queue)}` 題")
+                
+                with st.container(border=True):
+                    # 中文釋義字體放到最大
+                    st.markdown(f"<h2 style='color: #4CAF50;'>📌 中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                    st.markdown(f"**🔤 拼字提示 (Spelling Hint)：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
+                    
+                    audio = generate_audio_bytes(target_word)
+                    try: 
+                        st.audio(audio, format="audio/mp3")
+                    except: 
+                        pass
+                
+                # 答題表單
+                with st.form(key=f"quiz_form_{st.session_state.game_index}"):
+                    user_ans = st.text_input("請輸入您的拼寫答案：").strip().lower()
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
+                    with col_btn2:
+                        skip_ans = st.form_submit_button("⏭️ 略過 / 下一題", use_container_width=True)
+                        
+                    if submit_ans:
+                        if user_ans == target_word.lower():
+                            st.success("🎉 答對了！")
+                            time.sleep(0.6)
+                            st.session_state.game_index += 1
+                            st.rerun()
+                        else:
+                            st.error(f"❌ 答錯囉！正確答案是：{target_word}")
+                            # 記錄錯題（避免重複加入）
+                            if current_item not in st.session_state.wrong_answers:
+                                st.session_state.wrong_answers.append(current_item)
+                            time.sleep(1.2)
+                            st.session_state.game_index += 1
+                            st.rerun()
+                            
+                    if skip_ans:
+                        # 略過也視為需要加強的錯題
+                        if current_item not in st.session_state.wrong_answers:
+                            st.session_state.wrong_answers.append(current_item)
+                        st.warning(f"⏩ 已略過。本題正確答案為：{target_word}")
+                        time.sleep(1.0)
+                        st.session_state.game_index += 1
+                        st.rerun()
