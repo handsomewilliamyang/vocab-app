@@ -260,11 +260,6 @@ def fetch_all_free_dictionaries(word):
 
     return real_def, real_example, phonetic, pos
 
-def generate_smart_natural_sentence(word, definition):
-    """安全且語意合理的動態備用句子生成器（避免死板套用造成不合文法）"""
-    w_clean = word.strip()
-    return f"Learning how to use '{w_clean}' correctly is essential for improving your English writing skills."
-
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
@@ -277,30 +272,46 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     final_phonetic = fetched_phonetic if fetched_phonetic else f"/{w_lower.replace(' ', '')}/"
     final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else "n."
 
-    # 如果抓回來的例句被判定為呆板或不合格，強制透過 Gemini AI 產生真正道地且符合文法的例句
-    if is_bad_example_sentence(final_sentence, w_clean) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+    # 如果英文釋義或例句不足，透過 Gemini 進行高品質結構化補強
+    if (not final_eng_def or is_bad_example_sentence(final_sentence, w_clean)) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         for attempt in range(2):
             try:
                 genai.configure(api_key=st.session_state["gemini_api_key"])
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
-                    f"You are an expert English lexicographer. Write ONE natural, grammatically flawless, and contextually appropriate English example sentence for the word '{w_clean}' (Traditional Chinese meaning: {cleaned_def}).\n"
-                    "Rules:\n"
-                    "1. Do NOT use templates, placeholders, or meta-language (e.g., 'We often use the word...').\n"
-                    "2. The sentence must fit the exact part of speech and meaning of the word naturally.\n"
-                    "3. Return ONLY the raw English sentence text. No quotes, no markdown, no explanations."
+                    f"You are an expert English lexicographer. For the word '{w_clean}' (Traditional Chinese meaning: {cleaned_def}), "
+                    "provide data in strict JSON format with no markdown formatting around it:\n"
+                    "{\n"
+                    '  "phonetic": "/ipa/",\n'
+                    '  "part_of_speech": "pos",\n'
+                    '  "english_definition": "A clear, simple English definition.",\n'
+                    '  "sentence": "A natural, grammatically flawless, everyday English example sentence using the word."\n'
+                    "}"
                 )
                 response = model.generate_content(prompt)
-                ai_sent = response.text.strip().strip('"“”')
+                raw_text = response.text.strip()
+                if "{" in raw_text and "}" in raw_text:
+                    raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
+                data = json.loads(raw_text)
                 
-                if ai_sent and not is_bad_example_sentence(ai_sent, w_clean):
-                    final_sentence = ai_sent
-                    break
+                if not real_eng_def and data.get("english_definition"):
+                    final_eng_def = data.get("english_definition")
+                if is_bad_example_sentence(final_sentence, w_clean) and data.get("sentence"):
+                    ai_sent = data.get("sentence").strip('"“”')
+                    if not is_bad_example_sentence(ai_sent, w_clean):
+                        final_sentence = ai_sent
+                if not fetched_phonetic and data.get("phonetic"):
+                    final_phonetic = data.get("phonetic")
+                if not fetched_pos and data.get("part_of_speech"):
+                    final_pos = simple_s2t_convert(data.get("part_of_speech"))
+                break
             except Exception:
                 time.sleep(1)
 
+    if not final_eng_def:
+        final_eng_def = f"A term associated with {w_clean}."
     if is_bad_example_sentence(final_sentence, w_clean):
-        final_sentence = generate_smart_natural_sentence(w_clean, cleaned_def)
+        final_sentence = f"It is important to understand how to use '{w_clean}' correctly in practice."
 
     return {
         "word": w_clean,
@@ -378,7 +389,7 @@ if main_menu == "✨ 新增單字":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在處理中 (過濾劣質例句並由 AI/Tatoeba 優化)..."):
+                with st.spinner("🤖 正在處理雙軌釋義與例句..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -512,7 +523,7 @@ elif main_menu == "📖 字彙管理":
             selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 一鍵全面過濾並汰換呆板例句", type="primary", use_container_width=True):
+            if st.button("🔄 一鍵升級並補齊雙軌釋義與例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
                 
@@ -529,8 +540,9 @@ elif main_menu == "📖 字彙管理":
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
                     current_sent = str(row.get('basic_sentence', '')).strip()
+                    current_adv = str(row.get('advanced_sentence', '')).strip()
                     
-                    if is_bad_example_sentence(current_sent, w):
+                    if is_bad_example_sentence(current_sent, w) or not current_adv:
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
                         df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
@@ -540,7 +552,7 @@ elif main_menu == "📖 字彙管理":
                         progress_bar.progress(fixed_count / total_fix)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success("✅ 例句品質全面升級與過濾完成！")
+                st.success("✅ 雙軌釋義與例句全面升級完成！")
                 time.sleep(1)
                 st.rerun()
 
