@@ -1,5 +1,7 @@
 streamlit
 pandas
+gspread
+google-auth
 gtts
 python-docx
 google-generativeai
