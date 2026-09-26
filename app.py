@@ -61,8 +61,11 @@ user_api_key = st.sidebar.text_input("輸入 Gemini API Key (必填以啟用 AI 
 if user_api_key:
     st.session_state.gemini_api_key = user_api_key
     if HAS_GEMINI:
-        genai.configure(api_key=user_api_key)
-    st.sidebar.success("✅ AI 字典引擎已啟用")
+        try:
+            genai.configure(api_key=user_api_key)
+            st.sidebar.success("✅ AI 字典引擎已啟用")
+        except Exception as ex:
+            st.sidebar.error(f"⚠️ API Key 設定失敗：{ex}")
 else:
     st.session_state.gemini_api_key = ""
     st.sidebar.warning("⚠️ 請務必輸入 API Key 才能自動查字典")
@@ -150,55 +153,61 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
+# 🌟 強化版 AI 字典查詢：若發生錯誤會直接回傳詳細錯誤訊息供診斷
 def get_word_record_data_via_ai(word, level="國中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     
-    default_result = {
-        "word": w_clean,
-        "phonetic": "/" + w_lower + "/",
-        "part_of_speech": "n.",
-        "definition": f"{w_clean} (請補充中文釋義)",
-        "basic_sentence": f"This is an example sentence for {w_clean}."
-    }
+    if not HAS_GEMINI or not st.session_state.get("gemini_api_key"):
+        return {
+            "word": w_clean,
+            "phonetic": "/" + w_lower + "/",
+            "part_of_speech": "n.",
+            "definition": f"{w_clean} (尚未啟用 API Key)",
+            "basic_sentence": f"Please enter Gemini API Key in sidebar."
+        }
 
-    if HAS_GEMINI and st.session_state.get("gemini_api_key"):
-        try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            prompt = (
-                f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（適用級別：{level}），"
-                "嚴格回傳以下純 JSON 格式（不要包含任何 markdown 程式碼標記如 ```json）：\n"
-                "{\n"
-                '    "phonetic": "/音標/",\n'
-                '    "part_of_speech": "詞性 (例如 n., v., adj.,phr.)",\n'
-                '    "definition": "精準流暢的繁體中文含義",\n'
-                '    "sentence": "實用且道地的英文例句"\n'
-                "}"
-            )
-            response = model.generate_content(prompt)
-            raw_text = response.text.strip()
-            
-            raw_text = re.sub(r"^```(json)?", "", raw_text, flags=re.IGNORECASE).strip()
-            raw_text = re.sub(r"```$", "", raw_text).strip()
-            
-            data = json.loads(raw_text)
-            
-            phonetic = data.get("phonetic", "/" + w_lower + "/")
-            pos = data.get("part_of_speech", "n.")
-            definition = data.get("definition", w_clean)
-            sentence = data.get("sentence", f"This is an example sentence for {w_clean}.")
-            
-            return {
-                "word": w_clean,
-                "phonetic": phonetic if phonetic else "/" + w_lower + "/",
-                "part_of_speech": simple_s2t_convert(pos),
-                "definition": simple_s2t_convert(definition),
-                "basic_sentence": sentence
-            }
-        except Exception:
-            pass
-            
-    return default_result
+    try:
+        genai.configure(api_key=st.session_state["gemini_api_key"])
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        prompt = (
+            f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（適用級別：{level}），"
+            "嚴格回傳以下純 JSON 格式（絕對不要包含任何 markdown 程式碼標記如 ```json）：\n"
+            "{\n"
+            '    "phonetic": "/音標/",\n'
+            '    "part_of_speech": "詞性 (例如 n., v., adj.,phr.)",\n'
+            '    "definition": "精準流暢的繁體中文含義",\n'
+            '    "sentence": "實用且道地的英文例句"\n'
+            "}"
+        )
+        response = model.generate_content(prompt)
+        raw_text = response.text.strip()
+        
+        raw_text = re.sub(r"^```(json)?", "", raw_text, flags=re.IGNORECASE).strip()
+        raw_text = re.sub(r"```$", "", raw_text).strip()
+        
+        data = json.loads(raw_text)
+        
+        phonetic = data.get("phonetic", "/" + w_lower + "/")
+        pos = data.get("part_of_speech", "n.")
+        definition = data.get("definition", w_clean)
+        sentence = data.get("sentence", f"Example sentence for {w_clean}.")
+        
+        return {
+            "word": w_clean,
+            "phonetic": phonetic if phonetic else "/" + w_lower + "/",
+            "part_of_speech": simple_s2t_convert(pos),
+            "definition": simple_s2t_convert(definition),
+            "basic_sentence": sentence
+        }
+    except Exception as e:
+        return {
+            "word": w_clean,
+            "phonetic": "/" + w_lower + "/",
+            "part_of_speech": "err",
+            "definition": f"AI錯誤: {str(e)[:40]}",
+            "basic_sentence": f"Error during AI generation for {w_clean}."
+        }
 
 def update_single_word_in_sheet(_worksheet, target_word, new_word, new_phonetic, new_pos, new_def, new_basic, new_adv, new_coll):
     try:
@@ -376,7 +385,7 @@ elif main_menu == "📖 字庫管理與搜尋":
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 🚨 試算表資料修復與一鍵補齊中文專區")
-            st.warning("點擊下方按鈕，AI 會為試算表內所有空白或格式不對的單字**重新查字典，自動填入正確的中文釋義與例句**：")
+            st.warning("點擊下方按鈕，AI 會為試算表內所有單字**重新查字典，自動填入正確的中文釋義與例句**：")
             if st.button("🧹 強制啟動 AI 字典全面補齊並更新雲端", type="primary", use_container_width=True):
                 if not st.session_state.get("gemini_api_key"):
                     st.error("❌ 請先在左側邊欄輸入您的 Gemini API Key！")
@@ -553,77 +562,4 @@ elif main_menu == "🎮 拼字王挑戰遊戲":
                 st.balloons()
                 st.markdown("## 🎉 測驗圓滿結束！")
                 total_q = len(st.session_state.game_queue)
-                wrong_q = len(st.session_state.wrong_answers)
-                correct_q = total_q - wrong_q
-                
-                col_res1, col_res2 = st.columns(2)
-                col_res1.metric(label="總題數", value=str(total_q) + " 題")
-                col_res2.metric(label="答對題數", value=str(correct_q) + " 題")
-                
-                if wrong_q > 0:
-                    st.markdown("---")
-                    st.markdown("### ❌ 總共錯誤題數：" + str(wrong_q) + " 題（錯題訂正複習）：")
-                    for w_item in st.session_state.wrong_answers:
-                        st.markdown("- **中文釋義：** " + str(w_item['definition']) + " ➡️ **正確英文單字：** `" + str(w_item['word']) + "`")
-                else:
-                    st.success("🏆 太神啦！全部答對，完美過關！")
-
-                if st.button("🔄 重新挑戰本單元", type="primary", use_container_width=True):
-                    del st.session_state["game_started"]
-                    st.rerun()
-                    
-            else:
-                current_item = st.session_state.game_queue[st.session_state.game_index]
-                target_word = str(current_item['word']).strip()
-                target_def = str(current_item['definition']).strip() if str(current_item['definition']).strip() else "(尚無中文釋義)"
-                hint_masked = "".join([" _ " if c.isalpha() else "   " for c in target_word])
-                
-                st.markdown("### 📊 進度：第 `" + str(st.session_state.game_index + 1) + "` 題 / 共 `" + str(len(st.session_state.game_queue)) + "` 題")
-                
-                with st.container(border=True):
-                    st.markdown("<h2 style='color: #4CAF50;'>📌 中文釋義：" + target_def + "</h2>", unsafe_allow_html=True)
-                    st.markdown("**🔤 拼字提示 (Spelling Hint)：** `" + hint_masked + "` &nbsp;&nbsp; (長度: " + str(len(target_word)) + " 字母)")
-                    
-                    audio = generate_audio_bytes(target_word)
-                    try: 
-                        st.audio(audio, format="audio/mp3")
-                    except: 
-                        pass
-
-                if st.session_state.get("last_feedback"):
-                    fb = st.session_state.last_feedback
-                    if fb["type"] == "success":
-                        st.success(fb["msg"])
-                    else:
-                        st.error(fb["msg"])
-                        
-                current_wrong_count = len(st.session_state.wrong_answers)
-                if current_wrong_count > 0:
-                    st.markdown("<h4 style='color: #E53935;'>🛑 目前累積錯題數：" + str(current_wrong_count) + " 題</h4>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<h4 style='color: #757575;'>🛑 目前累積錯題數：0 題 (完美狀態 ✨)</h4>", unsafe_allow_html=True)
-                st.markdown("---")
-
-                st.text_input(
-                    "📝 請輸入您的拼寫答案 (輸入完畢可直接按 Enter 送出)：", 
-                    key="user_spelling_input",
-                    on_change=process_answer,
-                    kwargs={"is_skip": False}
-                )
-                
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    st.button(
-                        "🚀 送出答案", 
-                        type="primary", 
-                        use_container_width=True, 
-                        on_click=process_answer, 
-                        kwargs={"is_skip": False}
-                    )
-                with col_btn2:
-                    st.button(
-                        "⏭️ 略過本題", 
-                        use_container_width=True, 
-                        on_click=process_answer, 
-                        kwargs={"is_skip": True}
-                    )
+                wrong_q = len(st.
