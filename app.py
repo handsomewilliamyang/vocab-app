@@ -59,7 +59,7 @@ if user_api_key:
     st.sidebar.success("✅ AI 字典引擎已啟用")
 else:
     st.session_state.gemini_api_key = ""
-    st.sidebar.info("💡 未填寫 API Key 時將啟用基於中文釋義的智慧例句引擎")
+    st.sidebar.info("💡 未填寫 API Key 時將啟用純英文優化例句引擎")
 
 st.sidebar.markdown("---")
 selected_level = st.sidebar.radio(
@@ -136,22 +136,24 @@ def generate_meaningful_sentence(word, definition):
     w_clean = word.strip()
     d_clean = definition.strip()
     
-    # 根據中文定義的關鍵字自動生成自然且符合語意的道地英文例句
+    # 針對各類中文釋義關鍵字動態生成道地例句
     if any(k in d_clean for k in ["人", "員", "父母", "父親", "母親", "朋友"]):
         return f"Everyone in our class likes this friendly {w_clean} because of kindness."
     elif any(k in d_clean for k in ["地方", "室", "房", "家", "廚房", "客廳", "浴室", "餐廳"]):
         return f"We can easily find a clean and comfortable {w_clean} in this building."
-    elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白", "灰", "棕"]):
+    elif any(k in d_clean for k in ["顏色", "紅", "藍", "綠", "黃", "黑", "白", "灰", "棕", "紫"]):
         return f"She decided to paint her new bedroom with a bright {w_clean} tone."
-    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "東西"]):
-        return f"There is a brand new {w_clean} placed in the center of the hall."
+    elif any(k in d_clean for k in ["桌", "椅", "沙發", "床", "家具", "物品", "東西", "筆記", "禮物"]):
+        return f"There is a brand new {w_clean} placed in the center of the room."
     elif any(k in d_clean for k in ["吃", "喝", "食物", "餅乾", "水"]):
         return f"He always enjoys having some fresh {w_clean} during afternoon break."
-    elif any(k in d_clean for k in ["時間", "時候", "當", "如果", "也許"]):
-        return f"{w_clean.capitalize()} we can schedule a meeting for next Monday morning."
+    elif any(k in d_clean for k in ["時間", "時候", "當", "如果", "也許", "足夠"]):
+        return f"We need to make sure we have enough time to finish this {w_clean} task."
+    elif any(k in d_clean for k in ["裡", "內", "外"]):
+        return f"You can find everything you need safely stored {w_clean} the box."
     
-    # 通用日常實用句型（完美嵌入單字本身，絕不空泛）
-    return f"It is very helpful to practice using '{w_clean}' ({d_clean}) in everyday English writing."
+    # 絕對純英文的通用日常句型（絕不夾雜中文字串）
+    return f"People often use {w_clean} in their daily life and communication."
 
 def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_clean = word.strip()
@@ -309,7 +311,7 @@ if main_menu == "✨ 智慧單字新增":
             if st.button("📖 批次解析 Word 並匯入", use_container_width=True):
                 extracted_data_list = []
                 
-                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動對應英文、中文與語意例句生成）..."):
+                with st.spinner("🔍 正在結構化解析 Word 表格欄位（自動對應英文、中文與純英文例句生成）..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -404,7 +406,7 @@ if main_menu == "✨ 智慧單字新增":
                     status_ui.markdown("🔄 **正在將所有資料同步至 Google Sheets，請稍候...**")
                     save_all_vocab_to_sheet(active_worksheet, df_current)
                     
-                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字與語意例句。")
+                    status_ui.success(f"🎊 批次匯入完成！成功結構化解析並匯入 {total_success_count} 個單字與純英文例句。")
                     time.sleep(2)
                     st.rerun()
                 else:
@@ -430,9 +432,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 試算表例句語意升級與一鍵修復專區")
-            st.warning("點擊下方按鈕，系統會為所有舊資料根據中文釋義重新生成自然道地的例句，並且**100% 絕對完整保護與保留原有的 unit_tag 與中文解釋**：")
-            if st.button("🧹 一鍵升級並更新雲端例句", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 試算表例句完美修復與一鍵升級專區")
+            st.warning("點擊下方按鈕，系統會為所有舊資料重新生成乾淨、標準的純英文例句，並且**100% 絕對完整保護與保留原有的 unit_tag 與中文解釋**：")
+            if st.button("🧹 一鍵完美升級雲端例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -443,10 +445,10 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在升級單字語意例句 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在升級單字例句 ({fixed_count+1}/{total_fix}): {w}")
                     
                     current_sent = str(row.get('basic_sentence', ''))
-                    if not current_sent or "It is very important" in current_sent or "We use the word" in current_sent or "We can easily observe" in current_sent:
+                    if not current_sent or "It is very helpful" in current_sent or "It is very important" in current_sent or "We use the word" in current_sent:
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
@@ -455,7 +457,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     time.sleep(0.01)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成例句語意升級與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成例句完美升級與 Tag 完整保護！總共檢查了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
