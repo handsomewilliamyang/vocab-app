@@ -68,8 +68,15 @@ main_menu = st.sidebar.radio(
     label_visibility="collapsed"
 )
 
-# 第三層語料庫設定：常駐隱藏，預設使用國中部
-selected_level = "國中部"
+st.sidebar.markdown("---")
+st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
+
+# 2. 選擇目標語料庫級別（保留讓您切換）
+selected_level = st.sidebar.radio(
+    "選擇目前目標級別：",
+    ["國中部", "高中部", "TOEIC"],
+    label_visibility="collapsed"
+)
 
 # API Key 常駐在背景隱藏讀取 st.secrets，不顯示輸入框
 hidden_api_key = st.secrets.get("gemini_api_key", "")
@@ -351,7 +358,12 @@ col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}
 st.markdown("<br>", unsafe_allow_html=True)
 
 if main_menu == "✨ 新增單字":
-    semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+    if selected_level == "國中部":
+        semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+    elif selected_level == "高中部":
+        semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+    else:
+        semester = st.selectbox("選擇階段：", ["TOEIC核心", "TOEIC進階", "商用英文"])
     unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     current_unit_tag = f"{semester} > {unit}"
     
