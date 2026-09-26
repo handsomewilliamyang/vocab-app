@@ -337,7 +337,7 @@ if main_menu == "✨ 智慧單字新增":
                     'v.n.', 'n.v.', 'adj.adv.', 'phr', 'phr.', 'pl', 'pl.', 'sg', 'sg.'
                 }
                 
-                with st.spinner("🔍 正在精準掃描 Word 表格第一欄單字（已自動過濾數字序號與雜訊）..."):
+                with st.spinner("🔍 正在智慧掃描 Word 表格中的單字（自動過濾題號與中文解釋）..."):
                     for uploaded_docx in uploaded_docxs:
                         temp_path = f"temp_{uploaded_docx.name}"
                         try:
@@ -346,8 +346,9 @@ if main_menu == "✨ 智慧單字新增":
                             doc = docx.Document(temp_path)
                             for table in doc.tables:
                                 for row in table.rows:
-                                    if row.cells:
-                                        cell_text = row.cells[0].text.strip()
+                                    # 遍歷這一列所有儲存格，精準撈出單字
+                                    for cell in row.cells:
+                                        cell_text = cell.text.strip()
                                         for line in cell_text.split('\n'):
                                             cleaned = line.strip().lower()
                                             check_num = cleaned.rstrip('.')
@@ -355,9 +356,9 @@ if main_menu == "✨ 智慧單字新增":
                                             if (cleaned and 
                                                 cleaned not in POS_BLACKLIST and 
                                                 not check_num.isdigit() and 
-                                                len(cleaned) < 30 and 
+                                                len(cleaned) < 35 and 
                                                 not any(('\u4e00' <= c <= '\u9fff') for c in cleaned) and 
-                                                not any(char in cleaned for char in ['/', '[', ']', '(', ')', '=', '：', ':'])):
+                                                not any(char in cleaned for char in ['/', '[', ']', '(', ')', '=', '：', ':', '□'])):
                                                 
                                                 original_c = line.strip()
                                                 if original_c not in all_extracted_words:
@@ -371,7 +372,7 @@ if main_menu == "✨ 智慧單字新增":
                 total_words_to_process = len(all_extracted_words)
                 
                 if total_words_to_process > 0:
-                    st.info(f"📑 文本精準掃描完畢！共鎖定表格第一欄找到 **{total_words_to_process}** 個有效單字準備匯入。")
+                    st.info(f"📑 文本精準掃描完畢！共找到 **{total_words_to_process}** 個有效單字準備匯入。")
                     
                     progress_bar = st.progress(0)
                     status_ui = st.empty()
@@ -425,7 +426,7 @@ if main_menu == "✨ 智慧單字新增":
                     time.sleep(2)
                     st.rerun()
                 else:
-                    st.warning("⚠️ 在上傳的 Word 表格第一欄中找不到符合的英文單字。")
+                    st.warning("⚠️ 在上傳的 Word 中找不到符合的英文單字。")
 
 elif main_menu == "📖 字庫管理與搜尋":
     if df_vocab.empty:
