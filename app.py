@@ -61,8 +61,15 @@ except Exception as e:
 st.sidebar.markdown("<h2>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# 這裡將選單名稱改為您要求的「單字記憶【國中部】」(會自動抓取目前的目標級別)
-flashcard_menu_name = f"🎯 單字記憶【{selected_level if 'selected_level' in locals() else '國中部'}】"
+# 側邊欄級別選擇 (先讀取以便下方選單使用)
+selected_level = st.sidebar.radio(
+    "選擇目前目標級別：",
+    ["國中部", "高中部", "多益 (TOEIC)"],
+    label_visibility="collapsed"
+)
+
+# 讓選單顯示：「單字記憶【國中部】」、「單字記憶【高中部】」等
+flashcard_menu_name = f"🎯 單字記憶【{selected_level}】"
 
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
@@ -80,13 +87,6 @@ if user_api_key:
 else:
     st.session_state.gemini_api_key = ""
     st.sidebar.info("💡 未填寫 API Key 時將啟用「多重免費字典串聯」引擎")
-
-st.sidebar.markdown("---")
-selected_level = st.sidebar.radio(
-    "選擇目前目標級別：",
-    ["國中部", "高中部", "多益 (TOEIC)"],
-    label_visibility="collapsed"
-)
 
 level_sheet_mapping = {
     "國中部": "國中部",
@@ -353,7 +353,8 @@ except Exception:
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
-col_m2.metric(label="目前模式", value=f"{main_menu} ({selected_level})")
+# 模式名稱簡化顯示為「單字記憶【級別】」
+col_m2.metric(label="目前模式", value=f"單字記憶【{selected_level}】")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -669,7 +670,7 @@ elif main_menu == flashcard_menu_name:
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
-                # 常駐顯示的中英文解釋與例句區塊 (字體放大)
+                # 常駐顯示的中英文解釋與例句區塊 (放大字體)
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>📌 中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
                 st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence', 'No definition available.')}</p>", unsafe_allow_html=True)
@@ -679,7 +680,7 @@ elif main_menu == flashcard_menu_name:
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 發音按鈕區 (加上喇叭圖示，並移除了多餘的提示文字)
+                # 喇叭圖示發音按鈕區 (無多餘提示文字)
                 ac_col1, ac_col2, ac_col3 = st.columns(3)
                 with ac_col1:
                     if st.button("🔊 美式發音 (US)", use_container_width=True):
