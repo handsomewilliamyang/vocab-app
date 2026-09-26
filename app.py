@@ -112,9 +112,9 @@ def load_vocab_dataframe(_worksheet, force_reload=False):
             data_rows = all_values[1:]
             df_temp = pd.DataFrame(data_rows, columns=headers[:len(all_values[0])])
         else:
-            df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage'])
+            df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage'])
             
-        required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage']
+        required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
         for col in required_cols:
             if col not in df_temp.columns:
                 df_temp[col] = ""
@@ -236,7 +236,6 @@ def generate_dynamic_single_sentence(word, definition):
         ]
         return random.choice(templates)
         
-    # 專屬文書/文具用品系列（獨立出來，避免和禮物或食物混用）
     elif any(k in d_clean for k in ["筆記本", "書", "紙", "筆", "鉛筆", "本子"]):
         if is_plural:
             templates = [
@@ -305,11 +304,12 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 prompt = (
                     f"你是一個專業的英語字典與教師。請針對英文單字或片語「{w_clean}」（中文解釋為：{cleaned_def}，適用級別：{level}），"
-                    "請提供一句語意邏輯絕對正確、符合該單字真實詞性與用法的道地英文例句。"
+                    "請提供英文釋義（English definition）與一句道地的英文例句。"
                     "嚴格回傳以下純 JSON 格式，絕對不要包含任何其他文字或標記：\n"
                     "{\n"
                     '    "phonetic": "/音標/",\n'
                     '    "part_of_speech": "詞性",\n'
+                    '    "english_definition": "英文單字解釋",\n'
                     '    "sentence": "一句道地的英文例句"\n'
                     "}"
                 )
@@ -327,6 +327,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
                     "phonetic": data.get("phonetic", f"/{w_lower.replace(' ', '')}/"),
                     "part_of_speech": simple_s2t_convert(data.get("part_of_speech", "n.")),
                     "definition": cleaned_def,
+                    "advanced_sentence": data.get("english_definition", f"Definition of {w_clean}"),
                     "basic_sentence": data.get("sentence", generate_dynamic_single_sentence(w_clean, cleaned_def))
                 }
             except Exception:
@@ -337,13 +338,14 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         "phonetic": f"/{w_lower.replace(' ', '')}/",
         "part_of_speech": "n.",
         "definition": cleaned_def,
+        "advanced_sentence": f"A common term referring to {w_clean}.",
         "basic_sentence": generate_dynamic_single_sentence(w_clean, cleaned_def)
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
     try:
         _worksheet.clear()
-        headers = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence', 'advanced_sentence', 'collocations', 'unit_tag', 'srs_stage']
+        headers = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
         rows = [headers]
         for _, row in df.iterrows():
             rows.append([
@@ -352,8 +354,8 @@ def save_all_vocab_to_sheet(_worksheet, df):
                 str(row.get('phonetic', '')),
                 str(row.get('part_of_speech', '')),
                 str(row.get('definition', '')),
-                str(row.get('basic_sentence', '')),
                 str(row.get('advanced_sentence', '')),
+                str(row.get('basic_sentence', '')),
                 str(row.get('collocations', '')),
                 str(row.get('unit_tag', '') if pd.notna(row.get('unit_tag')) else ''),
                 str(row.get('srs_stage', 0))
@@ -405,7 +407,7 @@ if main_menu == "✨ 智慧單字新增":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在查閱字典並生成最佳文法例句中..."):
+                with st.spinner("🤖 正在查閱字典並生成中英文解釋與例句中..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
@@ -415,6 +417,7 @@ if main_menu == "✨ 智慧單字新增":
                         df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
                         df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
+                        df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                         df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence', '')
                         df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
@@ -425,8 +428,8 @@ if main_menu == "✨ 智慧單字新增":
                             'phonetic': data.get('phonetic', ''),
                             'part_of_speech': data.get('part_of_speech', ''),
                             'definition': simple_s2t_convert(data.get('definition', '')),
+                            'advanced_sentence': data.get('advanced_sentence', ''),
                             'basic_sentence': data.get('basic_sentence', ''),
-                            'advanced_sentence': '',
                             'collocations': '',
                             'unit_tag': current_unit_tag,
                             'srs_stage': 0
@@ -514,6 +517,7 @@ if main_menu == "✨ 智慧單字新增":
                             df_current.at[idx, 'phonetic'] = w_data.get('phonetic', '')
                             df_current.at[idx, 'part_of_speech'] = w_data.get('part_of_speech', '')
                             df_current.at[idx, 'definition'] = simple_s2t_convert(w_data.get('definition', ''))
+                            df_current.at[idx, 'advanced_sentence'] = w_data.get('advanced_sentence', '')
                             df_current.at[idx, 'basic_sentence'] = w_data.get('basic_sentence', '')
                             df_current.at[idx, 'unit_tag'] = current_unit_tag
                         else:
@@ -524,8 +528,8 @@ if main_menu == "✨ 智慧單字新增":
                                 'phonetic': w_data.get('phonetic', ''),
                                 'part_of_speech': w_data.get('part_of_speech', ''),
                                 'definition': simple_s2t_convert(w_data.get('definition', '')),
+                                'advanced_sentence': w_data.get('advanced_sentence', ''),
                                 'basic_sentence': w_data.get('basic_sentence', ''),
-                                'advanced_sentence': '',
                                 'collocations': '',
                                 'unit_tag': current_unit_tag,
                                 'srs_stage': 0
@@ -565,9 +569,9 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 🚨 文具與物品例句修正專區")
-            st.warning("點擊下方按鈕，系統會重新檢查並修復所有文具用品（如筆記本、書本）的例句，確保文法完美且不與禮物衝突：")
-            if st.button("🧹 一鍵修復並升級例句", type="primary", use_container_width=True):
+            st.markdown("#### 🚨 單字中英文解釋與例句升級專區")
+            st.warning("點擊下方按鈕，系統將為所有單字補充「英文釋義」與升級例句：")
+            if st.button("🧹 一鍵升級中英文釋義與例句", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -578,9 +582,10 @@ elif main_menu == "📖 字庫管理與搜尋":
                 for idx, row in df_current.iterrows():
                     w = str(row['word']).strip()
                     d = str(row.get('definition', '')).strip()
-                    status_text.text(f"🤖 正在為單字優化例句 ({fixed_count+1}/{total_fix}): {w}")
+                    status_text.text(f"🤖 正在為單字補充中英文釋義 ({fixed_count+1}/{total_fix}): {w}")
                     
                     new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
+                    df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
                     df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
                     
                     fixed_count += 1
@@ -588,7 +593,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     time.sleep(0.01)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_text.success(f"🎉 成功完成例句修正！總共更新了 {fixed_count} 個單字。")
+                status_text.success(f"🎉 成功完成升級！總共更新了 {fixed_count} 個單字。")
                 time.sleep(1.5)
                 st.rerun()
 
@@ -613,7 +618,7 @@ elif main_menu == "📖 字庫管理與搜尋":
 
         with st.expander("📋 單字總表與快速編輯（精緻適中寬度）", expanded=True):
             st.dataframe(
-                filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'basic_sentence']],
+                filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence']],
                 use_container_width=False,
                 hide_index=True,
                 column_config={
@@ -622,6 +627,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                     "phonetic": st.column_config.TextColumn("音標", width="small"),
                     "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
                     "definition": st.column_config.TextColumn("中文釋義", width="medium"),
+                    "advanced_sentence": st.column_config.TextColumn("英文釋義", width="large"),
                     "basic_sentence": st.column_config.TextColumn("真實例句", width="large"),
                 }
             )
@@ -645,7 +651,8 @@ elif main_menu == "📖 字庫管理與搜尋":
                                 edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''))
                                 
                             edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
-                            edit_basic = st.text_area("真實例句 (Basic Sentence)", value=target_row.get('basic_sentence', ''))
+                            edit_adv = st.text_input("英文釋義 (English Def)", value=target_row.get('advanced_sentence', ''))
+                            edit_basic = st.text_area("真實例句 (Sentence)", value=target_row.get('basic_sentence', ''))
                             
                             submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
                             
@@ -658,6 +665,7 @@ elif main_menu == "📖 字庫管理與搜尋":
                                     df_current.at[idx, 'phonetic'] = edit_phonetic
                                     df_current.at[idx, 'part_of_speech'] = edit_pos
                                     df_current.at[idx, 'definition'] = simple_s2t_convert(edit_def)
+                                    df_current.at[idx, 'advanced_sentence'] = edit_adv
                                     df_current.at[idx, 'basic_sentence'] = edit_basic
                                     save_all_vocab_to_sheet(active_worksheet, df_current)
                                     st.success("✅ 雲端修改成功！")
@@ -679,6 +687,14 @@ elif main_menu == "🎯 沉浸式閃卡複習":
             st.markdown(f"<h1 style='text-align: center; font-size: 54px;'>🔤 {row['word']}</h1>", unsafe_allow_html=True)
             st.markdown(f"<p style='text-align: center; color: gray;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
             
+            # 常駐顯示的中英文解釋與例句區塊
+            st.markdown("---")
+            st.markdown(f"<h4 style='color: #4CAF50;'>📌 中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
+            st.markdown(f"<p style='color: #2196F3; font-weight: bold;'>📖 英文釋義：{row.get('advanced_sentence', 'No English definition available.')}</p>", unsafe_allow_html=True)
+            if row.get('basic_sentence'):
+                st.markdown(f"<p style='font-style: italic; color: #555;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
             # 多國口音發音按鈕區
             st.markdown("<p style='text-align: center; font-weight: bold;'>🔊 點擊聆聽多國口音發音：</p>", unsafe_allow_html=True)
             ac_col1, ac_col2, ac_col3 = st.columns(3)
@@ -703,10 +719,6 @@ elif main_menu == "🎯 沉浸式閃卡複習":
                         st.audio(audio_au, format="audio/mp3", autoplay=True)
                     except:
                         pass
-            
-        with st.expander("💡 詳細釋義與真實例句", expanded=True):
-            st.markdown(f"**中文釋義：** {row['definition']}")
-            st.markdown(f"**例句：** {row.get('basic_sentence','')}")
         
         c1, c2 = st.columns(2)
         if c1.button("⬅️ 上一個", use_container_width=True):
