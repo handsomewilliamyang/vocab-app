@@ -305,7 +305,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="高中部"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        # 🚀 採用 Few-Shot Prompting：用具體且強烈的對比範例約束 AI 的文風
         prompt = f"""You are an expert material creator for high school and TOEIC English students in Taiwan.
 Target Word: "{w_clean}"
 Chinese Meaning: "{cleaned_def}"
@@ -367,10 +366,11 @@ Output ONLY valid JSON in this exact format:
                 else:
                     time.sleep(2)
 
+    # 🛡️ 安全防呆防寫空保護：如果 AI 和外部字典都沒抓到，保留原本傳入的 raw_def 或安全保底，絕不變成空白
     if is_bad_example_sentence(final_sentence, w_clean):
-        final_sentence = ""
+        final_sentence = real_example if not is_bad_example_sentence(real_example, w_clean) else f"I often use {w_clean} when talking with my friends."
     if is_bad_example_sentence(final_eng_def):
-        final_eng_def = ""
+        final_eng_def = real_eng_def if not is_bad_example_sentence(real_eng_def) else f"Definition of {w_clean}."
 
     if not final_phonetic:
         final_phonetic = f"/{w_lower.replace(' ', '')}/"
