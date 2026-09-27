@@ -330,43 +330,49 @@ def get_word_record_data_via_ai(word, raw_def="", raw_sentence="", level="高中
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 🎯 優先採用講義檔案本身帶有的例句！
+    # 1. 優先採用講義檔案本身帶有的例句
     final_sentence = raw_sentence.strip() if raw_sentence and not is_bad_example_sentence(raw_sentence, w_clean) else ""
-    final_eng_def = ""
-    final_phonetic = ""
-    final_pos = ""
+    
+    # 2. 向 5 大雲端字典查詢官方釋義、音標與字典例句
+    real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
+    
+    final_eng_def = real_eng_def
+    final_phonetic = fetched_phonetic
+    final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else ""
 
-    # 如果講義沒有例句，才向 5 大雲端字典查詢
-    if not final_sentence:
-        real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
-        final_eng_def = real_eng_def
+    # 如果講義沒有例句，但字典有抓到合格例句，就採用字典的
+    if not final_sentence and real_example and not is_bad_example_sentence(real_example, w_clean):
         final_sentence = real_example
-        final_phonetic = fetched_phonetic
-        final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else ""
-    else:
-        # 雖然有講義例句，但順便透過字典補一下音標與英文釋義
-        real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
-        final_eng_def = real_eng_def
-        final_phonetic = fetched_phonetic
-        final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else ""
 
-    dictionary_is_complete = bool(final_eng_def and not is_bad_example_sentence(final_sentence, w_clean))
+    # 3. 判斷是否資料齊全（必須要有英文釋義與例句）
+    has_valid_sentence = bool(final_sentence and not is_bad_example_sentence(final_sentence, w_clean))
+    has_valid_def = bool(final_eng_def and not is_bad_example_sentence(final_eng_def))
+    dictionary_is_complete = has_valid_sentence and has_valid_def
 
-    # 🚀 如果還是缺例句或釋義，才啟動 AI 補強
+    # 4. 如果字典沒抓到例句或釋義，才動態呼叫 AI 補強
     if not dictionary_is_complete and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
+        # 隨機加入情境引導，確保 AI 每次生成的例句都完全不同、充滿生活感
+        scenarios = [
+            "at a coffee shop or restaurant", "talking about weekend plans", 
+            "complaining about heavy workload or homework", "chatting with a best friend", 
+            "shopping at a supermarket", "handling an unexpected emergency"
+        ]
+        chosen_scenario = random.choice(scenarios)
+
         prompt = f"""You are an expert material creator for high school and TOEIC English students in Taiwan.
 Target Word: "{w_clean}"
 Chinese Meaning: "{cleaned_def}"
 Target Audience Level: "{level}"
+Context Scenario: "{chosen_scenario}"
 
-Your task is to write ONE highly natural, everyday conversational sentence using the target word, along with a short English definition.
+Your task is to write ONE highly natural, everyday conversational sentence using the target word within the given scenario, along with a short English definition.
 
 CRITICAL RULES:
-1. MUST BE REALISTIC: Write a sentence someone would actually say in daily life.
-2. NO ACADEMIC BS: Never use robotic textbook phrasing.
+1. MUST BE REALISTIC: Write a sentence someone would actually say in daily life. Avoid any repetitive formulaic structures.
+2. NO ACADEMIC BS: Never use robotic textbook phrasing like "it is essential to" or "experts have emphasized".
 3. GRAMMAR MATTERS: Use the word in its correct part of speech naturally.
 
 Output ONLY valid JSON in this exact format:
@@ -379,7 +385,7 @@ Output ONLY valid JSON in this exact format:
         
         for attempt in range(3):
             try:
-                response = model.generate_content(prompt, generation_config={"temperature": 0.4})
+                response = model.generate_content(prompt, generation_config={"temperature": 0.8})
                 raw_text = response.text.strip()
                 if "{" in raw_text and "}" in raw_text:
                     raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
@@ -399,23 +405,15 @@ Output ONLY valid JSON in this exact format:
                         final_pos = simple_s2t_convert(data.get("part_of_speech", ""))
                     break 
                 else:
-                    time.sleep(1.5)
+                    time.sleep(1.0)
             except:
-                time.sleep(2)
-
-    if is_bad_example_sentence(final_sentence, w_clean) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
-        try:
-            model_retry = genai.GenerativeModel("gemini-1.5-flash")
-            retry_prompt = f"Write one natural, simple everyday English conversational sentence using the word '{w_clean}'. Return ONLY the sentence text, nothing else."
-            res_retry = model_retry.generate_content(retry_prompt, generation_config={"temperature": 0.7})
-            cleaned_retry = res_retry.text.strip().strip('"“”')
-            if not is_bad_example_sentence(cleaned_retry, w_clean):
-                final_sentence = cleaned_retry
-        except:
-            pass
+                time.sleep(1.5)
 
     if is_bad_example_sentence(final_eng_def):
         final_eng_def = f"Definition of {w_clean}."
+
+    if is_bad_example_sentence(final_sentence, w_clean):
+        final_sentence = f"I often use {w_clean} when talking with my friends."
 
     if not final_phonetic:
         final_phonetic = f"/{w_lower.replace(' ', '')}/"
@@ -1045,7 +1043,7 @@ elif main_menu == "🎮 我是拼字王":
                             
                         if submit_ans:
                             if user_ans == target_word.lower():
-                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了! 就是 `{target_word}`"}
+                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
                             else:
                                 if current_item not in st.session_state.wrong_answers:
                                     st.session_state.wrong_answers.append(current_item)
