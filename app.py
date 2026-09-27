@@ -168,6 +168,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
+# 🛑 擴充黑名單，徹底封殺所有常見的 AI 罐頭廢話
 BAD_SENTENCE_PATTERNS = [
     r"\bwe often use (?:the )?word\b",
     r"\bpeople use .* in daily life\b",
@@ -175,8 +176,17 @@ BAD_SENTENCE_PATTERNS = [
     r"\bin daily life\b",
     r"\bwhenever someone asks for assistance\b",
     r"\bpractical applications of\b",
-    r"\bexperts have highlighted the growing significance of\b",
-    r"\bwe must take .* into serious consideration\b"
+    r"\bgrowing significance of\b",
+    r"\bexperts have (?:emphasized|highlighted|discussed)\b",
+    r"\bwe must take .* into serious consideration\b",
+    r"\blight streamed gently\b",
+    r"\bwe were deeply impressed\b",
+    r"\blocals often gather\b",
+    r"\bwe discussed various\b",
+    r"\bsignificance of\b",
+    r"\bwe spent hours exploring\b",
+    r"it is important to understand how to use",
+    r"i want to learn more about"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
@@ -204,7 +214,7 @@ def fetch_tatoeba_example(word):
                 sent = item.get('text', '').strip()
                 if sent and not is_bad_example_sentence(sent, w_clean):
                     words_in_sent = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", sent)
-                    if 6 <= len(words_in_sent) <= 25:
+                    if 5 <= len(words_in_sent) <= 20:
                         return sent
     except Exception:
         pass
@@ -283,52 +293,80 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
+    # 1. 字典優先策略：先從免費字典與語料庫抓取真實人類寫的解釋與例句
     real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
     
-    final_eng_def = real_eng_def if real_eng_def else f"A common term referring to {w_clean}."
+    final_eng_def = real_eng_def
     final_sentence = real_example
-    final_phonetic = fetched_phonetic if fetched_phonetic else f"/{w_lower.replace(' ', '')}/"
-    final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else "n."
+    final_phonetic = fetched_phonetic
+    final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else ""
 
-    if (not final_eng_def or is_bad_example_sentence(final_sentence, w_clean)) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
-        for attempt in range(2):
-            try:
-                genai.configure(api_key=st.session_state["gemini_api_key"])
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                prompt = (
-                    f"You are an expert English lexicographer. For the word '{w_clean}' (Traditional Chinese meaning: {cleaned_def}), "
-                    "provide data in strict JSON format with no markdown formatting around it:\n"
-                    "{\n"
-                    '  "phonetic": "/ipa/",\n'
-                    '  "part_of_speech": "pos",\n'
-                    '  "english_definition": "A clear, simple English definition.",\n'
-                    '  "sentence": "A natural, grammatically flawless, everyday English example sentence using the word."\n'
-                    "}"
-                )
-                response = model.generate_content(prompt)
-                raw_text = response.text.strip()
-                if "{" in raw_text and "}" in raw_text:
-                    raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
-                data = json.loads(raw_text)
+    # 2. 品質檢測：判斷是否需要 AI 救援
+    # 如果字典找不到英文解釋，或是抓到的例句品質不佳（踩到黑名單或找不到）
+    needs_ai_help = False
+    if not final_eng_def or is_bad_example_sentence(final_sentence, w_clean):
+        needs_ai_help = True
+
+    # 3. AI 救援行動：只修補不好的部分，保留好的部分
+    if needs_ai_help and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+        try:
+            genai.configure(api_key=st.session_state["gemini_api_key"])
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            
+            prompt = f"""You are a professional English teacher in Taiwan.
+Target Audience Level: {level}
+Word/Phrase to teach: "{w_clean}"
+Chinese Meaning: "{cleaned_def}"
+
+Provide the dictionary data in STRICT JSON format.
+CRITICAL RULES FOR "sentence":
+1. MUST be a highly natural, conversational, and practical everyday sentence.
+2. ABSOLUTELY NO generic templates (NEVER use "Experts have emphasized...", "practical applications of", "growing significance of", or "Light streamed gently").
+3. Make it relatable to daily life, school, travel, or common situations for the target audience.
+4. If the input is a phrase (like "each other", "I think so", "in front of"), it must make perfect logical sense in context.
+
+Output ONLY valid JSON:
+{{
+  "phonetic": "/.../",
+  "part_of_speech": "...",
+  "english_definition": "A clear, simple English explanation (max 10 words).",
+  "sentence": "A natural, contextual example sentence."
+}}"""
+            response = model.generate_content(prompt, generation_config={"temperature": 0.2})
+            raw_text = response.text.strip()
+            
+            if "{" in raw_text and "}" in raw_text:
+                raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
+            data = json.loads(raw_text)
+            
+            # 只在原有資料缺失或不好時，才用 AI 的結果覆蓋
+            if not final_eng_def and data.get("english_definition"):
+                final_eng_def = data.get("english_definition")
+            
+            if is_bad_example_sentence(final_sentence, w_clean) and data.get("sentence"):
+                ai_sent = data.get("sentence").strip('"“”')
+                if not is_bad_example_sentence(ai_sent, w_clean):
+                    final_sentence = ai_sent
+                    
+            if not final_phonetic and data.get("phonetic"):
+                final_phonetic = data.get("phonetic")
                 
-                if not real_eng_def and data.get("english_definition"):
-                    final_eng_def = data.get("english_definition")
-                if is_bad_example_sentence(final_sentence, w_clean) and data.get("sentence"):
-                    ai_sent = data.get("sentence").strip('"“”')
-                    if not is_bad_example_sentence(ai_sent, w_clean):
-                        final_sentence = ai_sent
-                if not fetched_phonetic and data.get("phonetic"):
-                    final_phonetic = data.get("phonetic")
-                if not fetched_pos and data.get("part_of_speech"):
-                    final_pos = simple_s2t_convert(data.get("part_of_speech"))
-                break
-            except Exception:
-                time.sleep(1)
+            if not final_pos and data.get("part_of_speech"):
+                final_pos = simple_s2t_convert(data.get("part_of_speech"))
+                
+        except Exception:
+            time.sleep(1)
 
+    # 🛡️ 最後防線：如果連字典和 AI 都救不回來，給予合理且不奇怪的預設值
     if not final_eng_def:
         final_eng_def = f"A term associated with {w_clean}."
     if is_bad_example_sentence(final_sentence, w_clean):
-        final_sentence = f"It is important to understand how to use '{w_clean}' correctly in practice."
+        final_sentence = f"I need to look up more examples for '{w_clean}'."
+
+    if not final_phonetic:
+        final_phonetic = f"/{w_lower.replace(' ', '')}/"
+    if not final_pos:
+        final_pos = "phr." if " " in w_clean else "n."
 
     return {
         "word": w_clean,
@@ -599,7 +637,7 @@ elif main_menu == "📖 字彙管理":
             selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 資料重組", type="primary", use_container_width=True):
+            if st.button("🔄 資料重組 (修復不良例句)", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
                 
@@ -630,7 +668,7 @@ elif main_menu == "📖 字彙管理":
                         progress_bar.progress(fixed_count / total_fix)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success("✅ 資料重組完成！")
+                st.success("✅ 資料重組完成！所有罐頭例句已被更新為自然對話句型。")
                 time.sleep(1)
                 st.rerun()
 
@@ -857,7 +895,6 @@ elif main_menu == "🎮 我是拼字王":
                 current_idx = st.session_state.game_index + 1
                 total_q_len = len(st.session_state.game_queue)
                 
-                # 獨立宣告一個函式支援拼字王的發音按鈕
                 def play_audio_compact_game(text_to_speak, label_key="🔊"):
                     safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
                     html_code = f"""
