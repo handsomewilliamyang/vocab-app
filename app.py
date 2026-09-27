@@ -170,38 +170,17 @@ def simple_s2t_convert(text):
 
 # 保留過濾器做最後一道防線
 BAD_SENTENCE_PATTERNS = [
-    "we often use the word",
-    "people use in daily life",
-    "this is an example",
-    "in daily life",
-    "whenever someone asks for assistance",
-    "practical applications of",
-    "growing significance of",
-    "experts have emphasized",
-    "experts have highlighted",
-    "experts have discussed",
-    "we must take into serious consideration",
-    "light streamed gently",
-    "we were deeply impressed",
-    "locals often gather",
-    "we discussed various",
-    "significance of",
-    "we spent hours exploring",
-    "it is essential to learn",
-    "learning how to use",
-    "correctly is essential",
-    "clearly will greatly benefit",
-    "a term associated with",
-    "relies heavily on the dedication of",
-    "everyone in the team relies",
-    "always pays close attention",
-    "pays close attention to every single",
-    "successfully completed the task ahead of",
-    "decided to dig before the final deadline",
-    "the experienced",
-    "a professional",
-    "gathered together",
-    "worked tirelessly"
+    "we often use the word", "people use in daily life", "this is an example",
+    "in daily life", "whenever someone asks for assistance", "practical applications of",
+    "growing significance of", "experts have emphasized", "experts have highlighted",
+    "experts have discussed", "we must take into serious consideration", "light streamed gently",
+    "we were deeply impressed", "locals often gather", "we discussed various",
+    "significance of", "we spent hours exploring", "it is essential to learn",
+    "learning how to use", "correctly is essential", "clearly will greatly benefit",
+    "a term associated with", "relies heavily on the dedication of", "always pays close attention",
+    "pays close attention to every single", "successfully completed the task ahead of",
+    "decided to dig before the final deadline", "the experienced", "a professional",
+    "gathered together", "worked tirelessly"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
@@ -305,11 +284,12 @@ def fetch_all_free_dictionaries(word):
 
     return real_def, real_example, phonetic, pos
 
-def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
+def get_word_record_data_via_ai(word, raw_def="", level="高中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
+    # 外部字典抓取
     real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
     
     final_eng_def = real_eng_def
@@ -325,41 +305,41 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        # 🚀 採用 Few-Shot Prompting (少樣本提示)：用具體範例強制約束 AI 的文風
-        prompt = f"""You are an expert material creator for high school English students.
+        # 🚀 採用 Few-Shot Prompting：用具體且強烈的對比範例約束 AI 的文風
+        prompt = f"""You are an expert material creator for high school and TOEIC English students in Taiwan.
 Target Word: "{w_clean}"
 Chinese Meaning: "{cleaned_def}"
+Target Audience Level: "{level}"
 
-Your task is to write ONE highly natural, everyday conversational sentence using the target word. 
+Your task is to write ONE highly natural, everyday conversational sentence using the target word, along with a short English definition.
 
 CRITICAL RULES:
-1. MUST BE REALISTIC: Write a sentence someone would actually say in daily life (e.g., complaining, ordering food, talking to a friend).
-2. NO ACADEMIC BS: Never use terms like "practical applications", "experts emphasized", "growing significance", or "essential to learn".
-3. GRAMMAR MATTERS: Use the word in its correct part of speech.
+1. MUST BE REALISTIC: Write a sentence someone would actually say in daily life (e.g., complaining, ordering food, chatting with a friend, office banter).
+2. NO ACADEMIC BS: Never use terms like "practical applications", "experts emphasized", "growing significance", "essential to learn", or robotic textbook phrasing.
+3. GRAMMAR MATTERS: Use the word in its correct part of speech naturally.
 
 --- EXAMPLES OF WHAT TO DO (GOOD) ---
 Target: "complain" -> "My neighbors always complain about the loud music from my room."
 Target: "accident" -> "I broke my mom's favorite vase by accident, and she was furious."
-Target: "husband" -> "Her husband forgot their anniversary, so he bought her flowers to apologize."
-Target: "too" -> "This soup is too salty for me to eat."
+Target: "schedule" -> "I have a really tight schedule this week, so I can't go to the movies."
+Target: "efficient" -> "Using shortcuts on my keyboard makes my work much more efficient."
 
---- EXAMPLES OF WHAT NOT TO DO (BAD) ---
+--- EXAMPLES OF WHAT NOT TO DO (BAD - NEVER DO THIS) ---
 Target: "husband" -> "We discussed various practical applications of husband." (Nonsense grammar)
 Target: "eat" -> "It is essential to learn how to eat effectively in real-world situations." (Robotic and unnatural)
 Target: "too" -> "Experts have emphasized the growing significance of too." (Completely absurd)
 
-Output ONLY valid JSON in this format:
+Output ONLY valid JSON in this exact format:
 {{
   "phonetic": "/.../",
-  "part_of_speech": "...",
+  "part_of_speech": "n. / v. / adj. / adv. / phr.",
   "english_definition": "Short and simple English definition (max 8 words).",
   "sentence": "Your realistic, everyday example sentence."
 }}"""
         
         for attempt in range(3):
             try:
-                # 稍微降低一點 Temperature 確保它嚴格遵循範例
-                response = model.generate_content(prompt, generation_config={"temperature": 0.5})
+                response = model.generate_content(prompt, generation_config={"temperature": 0.4})
                 raw_text = response.text.strip()
                 
                 if "{" in raw_text and "}" in raw_text:
@@ -373,15 +353,14 @@ Output ONLY valid JSON in this format:
                     if not final_eng_def or is_bad_example_sentence(final_eng_def):
                         final_eng_def = ai_def
                     final_sentence = ai_sent
-                        
+                    
                     if not final_phonetic and data.get("phonetic"):
                         final_phonetic = data.get("phonetic")
                     if not final_pos and data.get("part_of_speech"):
-                        final_pos = simple_s2t_convert(data.get("part_of_speech"))
+                        final_pos = simple_s2t_convert(data.get("part_of_speech", ""))
                     break 
                 else:
-                    time.sleep(2) 
-                    
+                    time.sleep(1.5)
             except Exception as e:
                 if "429" in str(e) or "exhausted" in str(e).lower():
                     time.sleep(10)
