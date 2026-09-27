@@ -327,28 +327,28 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        # 🎬 核心修正：將 AI 角色變更為「好萊塢編劇」，徹底扼殺教科書廢話
-        prompt = f"""You are a creative Hollywood screenwriter writing natural, everyday dialogue for a TV show.
-Word to use: "{w_clean}"
+        # 🎬 強制具體化提示詞：杜絕 AI 自我陶醉的廢話，要求描寫生活瑣事
+        prompt = f"""You are creating a natural, everyday English example sentence for a student.
+Word: "{w_clean}"
 Meaning: "{cleaned_def}"
 
-CRITICAL RULES:
-1. GRAMMAR FIRST: Use the word strictly according to its actual part of speech.
-2. NO ROBOTIC TEMPLATES: NEVER use academic or lazy phrases like "practical applications", "experts emphasized", "we discussed various", or "everyone relies on".
-3. BE CREATIVE: Write a realistic, casual sentence (e.g., a text message, an argument, a joke, a complaint).
-4. SHOW, DON'T TELL: The sentence must clearly imply the meaning of "{w_clean}" through context.
+RULES:
+1. The sentence MUST use the word "{w_clean}" (or its correct plural/past tense).
+2. Describe a specific, relatable situation (e.g., a family dinner, buying a ticket, a funny mistake, raining). 
+3. DO NOT start the sentence with "The experienced", "A professional", or "Experts".
+4. DO NOT use generic phrases like "practical applications", "discussed various", or "daily life".
 
 Output ONLY valid JSON:
 {{
   "phonetic": "/.../",
   "part_of_speech": "...",
-  "english_definition": "A clear, simple English definition (max 10 words).",
-  "sentence": "A creative, natural, and highly contextual example sentence."
+  "english_definition": "Short English definition (max 10 words).",
+  "sentence": "A creative, specific, and natural example sentence."
 }}"""
         
         for attempt in range(3):
             try:
-                response = model.generate_content(prompt, generation_config={"temperature": 0.8})
+                response = model.generate_content(prompt, generation_config={"temperature": 0.7})
                 raw_text = response.text.strip()
                 
                 if "{" in raw_text and "}" in raw_text:
@@ -369,10 +369,14 @@ Output ONLY valid JSON:
                         final_pos = simple_s2t_convert(data.get("part_of_speech"))
                     break 
                 else:
-                    time.sleep(1.5) 
+                    time.sleep(2) 
                     
             except Exception as e:
-                time.sleep(2)
+                # 🛡️ 捕捉 429 錯誤：如果被打到 Rate Limit，拉長休眠時間
+                if "429" in str(e) or "exhausted" in str(e).lower():
+                    time.sleep(10)
+                else:
+                    time.sleep(2)
 
     if is_bad_example_sentence(final_sentence, w_clean):
         final_sentence = ""
@@ -394,7 +398,6 @@ Output ONLY valid JSON:
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
-    # 🛡️ 強制快取更新機制：即使 Google Sheets 更新失敗，也要保證畫面上是最新的資料
     cache_key = f"vocab_df_{_worksheet.title}"
     try:
         _worksheet.clear()
@@ -417,7 +420,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
         st.session_state[cache_key] = df.copy()
         return True, "成功"
     except Exception as e:
-        st.session_state[cache_key] = df.copy() # 就算出錯也強制覆蓋本地快取，防止舊廢話重生
+        st.session_state[cache_key] = df.copy() 
         return False, str(e)
 
 @st.cache_data(show_spinner=False)
@@ -469,11 +472,13 @@ if main_menu == "✨ 新增單字":
                     df_current = load_vocab_dataframe(active_worksheet)
                     if not df_current.empty and word.lower() in df_current['word'].str.lower().values:
                         idx = df_current.index[df_current['word'].str.lower() == word.lower()].tolist()[0]
-                        df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
-                        df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
-                        df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
-                        df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
-                        df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence', '')
+                        
+                        # 🛡️ 單筆更新：只有當回傳的資料不是空的，才進行覆寫！
+                        if data.get('phonetic'): df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
+                        if data.get('part_of_speech'): df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
+                        if data.get('definition'): df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
+                        if data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
+                        if data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence', '')
                         df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
                         next_id = len(df_current) + 1
@@ -612,11 +617,12 @@ if main_menu == "✨ 新增單字":
                         
                         if not df_current.empty and word.lower() in df_current['word'].str.lower().values:
                             idx = df_current.index[df_current['word'].str.lower() == word.lower()].tolist()[0]
-                            df_current.at[idx, 'phonetic'] = w_data.get('phonetic', '')
-                            df_current.at[idx, 'part_of_speech'] = w_data.get('part_of_speech', '')
-                            df_current.at[idx, 'definition'] = simple_s2t_convert(w_data.get('definition', ''))
-                            df_current.at[idx, 'advanced_sentence'] = w_data.get('advanced_sentence', '')
-                            df_current.at[idx, 'basic_sentence'] = w_data.get('basic_sentence', '')
+                            # 🛡️ 防止批次匯入時將舊有資料洗白
+                            if w_data.get('phonetic'): df_current.at[idx, 'phonetic'] = w_data.get('phonetic', '')
+                            if w_data.get('part_of_speech'): df_current.at[idx, 'part_of_speech'] = w_data.get('part_of_speech', '')
+                            if w_data.get('definition'): df_current.at[idx, 'definition'] = simple_s2t_convert(w_data.get('definition', ''))
+                            if w_data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = w_data.get('advanced_sentence', '')
+                            if w_data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = w_data.get('basic_sentence', '')
                             df_current.at[idx, 'unit_tag'] = current_unit_tag
                         else:
                             next_id = len(df_current) + 1
@@ -636,7 +642,9 @@ if main_menu == "✨ 新增單字":
                             
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        time.sleep(1.5)
+                        
+                        # ⏱️ 強制安全延遲 (15 RPM 限制防護) 
+                        time.sleep(4.5)
                         
                     success, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
                     if success:
@@ -681,21 +689,27 @@ elif main_menu == "📖 字彙管理":
                     
                     if not current_sent or is_bad_example_sentence(current_sent, w) or is_bad_example_sentence(current_adv):
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
-                        df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
-                        df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
-                        df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
-                        df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
                         
-                        time.sleep(1.5)
+                        # 🛡️ 拒絕空白覆寫保護：唯有當 AI 成功回傳非空字串時，才去更新欄位
+                        if new_data.get('advanced_sentence'):
+                            df_current.at[idx, 'advanced_sentence'] = new_data['advanced_sentence']
+                        if new_data.get('basic_sentence'):
+                            df_current.at[idx, 'basic_sentence'] = new_data['basic_sentence']
+                        if new_data.get('phonetic'):
+                            df_current.at[idx, 'phonetic'] = new_data['phonetic']
+                        if new_data.get('part_of_speech'):
+                            df_current.at[idx, 'part_of_speech'] = new_data['part_of_speech']
+                        
+                        # ⏱️ 絕對安全延遲，每處理一個字強制休息 4.5 秒，確保永遠不會撞擊 Google 15 RPM 限制
+                        time.sleep(4.5)
                     
                     fixed_count += 1
                     if total_fix > 0:
                         progress_bar.progress(fixed_count / total_fix)
                     
-                # 🛡️ 在這裡加入存檔狀態檢查，防止 API 失敗導致假象
                 success, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
                 if success:
-                    st.success("✅ 資料重組完成！所有空缺或罐頭例句已被徹底翻新。")
+                    st.success("✅ 資料重組完成！已成功為您自動修復/填補例句。")
                 else:
                     st.warning(f"⚠️ Google 雲端儲存稍有延遲 ({msg})，但您的畫面資料已強制更新成功！")
                 time.sleep(1.5)
