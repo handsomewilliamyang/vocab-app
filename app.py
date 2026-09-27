@@ -168,7 +168,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 🛑 終極黑名單，徹底封殺所有常見的 AI 罐頭廢話、舊版錯誤字串與最新偷懶變種
+# 🛑 終極黑名單，持續擴增 AI 的偷懶慣用語
 BAD_SENTENCE_PATTERNS = [
     r"\bwe often use (?:the )?word\b",
     r"\bpeople use .* in daily life\b",
@@ -191,14 +191,14 @@ BAD_SENTENCE_PATTERNS = [
     r"learning how to use .* correctly is essential",
     r"understanding .* clearly will greatly benefit",
     r"a term associated with",
-    # === 新增防堵 AI 偷懶填空模板 ===
     r"relies heavily on the dedication of",
     r"everyone in the team relies",
     r"a professional .* always pays close attention",
     r"always pays close attention to",
     r"pays close attention to every single",
     r"the experienced .* successfully completed",
-    r"successfully completed the task ahead of"
+    r"successfully completed the task ahead of",
+    r"decided to dig before the final deadline"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
@@ -208,7 +208,6 @@ def is_bad_example_sentence(sentence, word=""):
     if any(re.search(pattern, s) for pattern in BAD_SENTENCE_PATTERNS):
         return True
     
-    # 嚴格檢查目標單字是否有出現在句子中（相容 hyphen 差異）
     if word:
         w_low = word.strip().lower()
         s_clean = s.replace(' ', '').replace('-', '')
@@ -310,7 +309,6 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 1. 字典優先策略
     real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
     
     final_eng_def = real_eng_def
@@ -322,35 +320,33 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     if not final_eng_def or is_bad_example_sentence(final_sentence, w_clean):
         needs_ai_help = True
 
-    # 2. AI 救援行動（具備防 Rate Limit 重試機制與強制文法約束）
     if needs_ai_help and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        prompt = f"""You are a professional native English teacher.
-Target Audience Level: {level}
-Word/Phrase to teach: "{w_clean}"
-Chinese Meaning: "{cleaned_def}"
+        # 🚀 升級版 Prompt：強制要求「上下文線索」並打破填空思維
+        prompt = f"""You are an expert English teacher creating dynamic, highly diverse example sentences for students (Level: {level}).
+Word: "{w_clean}"
+Meaning: "{cleaned_def}"
 
-Provide the dictionary data in STRICT JSON format.
-CRITICAL RULES FOR "sentence":
-1. AUTHENTICITY: MUST be a highly natural, conversational, and practical everyday sentence.
-2. GRAMMAR CHECK: You MUST use the word according to its correct part of speech. (e.g., Do NOT use an adjective like a noun).
-3. NO FILL-IN-THE-BLANK TEMPLATES: DO NOT use generic templates like "Everyone relies on the dedication of [word]", "A professional [word] pays attention", or "The experienced [word] completed the task". Create a completely UNIQUE, context-rich sentence tailored specifically to the meaning of "{w_clean}".
-4. Make it relatable to daily life, school, travel, or common situations.
+CRITICAL INSTRUCTIONS:
+1. ZERO TEMPLATES: Every sentence MUST have a completely unique structure, subject, and context. Do NOT use generic subjects like "Everyone", "The experienced", or "A professional".
+2. CONTEXTUAL CLUES: The sentence MUST clearly demonstrate the word's specific meaning through context. Do NOT just drop the word into a generic placeholder sentence. If it's a noun, describe its specific features or function. If it's a verb, describe a specific, logical action.
+3. CORRECT GRAMMAR & POS: Use the word strictly according to its real part of speech. Do NOT use an adjective as a noun.
+4. BE CREATIVE: Describe varied situations (e.g., a bustling kitchen, a tense basketball game, a rainy commute, a sci-fi movie).
 
 Output ONLY valid JSON:
 {{
   "phonetic": "/.../",
   "part_of_speech": "...",
-  "english_definition": "A clear, simple English explanation (max 10 words).",
-  "sentence": "A highly natural, grammatically flawless example sentence."
+  "english_definition": "A precise, simple English definition (max 12 words).",
+  "sentence": "A highly specific, natural, and creatively unique example sentence."
 }}"""
         
-        # 最高重試 3 次
+        # 🔑 關鍵修改：將 temperature 調高至 0.7，強迫 AI 發揮創意，打破罐頭模板的死循環
         for attempt in range(3):
             try:
-                response = model.generate_content(prompt, generation_config={"temperature": 0.2})
+                response = model.generate_content(prompt, generation_config={"temperature": 0.7})
                 raw_text = response.text.strip()
                 
                 if "{" in raw_text and "}" in raw_text:
@@ -360,7 +356,6 @@ Output ONLY valid JSON:
                 ai_sent = data.get("sentence", "").strip('"“”')
                 ai_def = data.get("english_definition", "")
                 
-                # 再次品管，確認 AI 這次沒有發神經或偷懶
                 if not is_bad_example_sentence(ai_sent, w_clean):
                     if not final_eng_def or is_bad_example_sentence(final_eng_def):
                         final_eng_def = ai_def
@@ -370,15 +365,13 @@ Output ONLY valid JSON:
                         final_phonetic = data.get("phonetic")
                     if not final_pos and data.get("part_of_speech"):
                         final_pos = simple_s2t_convert(data.get("part_of_speech"))
-                    break # 成功獲取資料，跳出重試迴圈
+                    break 
                 else:
-                    time.sleep(2) # AI 給的資料不好，等 2 秒再試一次
+                    time.sleep(2) 
                     
             except Exception as e:
-                # 遇到 API 錯誤（如額度限制），等待更長的時間後重試
                 time.sleep(3)
 
-    # 3. 🛡️ 寧缺勿濫：徹底刪除舊版的「罐頭廢話備用句」
     if is_bad_example_sentence(final_sentence, w_clean):
         final_sentence = ""
     if is_bad_example_sentence(final_eng_def):
@@ -638,7 +631,7 @@ if main_menu == "✨ 新增單字":
                             
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        time.sleep(1.5) # 防止批次匯入時撞到 API Rate Limit
+                        time.sleep(1.5)
                         
                     save_all_vocab_to_sheet(active_worksheet, df_current)
                     st.success(f"🎊 檔案解析與匯入完成！成功寫入 {total_success_count} 個單字至雲端。")
@@ -685,7 +678,6 @@ elif main_menu == "📖 字彙管理":
                         df_current.at[idx, 'phonetic'] = new_data.get('phonetic', '')
                         df_current.at[idx, 'part_of_speech'] = new_data.get('part_of_speech', '')
                         
-                        # 🚨 加入安全間隔，防止連續呼叫把 API 額度打爆
                         time.sleep(1.5)
                     
                     fixed_count += 1
