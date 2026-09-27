@@ -166,28 +166,52 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
+BAD_SENTENCE_PATTERNS = [
+    "we often use the word", "people use in daily life", "this is an example",
+    "in daily life", "whenever someone asks for assistance", "practical applications of",
+    "growing significance of", "experts have emphasized", "experts have highlighted",
+    "experts have discussed", "we must take into serious consideration", "light streamed gently",
+    "we were deeply impressed", "locals often gather", "we discussed various",
+    "significance of", "we spent hours exploring", "it is essential to learn",
+    "learning how to use", "correctly is essential", "clearly will greatly benefit",
+    "a term associated with", "relies heavily on the dedication of", "always pays close attention",
+    "pays close attention to every single", "successfully completed the task ahead of",
+    "decided to dig before the final deadline", "the experienced", "a professional",
+    "gathered together", "worked tirelessly", "i often use"
+]
+
 def is_bad_example_sentence(sentence, word=""):
-    s = str(sentence or "").strip()
-    if not s or s.lower() == "nan" or len(s) < 5:
+    s = str(sentence or "").strip().lower()
+    if not s or s == "nan" or len(s) < 8:
         return True
+        
+    s_super_clean = re.sub(r'[^a-z0-9]', '', s)
+    
+    for pattern in BAD_SENTENCE_PATTERNS:
+        p_clean = re.sub(r'[^a-z0-9]', '', pattern.lower())
+        if p_clean in s_super_clean:
+            return True
+            
     return False
 
 def fetch_tatoeba_example(word):
     w_clean = word.strip().lower()
     try:
-        url = f"https://api.tatoeba.org/unstable/sentences?q={w_clean}&from=eng&limit=3"
+        url = f"https://api.tatoeba.org/unstable/sentences?q={w_clean}&from=eng&limit=5"
         headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=2)
+        res = requests.get(url, headers=headers, timeout=3)
         if res.status_code == 200:
             data = res.json()
             results = data.get('results', [])
             for item in results:
                 sent = item.get('text', '').strip()
-                if sent:
-                    return sent, "Tatoeba 句庫"
+                if sent and not is_bad_example_sentence(sent, w_clean):
+                    words_in_sent = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", sent)
+                    if 5 <= len(words_in_sent) <= 20:
+                        return sent
     except Exception:
         pass
-    return "", ""
+    return ""
 
 def fetch_all_free_dictionaries(word):
     w_clean = word.strip().lower()
@@ -195,12 +219,11 @@ def fetch_all_free_dictionaries(word):
     real_example = ""
     phonetic = ""
     pos = ""
-    source_used = "無"
 
     # 1. DictionaryAPI.dev
     try:
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
-        res_fd = requests.get(url_fd, timeout=2)
+        res_fd = requests.get(url_fd, timeout=3)
         if res_fd.status_code == 200:
             data = res_fd.json()
             if isinstance(data, list) and len(data) > 0:
@@ -220,150 +243,182 @@ def fetch_all_free_dictionaries(word):
                         if not real_def:
                             real_def = definition_obj.get('definition', '')
                         ex_candidate = definition_obj.get('example', '')
-                        if ex_candidate:
+                        if ex_candidate and not is_bad_example_sentence(ex_candidate, w_clean):
                             real_example = ex_candidate
                         if real_def and real_example:
                             break
                     if real_def and real_example:
                         break
-                if real_def:
-                    source_used = "DictionaryAPI.dev"
     except Exception:
         pass
 
-    # 2. Free English Dictionary API (Harika)
+    # 2. Free English Dictionary API (Harika Endpoint)
     if not real_example or not real_def:
         try:
             url_harika = f"https://dictionary-api-7hmy.onrender.com/define?word={w_clean}"
-            res_h = requests.get(url_harika, timeout=2)
+            res_h = requests.get(url_harika, timeout=3)
             if res_h.status_code == 200:
                 h_data = res_h.json()
                 if not real_def and h_data.get('definition'):
                     real_def = h_data.get('definition')
                 if not real_example and h_data.get('example'):
-                    real_example = h_data.get('example')
+                    ex_h = h_data.get('example')
+                    if not is_bad_example_sentence(ex_h, w_clean):
+                        real_example = ex_h
                 if not pos and h_data.get('partOfSpeech'):
                     pos = h_data.get('partOfSpeech')
-                if real_def:
-                    source_used = "Harika Dictionary API"
         except Exception:
             pass
 
-    # 3. Tatoeba 句庫補強
+    # 3. FreeDictionaryAPI.com (Wiktionary)
+    if not real_example or not real_def:
+        try:
+            url_wiki = f"https://freedictionaryapi.com/api/v1/entries/en/{w_clean}"
+            res_wiki = requests.get(url_wiki, timeout=3)
+            if res_wiki.status_code == 200:
+                w_data = res_wiki.json()
+                entries = w_data.get('entries', [])
+                for e in entries:
+                    if not phonetic and e.get('phonetic'):
+                        phonetic = e.get('phonetic')
+                    for meaning in e.get('meanings', []):
+                        if not pos and meaning.get('partOfSpeech'):
+                            pos = meaning.get('partOfSpeech')
+                        for defn in meaning.get('definitions', []):
+                            if not real_def and defn.get('definition'):
+                                real_def = defn.get('definition')
+                            ex = defn.get('example')
+                            if ex and not is_bad_example_sentence(ex, w_clean):
+                                real_example = ex
+        except Exception:
+            pass
+
+    # 4. Datamuse API
+    if not real_def:
+        try:
+            url_dm = f"https://api.datamuse.com/words?sp={w_clean}&md=dpref&max=1"
+            res_dm = requests.get(url_dm, timeout=3)
+            if res_dm.status_code == 200:
+                data = res_dm.json()
+                if isinstance(data, list) and len(data) > 0:
+                    item = data[0]
+                    if not phonetic and 'ipa' in item:
+                        phonetic = f"/{item['ipa']}/"
+                    if 'defs' in item:
+                        for raw_def in item['defs']:
+                            parts = raw_def.split('\t', 1)
+                            if not pos and len(parts) > 0:
+                                pos = parts[0]
+                            clean_d = parts[1] if len(parts) > 1 else raw_def
+                            if not real_def:
+                                real_def = clean_d.capitalize()
+                            if real_def:
+                                break
+        except Exception:
+            pass
+
+    # 5. Tatoeba 句庫
     if not real_example:
-        tatoeba_sent, t_src = fetch_tatoeba_example(w_clean)
+        tatoeba_sent = fetch_tatoeba_example(w_clean)
         if tatoeba_sent:
             real_example = tatoeba_sent
-            if source_used == "無":
-                source_used = t_src
 
-    return real_def, real_example, phonetic, pos, source_used
+    return real_def, real_example, phonetic, pos
 
-def get_word_record_data_via_ai(word, raw_def="", raw_sentence="", raw_collocations="", level="高中部"):
+def get_word_record_data_via_ai(word, raw_def="", raw_sentence="", level="高中部"):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    trace_logs = []
-    trace_logs.append(f"🎯 開始處理單字: 【{w_clean}】 (目標級別: {level})")
-
-    final_sentence = raw_sentence.strip() if raw_sentence else ""
-    final_collocations = raw_collocations.strip() if raw_collocations else ""
-
-    if final_sentence:
-        trace_logs.append(f"📂 偵測到上傳檔案中已內建例句: 「{final_sentence}」")
-    else:
-        trace_logs.append(f"📂 上傳檔案中無內建例句，開始向外部免費 API 查詢...")
-
-    # 查詢外部字典
-    real_eng_def, real_example, fetched_phonetic, fetched_pos, dict_source = fetch_all_free_dictionaries(w_clean)
+    # 1. 優先採用講義檔案本身帶有的例句
+    final_sentence = raw_sentence.strip() if raw_sentence and not is_bad_example_sentence(raw_sentence, w_clean) else ""
     
-    trace_logs.append(f"🌐 外部字典回應來源: {dict_source}")
-    trace_logs.append(f"   - 抓到的英文釋義: {real_eng_def if real_eng_def else '(無)'}")
-    trace_logs.append(f"   - 抓到的外部例句: {real_example if real_example else '(無)'}")
-    trace_logs.append(f"   - 抓到的音標/詞性: {fetched_phonetic} / {fetched_pos}")
-
+    # 2. 向 5 大雲端字典查詢官方釋義、音標與字典例句
+    real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
+    
     final_eng_def = real_eng_def
     final_phonetic = fetched_phonetic
     final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else ""
 
-    if not final_sentence and real_example:
+    # 如果講義沒有例句，但字典有抓到合格例句，就採用字典的
+    if not final_sentence and real_example and not is_bad_example_sentence(real_example, w_clean):
         final_sentence = real_example
-        trace_logs.append(f"✅ 採用外部字典的例句: 「{final_sentence}」")
 
-    missing_data = not final_eng_def or not final_sentence or not final_collocations
-    ai_triggered = False
+    # 3. 判斷是否資料齊全（必須要有英文釋義與例句）
+    has_valid_sentence = bool(final_sentence and not is_bad_example_sentence(final_sentence, w_clean))
+    has_valid_def = bool(final_eng_def and not is_bad_example_sentence(final_eng_def))
+    dictionary_is_complete = has_valid_sentence and has_valid_def
 
-    if (missing_data or is_bad_example_sentence(final_sentence)) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
-        ai_triggered = True
-        trace_logs.append(f"🤖 發現資料不齊全或例句為空，啟動 Gemini AI 進行動態補強...")
+    # 4. 如果字典沒抓到例句或釋義，才動態呼叫 AI 補強
+    if not dictionary_is_complete and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        prompt = f"""You are an expert English material creator for students in Taiwan.
+        # 隨機加入情境引導，確保 AI 每次生成的例句都完全不同、充滿生活感
+        scenarios = [
+            "at a coffee shop or restaurant", "talking about weekend plans", 
+            "complaining about heavy workload or homework", "chatting with a best friend", 
+            "shopping at a supermarket", "handling an unexpected emergency"
+        ]
+        chosen_scenario = random.choice(scenarios)
+
+        prompt = f"""You are an expert material creator for high school and TOEIC English students in Taiwan.
 Target Word: "{w_clean}"
 Chinese Meaning: "{cleaned_def}"
-Target Level: "{level}"
+Target Audience Level: "{level}"
+Context Scenario: "{chosen_scenario}"
 
-Please generate comprehensive learning materials for this word.
+Your task is to write ONE highly natural, everyday conversational sentence using the target word within the given scenario, along with a short English definition.
+
+CRITICAL RULES:
+1. MUST BE REALISTIC: Write a sentence someone would actually say in daily life. Avoid any repetitive formulaic structures.
+2. NO ACADEMIC BS: Never use robotic textbook phrasing like "it is essential to" or "experts have emphasized".
+3. GRAMMAR MATTERS: Use the word in its correct part of speech naturally.
+
 Output ONLY valid JSON in this exact format:
 {{
   "phonetic": "/.../",
   "part_of_speech": "n. / v. / adj. / adv. / phr.",
-  "english_definition": "Short and clear English definition.",
-  "basic_sentence": "A natural, everyday example sentence using the word.",
-  "collocations": "2-3 common collocations or useful phrases (e.g., make an effort, highly efficient)"
+  "english_definition": "Short and simple English definition (max 8 words).",
+  "sentence": "Your realistic, everyday example sentence."
 }}"""
         
-        ai_success = False
         for attempt in range(3):
             try:
-                response = model.generate_content(prompt, generation_config={"temperature": 0.5})
+                response = model.generate_content(prompt, generation_config={"temperature": 0.8})
                 raw_text = response.text.strip()
                 if "{" in raw_text and "}" in raw_text:
                     raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}") + 1]
                 data = json.loads(raw_text)
                 
+                ai_sent = data.get("sentence", "").strip('"“”')
                 ai_def = data.get("english_definition", "")
-                ai_sent = data.get("basic_sentence", "")
-                ai_colloc = data.get("collocations", "")
                 
-                if ai_def and not final_eng_def:
-                    final_eng_def = ai_def
-                if ai_sent and (not final_sentence or is_bad_example_sentence(final_sentence)):
-                    final_sentence = ai_sent
-                if ai_colloc and not final_collocations:
-                    final_collocations = ai_colloc
-                if not final_phonetic and data.get("phonetic"):
-                    final_phonetic = data.get("phonetic")
-                if not final_pos and data.get("part_of_speech"):
-                    final_pos = simple_s2t_convert(data.get("part_of_speech", ""))
-                
-                trace_logs.append(f"✨ AI 補強成功！產出結果: 英文釋義({ai_def}) / 例句({ai_sent}) / 搭配詞({ai_colloc})")
-                ai_success = True
-                break
-            except Exception as e:
-                trace_logs.append(f"⚠️ AI 第 {attempt+1} 次嘗試解析失敗: {e}")
-                time.sleep(1.0)
-        
-        if not ai_success:
-            trace_logs.append(f"❌ AI 補強全數失敗，使用系統預設保底字串。")
-    elif not ai_triggered:
-        trace_logs.append(f"🎯 資料已經完全由檔案或外部字典滿足，無需呼叫 AI。")
+                if not is_bad_example_sentence(ai_sent, w_clean):
+                    if not final_eng_def or is_bad_example_sentence(final_eng_def):
+                        final_eng_def = ai_def
+                    if not final_sentence or is_bad_example_sentence(final_sentence, w_clean):
+                        final_sentence = ai_sent
+                    if not final_phonetic and data.get("phonetic"):
+                        final_phonetic = data.get("phonetic")
+                    if not final_pos and data.get("part_of_speech"):
+                        final_pos = simple_s2t_convert(data.get("part_of_speech", ""))
+                    break 
+                else:
+                    time.sleep(1.0)
+            except:
+                time.sleep(1.5)
 
-    if not final_eng_def:
+    if is_bad_example_sentence(final_eng_def):
         final_eng_def = f"Definition of {w_clean}."
-    if not final_sentence:
-        final_sentence = f"I often use {w_clean} in my daily life."
-    if not final_collocations:
-        final_collocations = f"{w_clean} related usage"
+
+    if is_bad_example_sentence(final_sentence, w_clean):
+        final_sentence = f"I often use {w_clean} when talking with my friends."
+
     if not final_phonetic:
         final_phonetic = f"/{w_lower.replace(' ', '')}/"
     if not final_pos:
         final_pos = "phr." if " " in w_clean else "n."
-
-    # 將 Trace Log 存入 session_state 供畫面上顯示除錯用
-    st.session_state["last_trace_log"] = trace_logs
 
     return {
         "word": w_clean,
@@ -371,8 +426,7 @@ Output ONLY valid JSON in this exact format:
         "part_of_speech": final_pos,
         "definition": cleaned_def,
         "advanced_sentence": final_eng_def,
-        "basic_sentence": final_sentence,
-        "collocations": final_collocations
+        "basic_sentence": final_sentence
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
@@ -443,16 +497,18 @@ if main_menu == "✨ 新增單字":
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🤖 正在透過雲端字典與 AI 產生完整學習模組..."):
+                with st.spinner("🤖 正在透過雲端字典與 AI 處理資料..."):
                     data = get_word_record_data_via_ai(single_word, level=selected_level)
                     word = data.get('word')
                     
                     df_current = load_vocab_dataframe(active_worksheet)
                     if not df_current.empty and word.lower() in df_current['word'].str.lower().values:
                         idx = df_current.index[df_current['word'].str.lower() == word.lower()].tolist()[0]
-                        for k in data:
-                            if k != 'word' and data.get(k):
-                                df_current.at[idx, k] = data.get(k)
+                        if data.get('phonetic'): df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
+                        if data.get('part_of_speech'): df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
+                        if data.get('definition'): df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
+                        if data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
+                        if data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence', '')
                         df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
                         next_id = len(df_current) + 1
@@ -464,7 +520,7 @@ if main_menu == "✨ 新增單字":
                             'definition': simple_s2t_convert(data.get('definition', '')),
                             'advanced_sentence': data.get('advanced_sentence', ''),
                             'basic_sentence': data.get('basic_sentence', ''),
-                            'collocations': data.get('collocations', ''),
+                            'collocations': '',
                             'unit_tag': current_unit_tag,
                             'srs_stage': 0
                         }])
@@ -487,7 +543,7 @@ if main_menu == "✨ 新增單字":
         if uploaded_files:
             if st.button("📖 批次解析檔案並匯入", use_container_width=True):
                 extracted_data_list = []
-                with st.spinner("🔍 正在讀取檔案中的單字、釋義、例句與搭配詞..."):
+                with st.spinner("🔍 正在讀取檔案中的單字、釋義與原創例句..."):
                     for uploaded_file in uploaded_files:
                         file_name = uploaded_file.name.lower()
                         if file_name.endswith(".docx"):
@@ -499,9 +555,9 @@ if main_menu == "✨ 新增單字":
                                 for table in doc.tables:
                                     for row in table.rows:
                                         cells = row.cells
-                                        raw_word, raw_def, raw_sent, raw_col = "", "", "", ""
+                                        raw_word, raw_def, raw_sent = "", "", ""
                                         if len(cells) >= 4:
-                                            raw_word, raw_def, raw_sent, raw_col = cells[1].text.strip(), cells[2].text.strip(), cells[3].text.strip(), cells[4].text.strip() if len(cells) > 4 else ""
+                                            raw_word, raw_def, raw_sent = cells[1].text.strip(), cells[2].text.strip(), cells[3].text.strip()
                                         elif len(cells) == 3:
                                             raw_word, raw_def, raw_sent = cells[0].text.strip(), cells[1].text.strip(), cells[2].text.strip()
                                         elif len(cells) == 2:
@@ -511,11 +567,10 @@ if main_menu == "✨ 新增單字":
                                         w_c = raw_word.split('\n')[0].strip()
                                         d_c = raw_def.split('\n')[0].strip()
                                         s_c = raw_sent.split('\n')[0].strip() if raw_sent else ""
-                                        c_c = raw_col.split('\n')[0].strip() if raw_col else ""
                                         
                                         if w_c and len(w_c) < 35 and not any(('\u4e00' <= c <= '\u9fff') for c in w_c):
                                             if not any(item['word'].lower() == w_c.lower() for item in extracted_data_list):
-                                                extracted_data_list.append({"word": w_c, "definition": d_c, "sentence": s_c, "collocations": c_c})
+                                                extracted_data_list.append({"word": w_c, "definition": d_c, "sentence": s_c})
                                 if os.path.exists(temp_path): os.remove(temp_path)
                             except:
                                 if os.path.exists(temp_path): os.remove(temp_path)
@@ -533,7 +588,7 @@ if main_menu == "✨ 新增單字":
                                 if HAS_GEMINI and st.session_state.get("gemini_api_key"):
                                     genai.configure(api_key=st.session_state["gemini_api_key"])
                                     model = genai.GenerativeModel("gemini-1.5-flash")
-                                    prompt = f"從以下PDF文字中萃取出所有英文單字、中文釋義、例句與搭配詞，嚴格以純 JSON 陣列格式回傳（範例：[{{\"word\": \"apple\", \"definition\": \"蘋果\", \"sentence\": \"I ate an apple.\", \"collocations\": \"red apple\"}}]）：\n{pdf_text[:4000]}"
+                                    prompt = f"從以下PDF文字中萃取出所有英文單字、中文釋義與例句，嚴格以純 JSON 陣列格式回傳（範例：[{{\"word\": \"apple\", \"definition\": \"蘋果\", \"sentence\": \"I ate an apple.\"}}]）：\n{pdf_text[:4000]}"
                                     res = model.generate_content(prompt)
                                     raw_t = res.text.strip()
                                     if "[" in raw_t and "]" in raw_t:
@@ -542,12 +597,7 @@ if main_menu == "✨ 新增單字":
                                         for pi in parsed_items:
                                             if "word" in pi and "definition" in pi:
                                                 if not any(item['word'].lower() == pi['word'].lower() for item in extracted_data_list):
-                                                    extracted_data_list.append({
-                                                        "word": pi['word'].strip(), 
-                                                        "definition": pi['definition'].strip(), 
-                                                        "sentence": pi.get('sentence', '').strip(),
-                                                        "collocations": pi.get('collocations', '').strip()
-                                                    })
+                                                    extracted_data_list.append({"word": pi['word'].strip(), "definition": pi['definition'].strip(), "sentence": pi.get('sentence', '').strip()})
                             except:
                                 if os.path.exists(temp_path): os.remove(temp_path)
                         elif file_name.endswith((".png", ".jpg", ".jpeg")) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
@@ -556,7 +606,7 @@ if main_menu == "✨ 新增單字":
                                 genai.configure(api_key=st.session_state["gemini_api_key"])
                                 model = genai.GenerativeModel("gemini-1.5-flash")
                                 image_part = {"mime_type": uploaded_file.type, "data": image_bytes}
-                                prompt = "請辨識這張圖片中的所有英文單字、中文釋義、例句與搭配詞，嚴格以純 JSON 陣列格式回傳（範例：[{{\"word\": \"apple\", \"definition\": \"蘋果\", \"sentence\": \"I ate an apple.\", \"collocations\": \"red apple\"}}]）"
+                                prompt = "請辨識這張圖片中的所有英文單字、中文釋義與例句，嚴格以純 JSON 陣列格式回傳（範例：[{{\"word\": \"apple\", \"definition\": \"蘋果\", \"sentence\": \"I ate an apple.\"}}]）"
                                 response = model.generate_content([image_part, prompt])
                                 raw_t = response.text.strip()
                                 if "[" in raw_t and "]" in raw_t:
@@ -565,12 +615,7 @@ if main_menu == "✨ 新增單字":
                                     for pi in parsed_items:
                                         if "word" in pi and "definition" in pi:
                                             if not any(item['word'].lower() == pi['word'].lower() for item in extracted_data_list):
-                                                extracted_data_list.append({
-                                                    "word": pi['word'].strip(), 
-                                                    "definition": pi['definition'].strip(), 
-                                                    "sentence": pi.get('sentence', '').strip(),
-                                                    "collocations": pi.get('collocations', '').strip()
-                                                })
+                                                extracted_data_list.append({"word": pi['word'].strip(), "definition": pi['definition'].strip(), "sentence": pi.get('sentence', '').strip()})
                             except:
                                 pass
                 
@@ -586,15 +631,16 @@ if main_menu == "✨ 新增單字":
                         word = item["word"]
                         raw_def = item["definition"]
                         raw_sent = item.get("sentence", "")
-                        raw_col = item.get("collocations", "")
                         
-                        w_data = get_word_record_data_via_ai(word, raw_def=raw_def, raw_sentence=raw_sent, raw_collocations=raw_col, level=selected_level)
+                        w_data = get_word_record_data_via_ai(word, raw_def=raw_def, raw_sentence=raw_sent, level=selected_level)
                         
                         if not df_current.empty and word.lower() in df_current['word'].str.lower().values:
                             idx = df_current.index[df_current['word'].str.lower() == word.lower()].tolist()[0]
-                            for k in w_data:
-                                if k != 'word' and w_data.get(k):
-                                    df_current.at[idx, k] = w_data.get(k)
+                            if w_data.get('phonetic'): df_current.at[idx, 'phonetic'] = w_data.get('phonetic', '')
+                            if w_data.get('part_of_speech'): df_current.at[idx, 'part_of_speech'] = w_data.get('part_of_speech', '')
+                            if w_data.get('definition'): df_current.at[idx, 'definition'] = simple_s2t_convert(w_data.get('definition', ''))
+                            if w_data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = w_data.get('advanced_sentence', '')
+                            if w_data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = w_data.get('basic_sentence', '')
                             df_current.at[idx, 'unit_tag'] = current_unit_tag
                         else:
                             next_id = len(df_current) + 1
@@ -606,7 +652,7 @@ if main_menu == "✨ 新增單字":
                                 'definition': simple_s2t_convert(w_data.get('definition', '')),
                                 'advanced_sentence': w_data.get('advanced_sentence', ''),
                                 'basic_sentence': w_data.get('basic_sentence', ''),
-                                'collocations': w_data.get('collocations', ''),
+                                'collocations': '',
                                 'unit_tag': current_unit_tag,
                                 'srs_stage': 0
                             }])
@@ -626,17 +672,6 @@ if main_menu == "✨ 新增單字":
                 else:
                     st.warning("⚠️ 在上傳的檔案中找不到可識別的單字表格或內容。")
 
-    # ---------------- 顯示最近一次的除錯診斷報告 ----------------
-    st.markdown("---")
-    with st.expander("🔍 最近一次單字解析與追蹤診斷報告 (Trace Log)", expanded=False):
-        if "last_trace_log" in st.session_state and st.session_state["last_trace_log"]:
-            st.markdown("以下是系統在處理上一個單字時的完整執行軌跡與決策過程：")
-            for log_line in st.session_state["last_trace_log"]:
-                st.text(log_line)
-        else:
-            st.info("尚無執行記錄，請嘗試新增一個單字來查看診斷報告。")
-    # ------------------------------------------------------------
-
 elif main_menu == "📖 字彙管理":
     if df_vocab.empty:
         st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
@@ -649,7 +684,7 @@ elif main_menu == "📖 字彙管理":
             selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
         with col_f2:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 資料重組 (補齊例句與搭配詞)", type="primary", use_container_width=True):
+            if st.button("🔄 資料重組 (修復不良例句)", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
                 
@@ -667,14 +702,20 @@ elif main_menu == "📖 字彙管理":
                     d = str(row.get('definition', '')).strip()
                     current_sent = str(row.get('basic_sentence', '')).strip()
                     current_adv = str(row.get('advanced_sentence', '')).strip()
-                    current_colloc = str(row.get('collocations', '')).strip()
                     
-                    if not current_sent or not current_colloc or is_bad_example_sentence(current_sent):
+                    if not current_sent or is_bad_example_sentence(current_sent, w) or is_bad_example_sentence(current_adv):
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
-                        for k in new_data:
-                            if k != 'word' and new_data.get(k):
-                                df_current.at[idx, k] = new_data.get(k)
-                        time.sleep(1.5)
+                        
+                        if new_data.get('advanced_sentence'):
+                            df_current.at[idx, 'advanced_sentence'] = new_data['advanced_sentence']
+                        if new_data.get('basic_sentence'):
+                            df_current.at[idx, 'basic_sentence'] = new_data['basic_sentence']
+                        if new_data.get('phonetic'):
+                            df_current.at[idx, 'phonetic'] = new_data['phonetic']
+                        if new_data.get('part_of_speech'):
+                            df_current.at[idx, 'part_of_speech'] = new_data['part_of_speech']
+                        
+                        time.sleep(2.0)
                     
                     fixed_count += 1
                     if total_fix > 0:
@@ -682,9 +723,9 @@ elif main_menu == "📖 字彙管理":
                     
                 success, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
                 if success:
-                    st.success("✅ 資料重組完成！已成功為您補齊所有例句與搭配詞。")
+                    st.success("✅ 資料重組完成！已成功為您自動修復/填補例句。")
                 else:
-                    st.warning(f"⚠️ Google 雲端儲存稍有延遲 ({msg})，但畫面資料已更新成功！")
+                    st.warning(f"⚠️ Google 雲端儲存稍有延遲 ({msg})，但您的畫面資料已強制更新成功！")
                 time.sleep(1.5)
                 st.rerun()
 
@@ -709,7 +750,7 @@ elif main_menu == "📖 字彙管理":
 
         with st.expander("📋 單字總表與快速編輯", expanded=True):
             st.dataframe(
-                filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations']],
+                filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence']],
                 use_container_width=False,
                 hide_index=True,
                 column_config={
@@ -720,7 +761,6 @@ elif main_menu == "📖 字彙管理":
                     "definition": st.column_config.TextColumn("中文釋義", width="medium"),
                     "advanced_sentence": st.column_config.TextColumn("英文釋義", width="large"),
                     "basic_sentence": st.column_config.TextColumn("真實例句", width="large"),
-                    "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
                 }
             )
             
@@ -745,7 +785,6 @@ elif main_menu == "📖 字彙管理":
                             edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
                             edit_adv = st.text_input("英文釋義 (English Def)", value=target_row.get('advanced_sentence', ''))
                             edit_basic = st.text_area("真實例句 (Sentence)", value=target_row.get('basic_sentence', ''))
-                            edit_colloc = st.text_input("搭配詞 (Collocations)", value=target_row.get('collocations', ''))
                             
                             submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
                             
@@ -760,7 +799,6 @@ elif main_menu == "📖 字彙管理":
                                     df_current.at[idx, 'definition'] = simple_s2t_convert(edit_def)
                                     df_current.at[idx, 'advanced_sentence'] = edit_adv
                                     df_current.at[idx, 'basic_sentence'] = edit_basic
-                                    df_current.at[idx, 'collocations'] = edit_colloc
                                     save_all_vocab_to_sheet(active_worksheet, df_current)
                                     st.success("✅ 雲端修改成功！")
                                     time.sleep(0.5)
@@ -842,9 +880,6 @@ elif main_menu == "🎯 背誦單字":
                 
                 if row.get('basic_sentence'):
                     st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
-                
-                if row.get('collocations'):
-                    st.markdown(f"<p style='font-weight: 500; font-size: 17px; color: #E91E63;'>🔗 搭配詞：{row.get('collocations')}</p>", unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             if c1.button("⬅️ 上一個", use_container_width=True):
