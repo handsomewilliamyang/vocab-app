@@ -168,7 +168,6 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 保留過濾器做最後一道防線
 BAD_SENTENCE_PATTERNS = [
     "we often use the word", "people use in daily life", "this is an example",
     "in daily life", "whenever someone asks for assistance", "practical applications of",
@@ -180,7 +179,7 @@ BAD_SENTENCE_PATTERNS = [
     "a term associated with", "relies heavily on the dedication of", "always pays close attention",
     "pays close attention to every single", "successfully completed the task ahead of",
     "decided to dig before the final deadline", "the experienced", "a professional",
-    "gathered together", "worked tirelessly"
+    "gathered together", "worked tirelessly", "i often use"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
@@ -289,7 +288,7 @@ def get_word_record_data_via_ai(word, raw_def="", level="高中部"):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else f"{w_clean} 的中文釋義"
 
-    # 外部字典抓取
+    # 🎯 核心原則：【先找字典】
     real_eng_def, real_example, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
     
     final_eng_def = real_eng_def
@@ -297,11 +296,11 @@ def get_word_record_data_via_ai(word, raw_def="", level="高中部"):
     final_phonetic = fetched_phonetic
     final_pos = simple_s2t_convert(fetched_pos) if fetched_pos else ""
 
-    needs_ai_help = False
-    if not final_eng_def or is_bad_example_sentence(final_sentence, w_clean):
-        needs_ai_help = True
+    # 💡 判斷字典是否足夠完整（必須要有英文釋義且例句合格）
+    dictionary_is_complete = bool(final_eng_def and not is_bad_example_sentence(final_sentence, w_clean))
 
-    if needs_ai_help and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+    # 🚀 如果字典找不到完整內容，【再啟動 AI】動態補強
+    if not dictionary_is_complete and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
@@ -366,11 +365,20 @@ Output ONLY valid JSON in this exact format:
                 else:
                     time.sleep(2)
 
-    # 🛡️ 安全防呆防寫空保護：如果 AI 和外部字典都沒抓到，保留原本傳入的 raw_def 或安全保底，絕不變成空白
-    if is_bad_example_sentence(final_sentence, w_clean):
-        final_sentence = real_example if not is_bad_example_sentence(real_example, w_clean) else f"I often use {w_clean} when talking with my friends."
+    # 🔄 萬一字典跟 AI 第一輪都沒生出完美例句，啟動高溫 AI 單句直出保底
+    if is_bad_example_sentence(final_sentence, w_clean) and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+        try:
+            model_retry = genai.GenerativeModel("gemini-1.5-flash")
+            retry_prompt = f"Write one natural, simple everyday English conversational sentence using the word '{w_clean}'. Return ONLY the sentence text, nothing else."
+            res_retry = model_retry.generate_content(retry_prompt, generation_config={"temperature": 0.7})
+            cleaned_retry = res_retry.text.strip().strip('"“”')
+            if not is_bad_example_sentence(cleaned_retry, w_clean):
+                final_sentence = cleaned_retry
+        except:
+            pass
+
     if is_bad_example_sentence(final_eng_def):
-        final_eng_def = real_eng_def if not is_bad_example_sentence(real_eng_def) else f"Definition of {w_clean}."
+        final_eng_def = f"Definition of {w_clean}."
 
     if not final_phonetic:
         final_phonetic = f"/{w_lower.replace(' ', '')}/"
