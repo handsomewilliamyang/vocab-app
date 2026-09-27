@@ -168,46 +168,55 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 🛑 終極黑名單，持續擴增 AI 的偷懶慣用語
+# 🛑 終極黑名單（拔除空格純字元比對版）
 BAD_SENTENCE_PATTERNS = [
-    r"\bwe often use (?:the )?word\b",
-    r"\bpeople use .* in daily life\b",
-    r"\bthis is an example\b",
-    r"\bin daily life\b",
-    r"\bwhenever someone asks for assistance\b",
-    r"\bpractical applications of\b",
-    r"\bgrowing significance of\b",
-    r"\bexperts have (?:emphasized|highlighted|discussed)\b",
-    r"\bwe must take .* into serious consideration\b",
-    r"\blight streamed gently\b",
-    r"\bwe were deeply impressed\b",
-    r"\blocals often gather\b",
-    r"\bwe discussed various\b",
-    r"\bsignificance of\b",
-    r"\bwe spent hours exploring\b",
-    r"it is important to understand how to use",
-    r"i want to learn more about",
-    r"i need to look up more examples for",
-    r"learning how to use .* correctly is essential",
-    r"understanding .* clearly will greatly benefit",
-    r"a term associated with",
-    r"relies heavily on the dedication of",
-    r"everyone in the team relies",
-    r"a professional .* always pays close attention",
-    r"always pays close attention to",
-    r"pays close attention to every single",
-    r"the experienced .* successfully completed",
-    r"successfully completed the task ahead of",
-    r"decided to dig before the final deadline"
+    "we often use the word",
+    "people use in daily life",
+    "this is an example",
+    "in daily life",
+    "whenever someone asks for assistance",
+    "practical applications of",
+    "growing significance of",
+    "experts have emphasized",
+    "experts have highlighted",
+    "experts have discussed",
+    "we must take into serious consideration",
+    "light streamed gently",
+    "we were deeply impressed",
+    "locals often gather",
+    "we discussed various",
+    "significance of",
+    "we spent hours exploring",
+    "it is important to understand how to use",
+    "i want to learn more about",
+    "i need to look up more examples for",
+    "learning how to use",
+    "correctly is essential",
+    "clearly will greatly benefit",
+    "a term associated with",
+    "relies heavily on the dedication of",
+    "everyone in the team relies",
+    "always pays close attention",
+    "pays close attention to every single",
+    "successfully completed the task ahead of",
+    "decided to dig before the final deadline",
+    "the experienced",
+    "a professional"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
     s = str(sentence or "").strip().lower()
     if not s or s == "nan" or len(s) < 8:
         return True
-    if any(re.search(pattern, s) for pattern in BAD_SENTENCE_PATTERNS):
-        return True
+        
+    # 🛡️ 金鐘罩機制：移除所有非英數字元（包括隱形空格、標點符號），進行極端比對
+    s_super_clean = re.sub(r'[^a-z0-9]', '', s)
     
+    for pattern in BAD_SENTENCE_PATTERNS:
+        p_clean = re.sub(r'[^a-z0-9]', '', pattern.lower())
+        if p_clean in s_super_clean:
+            return True
+            
     if word:
         w_low = word.strip().lower()
         s_clean = s.replace(' ', '').replace('-', '')
@@ -324,26 +333,23 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        # 🚀 升級版 Prompt：強制要求「上下文線索」並打破填空思維
-        prompt = f"""You are an expert English teacher creating dynamic, highly diverse example sentences for students (Level: {level}).
+        prompt = f"""You are an expert English teacher creating short, highly authentic example sentences.
 Word: "{w_clean}"
 Meaning: "{cleaned_def}"
 
-CRITICAL INSTRUCTIONS:
-1. ZERO TEMPLATES: Every sentence MUST have a completely unique structure, subject, and context. Do NOT use generic subjects like "Everyone", "The experienced", or "A professional".
-2. CONTEXTUAL CLUES: The sentence MUST clearly demonstrate the word's specific meaning through context. Do NOT just drop the word into a generic placeholder sentence. If it's a noun, describe its specific features or function. If it's a verb, describe a specific, logical action.
-3. CORRECT GRAMMAR & POS: Use the word strictly according to its real part of speech. Do NOT use an adjective as a noun.
-4. BE CREATIVE: Describe varied situations (e.g., a bustling kitchen, a tense basketball game, a rainy commute, a sci-fi movie).
+CRITICAL RULES:
+1. USE CORRECT GRAMMAR: Use the word purely according to its actual part of speech. (e.g., Do NOT use an adjective as if it were a noun).
+2. NO LAZY TEMPLATES: Never use phrases like "Everyone relies on...", "A professional...", or "It is important to...". 
+3. BE SPECIFIC: Give a vivid, realistic daily life situation (e.g., buying coffee, a math test, bad weather).
 
 Output ONLY valid JSON:
 {{
   "phonetic": "/.../",
   "part_of_speech": "...",
-  "english_definition": "A precise, simple English definition (max 12 words).",
-  "sentence": "A highly specific, natural, and creatively unique example sentence."
+  "english_definition": "A clear, simple English definition (max 10 words).",
+  "sentence": "A highly specific, natural everyday sentence."
 }}"""
         
-        # 🔑 關鍵修改：將 temperature 調高至 0.7，強迫 AI 發揮創意，打破罐頭模板的死循環
         for attempt in range(3):
             try:
                 response = model.generate_content(prompt, generation_config={"temperature": 0.7})
