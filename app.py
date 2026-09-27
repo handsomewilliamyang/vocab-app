@@ -168,7 +168,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 🛑 終極黑名單（拔除空格純字元比對版）
+# 🛑 終極黑名單（保持字元脫殼比對，但移除愚蠢的單字拼字限制）
 BAD_SENTENCE_PATTERNS = [
     "we often use the word",
     "people use in daily life",
@@ -209,7 +209,6 @@ def is_bad_example_sentence(sentence, word=""):
     if not s or s == "nan" or len(s) < 8:
         return True
         
-    # 🛡️ 金鐘罩機制：移除所有非英數字元（包括隱形空格、標點符號），進行極端比對
     s_super_clean = re.sub(r'[^a-z0-9]', '', s)
     
     for pattern in BAD_SENTENCE_PATTERNS:
@@ -217,12 +216,7 @@ def is_bad_example_sentence(sentence, word=""):
         if p_clean in s_super_clean:
             return True
             
-    if word:
-        w_low = word.strip().lower()
-        s_clean = s.replace(' ', '').replace('-', '')
-        w_clean_check = w_low.replace(' ', '').replace('-', '')
-        if w_low not in s and w_clean_check not in s_clean:
-            return True
+    # 解除單字 100% 吻合限制，讓動詞時態變化 (e.g. surprised, studied) 能順利過關
             
     return False
 
@@ -341,6 +335,7 @@ CRITICAL RULES:
 1. USE CORRECT GRAMMAR: Use the word purely according to its actual part of speech. (e.g., Do NOT use an adjective as if it were a noun).
 2. NO LAZY TEMPLATES: Never use phrases like "Everyone relies on...", "A professional...", or "It is important to...". 
 3. BE SPECIFIC: Give a vivid, realistic daily life situation (e.g., buying coffee, a math test, bad weather).
+4. MUST USE THE WORD: You must include "{w_clean}" (or a grammatically correct variation like plural or past tense) in the sentence.
 
 Output ONLY valid JSON:
 {{
@@ -373,10 +368,10 @@ Output ONLY valid JSON:
                         final_pos = simple_s2t_convert(data.get("part_of_speech"))
                     break 
                 else:
-                    time.sleep(2) 
+                    time.sleep(1.5) 
                     
             except Exception as e:
-                time.sleep(3)
+                time.sleep(2)
 
     if is_bad_example_sentence(final_sentence, w_clean):
         final_sentence = ""
@@ -677,7 +672,7 @@ elif main_menu == "📖 字彙管理":
                     current_sent = str(row.get('basic_sentence', '')).strip()
                     current_adv = str(row.get('advanced_sentence', '')).strip()
                     
-                    if is_bad_example_sentence(current_sent, w) or is_bad_example_sentence(current_adv):
+                    if not current_sent or is_bad_example_sentence(current_sent, w) or is_bad_example_sentence(current_adv):
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         df_current.at[idx, 'advanced_sentence'] = new_data.get('advanced_sentence', '')
                         df_current.at[idx, 'basic_sentence'] = new_data.get('basic_sentence', '')
@@ -691,7 +686,7 @@ elif main_menu == "📖 字彙管理":
                         progress_bar.progress(fixed_count / total_fix)
                     
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success("✅ 資料重組完成！所有罐頭例句已被更新或清除。")
+                st.success("✅ 資料重組完成！所有空缺或罐頭例句已被更新。")
                 time.sleep(1)
                 st.rerun()
 
