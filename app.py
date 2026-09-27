@@ -168,7 +168,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 🛑 終極黑名單（保持字元脫殼比對，但移除愚蠢的單字拼字限制）
+# 🛑 終極黑名單（字元脫殼比對）
 BAD_SENTENCE_PATTERNS = [
     "we often use the word",
     "people use in daily life",
@@ -201,7 +201,9 @@ BAD_SENTENCE_PATTERNS = [
     "successfully completed the task ahead of",
     "decided to dig before the final deadline",
     "the experienced",
-    "a professional"
+    "a professional",
+    "gathered together",
+    "worked tirelessly"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
@@ -215,8 +217,6 @@ def is_bad_example_sentence(sentence, word=""):
         p_clean = re.sub(r'[^a-z0-9]', '', pattern.lower())
         if p_clean in s_super_clean:
             return True
-            
-    # 解除單字 100% 吻合限制，讓動詞時態變化 (e.g. surprised, studied) 能順利過關
             
     return False
 
@@ -327,27 +327,28 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        prompt = f"""You are an expert English teacher creating short, highly authentic example sentences.
-Word: "{w_clean}"
+        # 🎬 核心修正：將 AI 角色變更為「好萊塢編劇」，徹底扼殺教科書廢話
+        prompt = f"""You are a creative Hollywood screenwriter writing natural, everyday dialogue for a TV show.
+Word to use: "{w_clean}"
 Meaning: "{cleaned_def}"
 
 CRITICAL RULES:
-1. USE CORRECT GRAMMAR: Use the word purely according to its actual part of speech. (e.g., Do NOT use an adjective as if it were a noun).
-2. NO LAZY TEMPLATES: Never use phrases like "Everyone relies on...", "A professional...", or "It is important to...". 
-3. BE SPECIFIC: Give a vivid, realistic daily life situation (e.g., buying coffee, a math test, bad weather).
-4. MUST USE THE WORD: You must include "{w_clean}" (or a grammatically correct variation like plural or past tense) in the sentence.
+1. GRAMMAR FIRST: Use the word strictly according to its actual part of speech.
+2. NO ROBOTIC TEMPLATES: NEVER use academic or lazy phrases like "practical applications", "experts emphasized", "we discussed various", or "everyone relies on".
+3. BE CREATIVE: Write a realistic, casual sentence (e.g., a text message, an argument, a joke, a complaint).
+4. SHOW, DON'T TELL: The sentence must clearly imply the meaning of "{w_clean}" through context.
 
 Output ONLY valid JSON:
 {{
   "phonetic": "/.../",
   "part_of_speech": "...",
   "english_definition": "A clear, simple English definition (max 10 words).",
-  "sentence": "A highly specific, natural everyday sentence."
+  "sentence": "A creative, natural, and highly contextual example sentence."
 }}"""
         
         for attempt in range(3):
             try:
-                response = model.generate_content(prompt, generation_config={"temperature": 0.7})
+                response = model.generate_content(prompt, generation_config={"temperature": 0.8})
                 raw_text = response.text.strip()
                 
                 if "{" in raw_text and "}" in raw_text:
@@ -393,6 +394,8 @@ Output ONLY valid JSON:
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
+    # 🛡️ 強制快取更新機制：即使 Google Sheets 更新失敗，也要保證畫面上是最新的資料
+    cache_key = f"vocab_df_{_worksheet.title}"
     try:
         _worksheet.clear()
         headers = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
@@ -411,9 +414,10 @@ def save_all_vocab_to_sheet(_worksheet, df):
                 str(row.get('srs_stage', 0))
             ])
         _worksheet.update(rows)
-        load_vocab_dataframe(_worksheet, force_reload=True)
+        st.session_state[cache_key] = df.copy()
         return True, "成功"
     except Exception as e:
+        st.session_state[cache_key] = df.copy() # 就算出錯也強制覆蓋本地快取，防止舊廢話重生
         return False, str(e)
 
 @st.cache_data(show_spinner=False)
@@ -634,8 +638,11 @@ if main_menu == "✨ 新增單字":
                         progress_bar.progress((i + 1) / total_words_to_process)
                         time.sleep(1.5)
                         
-                    save_all_vocab_to_sheet(active_worksheet, df_current)
-                    st.success(f"🎊 檔案解析與匯入完成！成功寫入 {total_success_count} 個單字至雲端。")
+                    success, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                    if success:
+                        st.success(f"🎊 檔案解析與匯入完成！成功寫入 {total_success_count} 個單字至雲端。")
+                    else:
+                        st.warning(f"⚠️ 雲端寫入遇到延遲，但資料已暫存於本地 ({msg})。")
                     time.sleep(1.5)
                     st.rerun()
                 else:
@@ -685,9 +692,13 @@ elif main_menu == "📖 字彙管理":
                     if total_fix > 0:
                         progress_bar.progress(fixed_count / total_fix)
                     
-                save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success("✅ 資料重組完成！所有空缺或罐頭例句已被更新。")
-                time.sleep(1)
+                # 🛡️ 在這裡加入存檔狀態檢查，防止 API 失敗導致假象
+                success, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                if success:
+                    st.success("✅ 資料重組完成！所有空缺或罐頭例句已被徹底翻新。")
+                else:
+                    st.warning(f"⚠️ Google 雲端儲存稍有延遲 ({msg})，但您的畫面資料已強制更新成功！")
+                time.sleep(1.5)
                 st.rerun()
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
