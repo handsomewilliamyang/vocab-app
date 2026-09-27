@@ -168,7 +168,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 🛑 終極黑名單，徹底封殺所有常見的 AI 罐頭廢話與舊版錯誤字串
+# 🛑 終極黑名單，徹底封殺所有常見的 AI 罐頭廢話、舊版錯誤字串與最新偷懶變種
 BAD_SENTENCE_PATTERNS = [
     r"\bwe often use (?:the )?word\b",
     r"\bpeople use .* in daily life\b",
@@ -190,7 +190,15 @@ BAD_SENTENCE_PATTERNS = [
     r"i need to look up more examples for",
     r"learning how to use .* correctly is essential",
     r"understanding .* clearly will greatly benefit",
-    r"a term associated with"
+    r"a term associated with",
+    # === 新增防堵 AI 偷懶填空模板 ===
+    r"relies heavily on the dedication of",
+    r"everyone in the team relies",
+    r"a professional .* always pays close attention",
+    r"always pays close attention to",
+    r"pays close attention to every single",
+    r"the experienced .* successfully completed",
+    r"successfully completed the task ahead of"
 ]
 
 def is_bad_example_sentence(sentence, word=""):
@@ -314,32 +322,32 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
     if not final_eng_def or is_bad_example_sentence(final_sentence, w_clean):
         needs_ai_help = True
 
-    # 2. AI 救援行動（具備防 Rate Limit 重試機制）
+    # 2. AI 救援行動（具備防 Rate Limit 重試機制與強制文法約束）
     if needs_ai_help and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        prompt = f"""You are a professional English teacher in Taiwan.
+        prompt = f"""You are a professional native English teacher.
 Target Audience Level: {level}
 Word/Phrase to teach: "{w_clean}"
 Chinese Meaning: "{cleaned_def}"
 
 Provide the dictionary data in STRICT JSON format.
 CRITICAL RULES FOR "sentence":
-1. MUST be a highly natural, conversational, and practical everyday sentence.
-2. ABSOLUTELY NO generic templates (NEVER use "Experts have emphasized...", "practical applications of", "growing significance of", or "Light streamed gently").
-3. Make it relatable to daily life, school, travel, or common situations for the target audience.
-4. If the input is a phrase (like "each other", "I think so", "in front of"), it must make perfect logical sense in context.
+1. AUTHENTICITY: MUST be a highly natural, conversational, and practical everyday sentence.
+2. GRAMMAR CHECK: You MUST use the word according to its correct part of speech. (e.g., Do NOT use an adjective like a noun).
+3. NO FILL-IN-THE-BLANK TEMPLATES: DO NOT use generic templates like "Everyone relies on the dedication of [word]", "A professional [word] pays attention", or "The experienced [word] completed the task". Create a completely UNIQUE, context-rich sentence tailored specifically to the meaning of "{w_clean}".
+4. Make it relatable to daily life, school, travel, or common situations.
 
 Output ONLY valid JSON:
 {{
   "phonetic": "/.../",
   "part_of_speech": "...",
   "english_definition": "A clear, simple English explanation (max 10 words).",
-  "sentence": "A natural, contextual example sentence."
+  "sentence": "A highly natural, grammatically flawless example sentence."
 }}"""
         
-        # 最高重試 3 次，避免被 API 頻率限制 (429 Too Many Requests) 阻擋
+        # 最高重試 3 次
         for attempt in range(3):
             try:
                 response = model.generate_content(prompt, generation_config={"temperature": 0.2})
@@ -352,7 +360,7 @@ Output ONLY valid JSON:
                 ai_sent = data.get("sentence", "").strip('"“”')
                 ai_def = data.get("english_definition", "")
                 
-                # 再次品管，確認 AI 這次沒有發神經
+                # 再次品管，確認 AI 這次沒有發神經或偷懶
                 if not is_bad_example_sentence(ai_sent, w_clean):
                     if not final_eng_def or is_bad_example_sentence(final_eng_def):
                         final_eng_def = ai_def
@@ -371,7 +379,6 @@ Output ONLY valid JSON:
                 time.sleep(3)
 
     # 3. 🛡️ 寧缺勿濫：徹底刪除舊版的「罐頭廢話備用句」
-    # 如果最終還是通不過檢查，寧可留空也不要塞垃圾字串進資料庫
     if is_bad_example_sentence(final_sentence, w_clean):
         final_sentence = ""
     if is_bad_example_sentence(final_eng_def):
