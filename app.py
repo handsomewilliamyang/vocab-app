@@ -168,7 +168,7 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-# 🛑 終極黑名單（字元脫殼比對）
+# 保留過濾器做最後一道防線
 BAD_SENTENCE_PATTERNS = [
     "we often use the word",
     "people use in daily life",
@@ -187,9 +187,7 @@ BAD_SENTENCE_PATTERNS = [
     "we discussed various",
     "significance of",
     "we spent hours exploring",
-    "it is important to understand how to use",
-    "i want to learn more about",
-    "i need to look up more examples for",
+    "it is essential to learn",
     "learning how to use",
     "correctly is essential",
     "clearly will greatly benefit",
@@ -327,28 +325,41 @@ def get_word_record_data_via_ai(word, raw_def="", level="國中部"):
         genai.configure(api_key=st.session_state["gemini_api_key"])
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        # 🎬 強制具體化提示詞：杜絕 AI 自我陶醉的廢話，要求描寫生活瑣事
-        prompt = f"""You are creating a natural, everyday English example sentence for a student.
-Word: "{w_clean}"
-Meaning: "{cleaned_def}"
+        # 🚀 採用 Few-Shot Prompting (少樣本提示)：用具體範例強制約束 AI 的文風
+        prompt = f"""You are an expert material creator for high school English students.
+Target Word: "{w_clean}"
+Chinese Meaning: "{cleaned_def}"
 
-RULES:
-1. The sentence MUST use the word "{w_clean}" (or its correct plural/past tense).
-2. Describe a specific, relatable situation (e.g., a family dinner, buying a ticket, a funny mistake, raining). 
-3. DO NOT start the sentence with "The experienced", "A professional", or "Experts".
-4. DO NOT use generic phrases like "practical applications", "discussed various", or "daily life".
+Your task is to write ONE highly natural, everyday conversational sentence using the target word. 
 
-Output ONLY valid JSON:
+CRITICAL RULES:
+1. MUST BE REALISTIC: Write a sentence someone would actually say in daily life (e.g., complaining, ordering food, talking to a friend).
+2. NO ACADEMIC BS: Never use terms like "practical applications", "experts emphasized", "growing significance", or "essential to learn".
+3. GRAMMAR MATTERS: Use the word in its correct part of speech.
+
+--- EXAMPLES OF WHAT TO DO (GOOD) ---
+Target: "complain" -> "My neighbors always complain about the loud music from my room."
+Target: "accident" -> "I broke my mom's favorite vase by accident, and she was furious."
+Target: "husband" -> "Her husband forgot their anniversary, so he bought her flowers to apologize."
+Target: "too" -> "This soup is too salty for me to eat."
+
+--- EXAMPLES OF WHAT NOT TO DO (BAD) ---
+Target: "husband" -> "We discussed various practical applications of husband." (Nonsense grammar)
+Target: "eat" -> "It is essential to learn how to eat effectively in real-world situations." (Robotic and unnatural)
+Target: "too" -> "Experts have emphasized the growing significance of too." (Completely absurd)
+
+Output ONLY valid JSON in this format:
 {{
   "phonetic": "/.../",
   "part_of_speech": "...",
-  "english_definition": "Short English definition (max 10 words).",
-  "sentence": "A creative, specific, and natural example sentence."
+  "english_definition": "Short and simple English definition (max 8 words).",
+  "sentence": "Your realistic, everyday example sentence."
 }}"""
         
         for attempt in range(3):
             try:
-                response = model.generate_content(prompt, generation_config={"temperature": 0.7})
+                # 稍微降低一點 Temperature 確保它嚴格遵循範例
+                response = model.generate_content(prompt, generation_config={"temperature": 0.5})
                 raw_text = response.text.strip()
                 
                 if "{" in raw_text and "}" in raw_text:
@@ -372,7 +383,6 @@ Output ONLY valid JSON:
                     time.sleep(2) 
                     
             except Exception as e:
-                # 🛡️ 捕捉 429 錯誤：如果被打到 Rate Limit，拉長休眠時間
                 if "429" in str(e) or "exhausted" in str(e).lower():
                     time.sleep(10)
                 else:
@@ -472,8 +482,6 @@ if main_menu == "✨ 新增單字":
                     df_current = load_vocab_dataframe(active_worksheet)
                     if not df_current.empty and word.lower() in df_current['word'].str.lower().values:
                         idx = df_current.index[df_current['word'].str.lower() == word.lower()].tolist()[0]
-                        
-                        # 🛡️ 單筆更新：只有當回傳的資料不是空的，才進行覆寫！
                         if data.get('phonetic'): df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
                         if data.get('part_of_speech'): df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         if data.get('definition'): df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition', ''))
@@ -617,7 +625,6 @@ if main_menu == "✨ 新增單字":
                         
                         if not df_current.empty and word.lower() in df_current['word'].str.lower().values:
                             idx = df_current.index[df_current['word'].str.lower() == word.lower()].tolist()[0]
-                            # 🛡️ 防止批次匯入時將舊有資料洗白
                             if w_data.get('phonetic'): df_current.at[idx, 'phonetic'] = w_data.get('phonetic', '')
                             if w_data.get('part_of_speech'): df_current.at[idx, 'part_of_speech'] = w_data.get('part_of_speech', '')
                             if w_data.get('definition'): df_current.at[idx, 'definition'] = simple_s2t_convert(w_data.get('definition', ''))
@@ -642,8 +649,6 @@ if main_menu == "✨ 新增單字":
                             
                         total_success_count += 1
                         progress_bar.progress((i + 1) / total_words_to_process)
-                        
-                        # ⏱️ 強制安全延遲 (15 RPM 限制防護) 
                         time.sleep(4.5)
                         
                     success, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
@@ -690,7 +695,6 @@ elif main_menu == "📖 字彙管理":
                     if not current_sent or is_bad_example_sentence(current_sent, w) or is_bad_example_sentence(current_adv):
                         new_data = get_word_record_data_via_ai(w, raw_def=d, level=selected_level)
                         
-                        # 🛡️ 拒絕空白覆寫保護：唯有當 AI 成功回傳非空字串時，才去更新欄位
                         if new_data.get('advanced_sentence'):
                             df_current.at[idx, 'advanced_sentence'] = new_data['advanced_sentence']
                         if new_data.get('basic_sentence'):
@@ -700,7 +704,6 @@ elif main_menu == "📖 字彙管理":
                         if new_data.get('part_of_speech'):
                             df_current.at[idx, 'part_of_speech'] = new_data['part_of_speech']
                         
-                        # ⏱️ 絕對安全延遲，每處理一個字強制休息 4.5 秒，確保永遠不會撞擊 Google 15 RPM 限制
                         time.sleep(4.5)
                     
                     fixed_count += 1
