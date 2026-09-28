@@ -742,8 +742,7 @@ elif main_menu == "🎯 背誦單字":
                 st.markdown(f"""
                     <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 0;">
                         <h1 style='text-align: center; font-size: 54px; margin: 0;'>{row['word']}</h1>
-                        <audio id="flash_audio" src="data:audio/mp3;base64,{b64_flash}"></audio>
-                        <button onclick="document.getElementById('flash_audio').play()" style="background:none;border:none;cursor:pointer;font-size:32px;padding:0;" title="播放發音">🔊</button>
+                        <button onclick="new Audio('data:audio/mp3;base64,{b64_flash}').play()" style="background:none;border:none;cursor:pointer;font-size:32px;padding:0;" title="播放發音">🔊</button>
                     </div>
                 """, unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
@@ -833,8 +832,7 @@ elif main_menu == "🎮 我是拼字王":
                             st.markdown(f"""
                                 <div style="display: flex; align-items: center; gap: 10px; margin: 0;">
                                     <h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>
-                                    <audio id="game_audio_{st.session_state.game_index}" src="data:audio/mp3;base64,{b64_game}"></audio>
-                                    <button onclick="document.getElementById('game_audio_{st.session_state.game_index}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
+                                    <button onclick="new Audio('data:audio/mp3;base64,{b64_game}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
                                 </div>
                             """, unsafe_allow_html=True)
                         st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
@@ -845,8 +843,7 @@ elif main_menu == "🎮 我是拼字王":
                             st.markdown(f"""
                                 <div style="display: flex; align-items: center; gap: 10px; margin: 0;">
                                     <h2 style='color: #2196F3; margin: 0;'>🔊 英文解釋聽力提示：</h2>
-                                    <audio id="game_audio_{st.session_state.game_index}" src="data:audio/mp3;base64,{b64_game}"></audio>
-                                    <button onclick="document.getElementById('game_audio_{st.session_state.game_index}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
+                                    <button onclick="new Audio('data:audio/mp3;base64,{b64_game}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
                                 </div>
                             """, unsafe_allow_html=True)
                         st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 8px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
