@@ -35,21 +35,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 最佳化排版與輸入框融合
+# 🎨 簡約乾淨的排版微調
 st.markdown("""
     <style>
-    .main .block-container {
-        padding-bottom: 180px !important;
-    }
-    input[type="text"], textarea {
-        scroll-margin-bottom: 220px !important;
-    }
+    /* 統整卡片容器：保持乾淨的邊框與適度留白 */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
         padding: 20px !important;
         background-color: transparent !important;
     }
+
+    /* 欄位文字與排版優化 */
     .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -58,6 +55,8 @@ st.markdown("""
         padding-bottom: 12px !important;
         font-size: 15px !important;
     }
+
+    /* 側邊欄與輸入框微調 */
     [data-testid="stSidebar"] .stRadio label p {
         font-size: 18px !important;
         font-weight: 500 !important;
@@ -70,12 +69,11 @@ st.markdown("""
         font-size: 16px !important;
         font-weight: 500 !important;
     }
+
+    /* RWD 響應式 */
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
-        .main .block-container {
-            padding-bottom: 250px !important;
-        }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -892,6 +890,7 @@ elif main_menu == "🎮 我是拼字王":
                 target_word = str(current_item['word']).strip()
                 target_def = str(current_item['definition']).strip() if str(current_item['definition']).strip() else "(尚無中文釋義)"
                 target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or f"An English term referring to {target_word}."
+                hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
                 
                 total_q_count = len(st.session_state.game_queue)
                 current_q_num = st.session_state.game_index + 1
@@ -913,6 +912,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"<h2 style='margin-bottom: 5px;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                         if b64_us:
                             components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
+                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
                         audio_us = generate_audio_bytes(target_adv_def, 'com')
                         audio_uk = generate_audio_bytes(target_adv_def, 'co.uk')
@@ -925,6 +925,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 5px; margin-bottom: 10px;'>{target_adv_def}</p>", unsafe_allow_html=True)
                         if b64_us:
                             components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
+                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
@@ -935,34 +936,10 @@ elif main_menu == "🎮 我是拼字王":
                         st.session_state.game_index += 1
                         st.rerun()
                 else:
-                    # 💡 將即時拼字進度視覺化呈現（結合底線與打字進度）作為區塊標題，並將輸入框與按鈕並排
-                    user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}", label_visibility="collapsed", placeholder="請在此輸入拼寫答案...")
-                    
-                    current_typed = user_ans.strip().lower()
-                    display_chars = []
-                    for i, true_char in enumerate(target_word):
-                        if i < len(current_typed):
-                            typed_c = current_typed[i]
-                            if typed_c == true_char.lower():
-                                display_chars.append(f"<span style='color: #4CAF50; font-weight: bold;'>{true_char}</span>")
-                            else:
-                                display_chars.append(f"<span style='color: #ff4b4b; font-weight: bold;'>{typed_c}</span>")
-                        else:
-                            display_chars.append(" _ ")
-                    
-                    merged_hint_html = "".join(display_chars)
-                    st.markdown(f"<div style='font-size: 26px; letter-spacing: 5px; margin: 10px 0 15px 0;'><b>拼字：</b> {merged_hint_html}</div>", unsafe_allow_html=True)
-
                     with st.form(key=f"quiz_form_{st.session_state.game_index}"):
-                        col_f_in, col_f_btn = st.columns([3, 1], gap="small")
-                        with col_f_in:
-                            # 隱藏的佔位或直接用表單提交觸發
-                            st.markdown("<p style='font-size: 13px; color: gray; margin: 0;'>按 Enter 或點擊右側送出答案</p>", unsafe_allow_html=True)
-                        with col_f_btn:
-                            submitted = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
-                        
-                        if submitted:
-                            if current_typed == target_word.lower():
+                        user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
+                        if st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True):
+                            if user_ans == target_word.lower():
                                 st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
                             else:
                                 st.session_state.wrong_answers.append(current_item)
