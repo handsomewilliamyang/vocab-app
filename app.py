@@ -425,7 +425,7 @@ if main_menu == "✨ 新增單字":
         st.subheader("📋 智慧多格式快速貼上匯入")
         st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
         
-        pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 詞性 | 英文釋義 | 例句 | 搭配詞）：", placeholder="drink | 喝 | v. | take liquid | Drink some water. | drink water", height=140)
+        pasted_text = st.text_area("貼上完整單字清單", placeholder="drink | 喝 | v. | take liquid | Drink some water. | drink water", height=140, label_visibility="collapsed")
         
         valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
@@ -448,7 +448,7 @@ if main_menu == "✨ 新增單字":
                     current_num = i + 1
                     remaining_num = total_q - current_num
                     
-                    status_box.markdown(f"🔄 **[執行狀態]** 正在匯入：`{current_unit_tag}` | 目前進度：第 **{current_num}** / {total_q} 個字（還剩 **{remaining_num}** 個字）")
+                    status_box.markdown(f"還剩 **{remaining_num}** 個單字")
                     progress_box.progress(current_num / total_q)
                     
                     if '|' in line:
