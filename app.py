@@ -7,6 +7,7 @@ import docx
 import random
 import requests
 import re  
+import urllib.parse
 from gtts import gTTS
 import io
 import base64
@@ -174,7 +175,8 @@ def fetch_all_free_dictionaries(word):
     pos = ""
 
     try:
-        url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{w_clean}"
+        encoded_word = urllib.parse.quote(w_clean)
+        url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{encoded_word}"
         res_fd = requests.get(url_fd, timeout=2)
         if res_fd.status_code == 200:
             data = res_fd.json()
@@ -488,7 +490,6 @@ elif main_menu == "📖 字彙管理":
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
-        # 搜尋與刪除（含刪除該課）並排放在表格上方
         col_f1, col_f2 = st.columns(2, gap="medium")
         with col_f1:
             search_query = st.text_input("🔍 搜尋單字或釋義：")
@@ -509,14 +510,13 @@ elif main_menu == "📖 字彙管理":
                         time.sleep(1)
                         st.rerun()
             with sub_col2:
-                st.write("") # 對齊 label
+                st.write("") 
                 st.write("")
                 if st.button("🗑️ 刪除該課", type="secondary", use_container_width=True):
                     if selected_unit_filter == "全部單字":
                         st.warning("⚠️ 請先在上方下拉選單選擇特定單元，才能執行刪除該課！")
                     else:
                         df_current = load_vocab_dataframe(active_worksheet)
-                        # 只刪除屬於當前選定單元的資料，保留其他所有單元
                         df_current = df_current[df_current['unit_tag'] != selected_unit_filter]
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
