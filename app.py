@@ -257,33 +257,32 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
             })
         return records
 
-    # 2. 檢查定義中是否內含多個詞性標記（例如 "v.張貼 ; n.職位"）
     pos_tokens = ['adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'phr.', 'aux.', 'det.', 'int.', 'n.', 'v.']
-    pos_regex = re.compile(r'\b(v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.|aux\.)', re.IGNORECASE)
-    pos_matches = list(pos_regex.finditer(cleaned_def))
     
-    if len(pos_matches) > 0:
-        for i in range(len(pos_matches)):
-            p_match = pos_matches[i]
-            p = p_match.group(1).lower()
+    # 2. 檢查是否為「交錯型多重詞性」（例如 "v.張貼 ; 郵寄=mail; n.職位" 或 "v.宣判; n.句子"）
+    pos_pattern = r'(v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.|aux\.)'
+    parts = re.split(pos_pattern, cleaned_def, flags=re.IGNORECASE)
+    if len(parts) >= 3:
+        i = 1
+        while i < len(parts) - 1:
+            p = parts[i].strip().lower()
             if not p.endswith('.'): p += '.'
-            
-            start_idx = p_match.end()
-            end_idx = pos_matches[i+1].start() if i + 1 < len(pos_matches) else len(cleaned_def)
-            
-            chunk = cleaned_def[start_idx:end_idx].strip().strip(';').strip(',').strip('；').strip()
-            if chunk:
+            d = parts[i+1].strip().strip(';').strip(',').strip('；').strip()
+            if d:
                 records.append({
                     "word": w_clean,
                     "phonetic": f"/{w_lower}/",
                     "part_of_speech": simple_s2t_convert(p),
-                    "definition": simple_s2t_convert(chunk),
+                    "definition": simple_s2t_convert(d),
                     "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
                     "basic_sentence": pasted_sent,
                     "collocations": pasted_colloc
                 })
-    
-    # 3. 檢查字尾黏著多重詞性（例如 "v.n.", "n.v.adj."）
+            i += 2
+        if records:
+            return records
+
+    # 3. 檢查是否為「字尾黏著多重詞性」（例如 "v.n.", "n.v.adj."）
     if not records:
         temp_def = cleaned_def
         extracted_pos = []
@@ -299,8 +298,9 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
             if not matched:
                 break
         
-        if extracted_pos:
-            def_parts = re.split(r'[；;,]', temp_def)
+        if extracted_pos and len(extracted_pos) > 0:
+            definition = temp_def
+            def_parts = re.split(r'[；;,]', definition)
             def_parts = [dp.strip() for dp in def_parts if dp.strip()]
             
             if len(extracted_pos) > 1 and len(def_parts) == len(extracted_pos):
@@ -327,7 +327,7 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
                     })
             elif len(extracted_pos) > 1:
                 for i, p in enumerate(extracted_pos):
-                    dp = def_parts[i] if i < len(def_parts) else def_parts[-1] if def_parts else temp_def
+                    dp = def_parts[i] if i < len(def_parts) else def_parts[-1] if def_parts else definition
                     records.append({
                         "word": w_clean,
                         "phonetic": f"/{w_lower}/",
@@ -342,40 +342,40 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
                     "word": w_clean,
                     "phonetic": f"/{w_lower}/",
                     "part_of_speech": simple_s2t_convert(extracted_pos[0]),
-                    "definition": simple_s2t_convert(temp_def),
+                    "definition": simple_s2t_convert(definition),
                     "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
                     "basic_sentence": pasted_sent,
                     "collocations": pasted_colloc
                 })
+            return records
 
     # 4. 若無任何標記，查詢線上字典或預設
-    if not records:
-        dict_meanings = fetch_all_meanings_from_dictionary(w_clean)
-        if dict_meanings and not cleaned_def:
-            for dm in dict_meanings:
-                pos = simple_s2t_convert(dm['pos'])
-                d_text = simple_s2t_convert(dm['definition'])
-                eng_def = pasted_eng_def or dm['example'] or f"An English term referring to {w_clean}."
-                records.append({
-                    "word": w_clean,
-                    "phonetic": dm['phonetic'],
-                    "part_of_speech": pos,
-                    "definition": d_text,
-                    "advanced_sentence": eng_def,
-                    "basic_sentence": pasted_sent,
-                    "collocations": pasted_colloc
-                })
-        else:
-            fallback_pos = "phr." if " " in w_clean else "n."
+    dict_meanings = fetch_all_meanings_from_dictionary(w_clean)
+    if dict_meanings and not cleaned_def:
+        for dm in dict_meanings:
+            pos = simple_s2t_convert(dm['pos'])
+            d_text = simple_s2t_convert(dm['definition'])
+            eng_def = pasted_eng_def or dm['example'] or f"An English term referring to {w_clean}."
             records.append({
                 "word": w_clean,
-                "phonetic": f"/{w_lower}/",
-                "part_of_speech": fallback_pos,
-                "definition": cleaned_def,
-                "advanced_sentence": pasted_eng_def or f"A standard English expression referring to {w_clean}.",
+                "phonetic": dm['phonetic'],
+                "part_of_speech": pos,
+                "definition": d_text,
+                "advanced_sentence": eng_def,
                 "basic_sentence": pasted_sent,
                 "collocations": pasted_colloc
             })
+    else:
+        fallback_pos = "phr." if " " in w_clean else "n."
+        records.append({
+            "word": w_clean,
+            "phonetic": f"/{w_lower}/",
+            "part_of_speech": fallback_pos,
+            "definition": cleaned_def,
+            "advanced_sentence": pasted_eng_def or f"A standard English expression referring to {w_clean}.",
+            "basic_sentence": pasted_sent,
+            "collocations": pasted_colloc
+        })
     
     return records
 
@@ -386,7 +386,15 @@ def parse_raw_vocab_line_advanced(line):
 
     match_split = re.search(r'([\u4e00-\u9fa5]|v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.)', line_clean, re.IGNORECASE)
     if not match_split:
-        return [{"word": line_clean, "definition": "", "pos": "n."}]
+        return [{
+            "word": line_clean,
+            "phonetic": f"/{line_clean.lower()}/",
+            "part_of_speech": "n.",
+            "definition": "",
+            "advanced_sentence": f"An English term referring to {line_clean}.",
+            "basic_sentence": "",
+            "collocations": ""
+        }]
     
     word_end_idx = match_split.start()
     word = line_clean[:word_end_idx].strip()
@@ -397,15 +405,7 @@ def parse_raw_vocab_line_advanced(line):
         word = parts[0] if len(parts) > 0 else line_clean
         rest = parts[1] if len(parts) > 1 else ""
 
-    sub_records = parse_mixed_vocab_input(word, raw_def=rest)
-    formatted_results = []
-    for sr in sub_records:
-        formatted_results.append({
-            "word": sr["word"],
-            "definition": sr["definition"],
-            "pos": sr["part_of_speech"]
-        })
-    return formatted_results
+    return parse_mixed_vocab_input(word, raw_def=rest)
 
 def save_all_vocab_to_sheet(_worksheet, df):
     cache_key = f"vocab_df_{_worksheet.title}"
@@ -596,14 +596,7 @@ if main_menu == "✨ 新增單字":
                         pasted_p = parts[2].strip() if len(parts) > 2 else ""
                         records = parse_mixed_vocab_input(w, raw_def=d, pasted_pos=pasted_p)
                     else:
-                        raw_items = parse_raw_vocab_line_advanced(line)
-                        for item in raw_items:
-                            rec_list = parse_mixed_vocab_input(
-                                item["word"], 
-                                raw_def=item["definition"], 
-                                pasted_pos=item["pos"]
-                            )
-                            records.extend(rec_list)
+                        records = parse_raw_vocab_line_advanced(line)
                     
                     if records:
                         for data in records:
