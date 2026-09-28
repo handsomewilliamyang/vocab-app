@@ -35,7 +35,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約乾淨的排版微調，保留右上角原生選單與佈景主題切換
+# 🎨 極簡乾淨排版：移除多餘設定區塊，維持畫面清爽
 st.markdown("""
     <style>
     /* 統整卡片容器：保持乾淨的邊框與適度留白 */
@@ -99,7 +99,7 @@ except Exception as e:
 
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
-    ["✨ 新選單", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
+    ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
     label_visibility="collapsed"
 )
 
@@ -112,16 +112,7 @@ selected_level = st.sidebar.radio(
     label_visibility="collapsed"
 )
 
-# 🛠️ 將系統工具收納在側邊欄下方的摺疊選單中（點開才展開）
 st.sidebar.markdown("---")
-with st.sidebar.expander("⚙️ 更多設定與工具"):
-    if st.button("🧹 清除應用程式快取", use_container_width=True):
-        st.cache_data.clear()
-        st.cache_resource.clear()
-        st.success("✅ 快取已成功清除！")
-        time.sleep(0.5)
-        st.rerun()
-
 st.sidebar.markdown(
     "<p style='text-align: center; color: gray; font-size: 13px; margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
@@ -564,7 +555,7 @@ col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if main_menu == "✨ 新選單":
+if main_menu == "✨ 新增單字":
     if selected_level == "國中部":
         semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
     elif selected_level == "高中部":
