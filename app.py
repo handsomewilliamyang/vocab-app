@@ -107,7 +107,6 @@ main_menu = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("##### 📚 選擇目標語料庫級別：")
 
 selected_level = st.sidebar.radio(
     "選擇目前目標級別：",
