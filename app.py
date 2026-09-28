@@ -35,34 +35,30 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 隱藏 Manage app 並讓左上角側邊欄收合箭頭變得非常醒目
+# 🎨 完美隱藏右下角 Manage app 浮動標籤，並讓側邊欄收合箭頭更醒目
 st.markdown("""
     <style>
-    /* 1. 隱藏左上角的 Manage app 按鈕/標籤 */
-    [data-testid="stToolbar"], div[data-testid="stDecoration"], .viewerBadge_container__1QSob, iframe[title="streamlit_analytics"] {
-        display: none !important;
-    }
-    button[kind="header"] {
-        display: none !important;
-    }
-    /* 針對 Streamlit 雲端工具列的通用隱藏選擇器 */
-    div.stApp > header:first-child {
+    /* 1. 徹底隱藏 Streamlit 雲端右下角的 Manage app 浮動按鈕與標籤 */
+    div[class*="viewerBadge"], 
+    a[href*="streamlit.io/cloud"],
+    .viewerBadge_container__1QSob {
         display: none !important;
     }
 
-    /* 2. 讓收合/展開側邊欄的箭頭變得非常醒目 */
+    /* 2. 讓左上角側邊欄收合/展開箭頭變得非常醒目 */
     [data-testid="collapsedControl"] {
-        background-color: rgba(255, 75, 75, 0.15) !important;
+        background-color: rgba(255, 75, 75, 0.2) !important;
         border: 2px solid #ff4b4b !important;
         border-radius: 8px !important;
         color: #ff4b4b !important;
-        box-shadow: 0 0 10px rgba(255, 75, 75, 0.3) !important;
+        box-shadow: 0 0 12px rgba(255, 75, 75, 0.4) !important;
         transition: all 0.2s ease-in-out;
+        z-index: 999999 !important;
     }
     [data-testid="collapsedControl"]:hover {
         background-color: #ff4b4b !important;
         color: white !important;
-        transform: scale(1.05);
+        transform: scale(1.1);
     }
 
     /* 3. 統整卡片容器：保持乾淨的邊框與適度留白 */
