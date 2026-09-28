@@ -899,7 +899,8 @@ elif main_menu == "🎮 我是拼字王":
                 with st.container(border=True):
                     q_col1, q_col2 = st.columns([5, 1])
                     with q_col2:
-                        st.markdown(f"<div style='text-align: right; color: gray; font-size: 15px; font-weight: bold;'>剩餘題數：{remaining_count} / {total_q_count}</div>", unsafe_allow_html=True)
+                        # 僅顯示剩餘題數
+                        st.markdown(f"<div style='text-align: right; color: gray; font-size: 15px; font-weight: bold;'>剩餘題數：{remaining_count}</div>", unsafe_allow_html=True)
 
                     if "標準模式" in game_mode:
                         audio_us = generate_audio_bytes(target_word, 'com')
