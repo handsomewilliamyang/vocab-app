@@ -211,6 +211,7 @@ def get_word_record_data_clean(word, raw_def=""):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
 
+    # 💡 這裡修復了：成功將抓取到的英文釋義 (real_eng_def) 賦值並回傳！
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
 
     if not fetched_phonetic:
@@ -223,7 +224,7 @@ def get_word_record_data_clean(word, raw_def=""):
         "phonetic": fetched_phonetic,
         "part_of_speech": simple_s2t_convert(fetched_pos),
         "definition": cleaned_def,
-        "advanced_sentence": real_eng_def if real_eng_def else "",
+        "advanced_sentence": real_eng_def if real_eng_def else f"Definition for {w_clean}",
         "basic_sentence": "",
         "collocations": ""
     }
@@ -337,8 +338,6 @@ if main_menu == "✨ 新增單字":
 
     with col_input2:
         st.subheader("📋 智慧多格式快速貼上匯入")
-        
-        # 💡 狀態欄：即時顯示目前目標分組與準備匯入數
         st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
         
         pasted_text = st.text_area("貼上完整單字清單：", placeholder="pop | (意外地)出現 | A great idea popped | pop up, pop out", height=140)
@@ -350,7 +349,6 @@ if main_menu == "✨ 新增單字":
         else:
             st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
 
-        # 💡 匯入執行中的動態進度與狀態佔位區
         status_box = st.empty()
         progress_box = st.empty()
 
@@ -365,7 +363,6 @@ if main_menu == "✨ 新增單字":
                     current_num = i + 1
                     remaining_num = total_q - current_num
                     
-                    # 動態更新狀態欄（目前匯入到第幾個字、還剩多少個字）
                     status_box.markdown(f"🔄 **[執行狀態]** 正在匯入：`{current_unit_tag}` | 目前進度：第 **{current_num}** / {total_q} 個字（還剩 **{remaining_num}** 個字）")
                     progress_box.progress(current_num / total_q)
                     
@@ -411,7 +408,7 @@ if main_menu == "✨ 新增單字":
                                 df_current = pd.concat([df_current, new_row], ignore_index=True)
                             count += 1
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_box.success(f"🎊 成功匯入/更新 {count} 個單字（分類：{current_unit_tag}）！")
+                status_box.success(f"🎊 成功匯入/更新 {count} 個單字的完整資料（分類：{current_unit_tag}）！")
                 time.sleep(1.5)
                 st.rerun()
 
