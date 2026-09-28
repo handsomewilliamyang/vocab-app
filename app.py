@@ -488,24 +488,42 @@ elif main_menu == "📖 字彙管理":
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
-        # 搜尋與刪除並排放在表格上方，乾淨且不佔空間
+        # 搜尋與刪除（含刪除該課）並排放在表格上方
         col_f1, col_f2 = st.columns(2, gap="medium")
         with col_f1:
             search_query = st.text_input("🔍 搜尋單字或釋義：")
             if search_query:
                 filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
         with col_f2:
-            word_to_delete = st.selectbox("🗑️ 快速刪除單字：", ["--請選擇要刪除的單字--"] + filtered_df['word'].tolist() if not filtered_df.empty else ["--請選擇要刪除的單字--"])
-            if word_to_delete != "--請選擇要刪除的單字--":
-                if st.button(f"確認刪除單字：{word_to_delete}", type="primary", use_container_width=True):
-                    df_current = load_vocab_dataframe(active_worksheet)
-                    df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
-                    if not df_current.empty:
-                        df_current['id'] = range(1, len(df_current) + 1)
-                    save_all_vocab_to_sheet(active_worksheet, df_current)
-                    st.success(f"已成功刪除單字：{word_to_delete}")
-                    time.sleep(1)
-                    st.rerun()
+            sub_col1, sub_col2 = st.columns([3, 1], gap="small")
+            with sub_col1:
+                word_to_delete = st.selectbox("🗑️ 快速刪除單字：", ["--請選擇要刪除的單字--"] + filtered_df['word'].tolist() if not filtered_df.empty else ["--請選擇要刪除的單字--"])
+                if word_to_delete != "--請選擇要刪除的單字--":
+                    if st.button(f"確認刪除：{word_to_delete}", type="primary", use_container_width=True):
+                        df_current = load_vocab_dataframe(active_worksheet)
+                        df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
+                        if not df_current.empty:
+                            df_current['id'] = range(1, len(df_current) + 1)
+                        save_all_vocab_to_sheet(active_worksheet, df_current)
+                        st.success(f"已刪除：{word_to_delete}")
+                        time.sleep(1)
+                        st.rerun()
+            with sub_col2:
+                st.write("") # 對齊 label
+                st.write("")
+                if st.button("🗑️ 刪除該課", type="secondary", use_container_width=True):
+                    if selected_unit_filter == "全部單字":
+                        st.warning("⚠️ 請先在上方下拉選單選擇特定單元，才能執行刪除該課！")
+                    else:
+                        df_current = load_vocab_dataframe(active_worksheet)
+                        # 只刪除屬於當前選定單元的資料，保留其他所有單元
+                        df_current = df_current[df_current['unit_tag'] != selected_unit_filter]
+                        if not df_current.empty:
+                            df_current['id'] = range(1, len(df_current) + 1)
+                        save_all_vocab_to_sheet(active_worksheet, df_current)
+                        st.success(f"🗑️ 已成功刪除「{selected_unit_filter}」整課單字！")
+                        time.sleep(1)
+                        st.rerun()
 
         st.markdown("---")
 
