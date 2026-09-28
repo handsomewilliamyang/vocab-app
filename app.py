@@ -229,7 +229,7 @@ def get_word_record_data_clean(word, raw_def="", pasted_pos="", pasted_eng_def="
                 "gemini-1.5-flash",
                 generation_config={"response_mime_type": "application/json", "temperature": 0.7}
             )
-            prompt = f"""Provide a professional, clear English definition for: "{w_clean}" (Chinese meaning: "{cleaned_def}").
+            prompt = f"""Provide a professional, clear English definition for: "{w_clean}" as a {fetched_pos} meaning "{cleaned_def}".
             Return a JSON object strictly matching this schema:
             {{
               "english_definition": "A clear and concise definition in English."
@@ -335,13 +335,13 @@ if main_menu == "✨ 新增單字":
                 with st.spinner("🔍 正在查詢字典與寫入..."):
                     data = get_word_record_data_clean(single_word, raw_def=single_def)
                     word = data.get('word')
+                    pos = data.get('part_of_speech', '')
                     
                     df_current = load_vocab_dataframe(active_worksheet)
-                    match_mask = df_current['word'].astype(str).str.strip().str.lower() == word.lower()
+                    match_mask = (df_current['word'].astype(str).str.strip().str.lower() == word.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == pos.lower())
                     if not df_current.empty and match_mask.any():
                         idx = df_current.index[match_mask].tolist()[0]
                         df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
-                        df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         if data.get('definition'): df_current.at[idx, 'definition'] = data.get('definition')
                         df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                         if single_sent: df_current.at[idx, 'basic_sentence'] = single_sent
@@ -353,7 +353,7 @@ if main_menu == "✨ 新增單字":
                             'id': next_id,
                             'word': word,
                             'phonetic': data.get('phonetic', ''),
-                            'part_of_speech': data.get('part_of_speech', ''),
+                            'part_of_speech': pos,
                             'definition': data.get('definition', ''),
                             'advanced_sentence': data.get('advanced_sentence', ''),
                             'basic_sentence': single_sent,
@@ -364,7 +364,7 @@ if main_menu == "✨ 新增單字":
                         df_current = pd.concat([df_current, new_row], ignore_index=True)
                         
                     save_all_vocab_to_sheet(active_worksheet, df_current)
-                    st.success(f"🎉 成功新增單字：{word}")
+                    st.success(f"🎉 成功新增單字：{word} ({pos})")
                     time.sleep(0.5)
                     st.rerun()
 
@@ -374,7 +374,7 @@ if main_menu == "✨ 新增單字":
         
         pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 詞性 | 英文釋義 | 例句 | 搭配詞）：", placeholder="drink | 喝 | v. | take liquid | Drink some water. | drink water", height=140)
         
-        valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
+        valid_lines = [l for l in pasted_text.strip().split('\n'] if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
         if total_preview_count > 0:
             st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個單字準備匯入至「{current_unit_tag}」")
@@ -386,7 +386,7 @@ if main_menu == "✨ 新增單字":
 
         if st.button("📥 批次匯入完整清單", use_container_width=True):
             if pasted_text:
-                lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
+                lines = [l for l in pasted_text.strip().split('\n'] if l.strip()]
                 total_q = len(lines)
                 df_current = load_vocab_dataframe(active_worksheet)
                 count = 0
@@ -447,12 +447,13 @@ if main_menu == "✨ 新增單字":
                                 pasted_colloc=pasted_c
                             )
 
-                            match_mask = df_current['word'].astype(str).str.strip().str.lower() == w.lower()
+                            target_pos = data.get('part_of_speech', '')
+                            # 以「單字 + 詞性」雙重判定，確保一字多義（不同詞性）各自獨立成行
+                            match_mask = (df_current['word'].astype(str).str.strip().str.lower() == w.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == target_pos.lower())
                             
                             if not df_current.empty and match_mask.any():
                                 idx = df_current.index[match_mask].tolist()[0]
                                 df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
-                                df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                                 if d: df_current.at[idx, 'definition'] = simple_s2t_convert(d)
                                 df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                                 if data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence')
@@ -464,7 +465,7 @@ if main_menu == "✨ 新增單字":
                                     'id': next_id,
                                     'word': w,
                                     'phonetic': data.get('phonetic', ''),
-                                    'part_of_speech': data.get('part_of_speech', ''),
+                                    'part_of_speech': target_pos,
                                     'definition': simple_s2t_convert(d),
                                     'advanced_sentence': data.get('advanced_sentence', ''),
                                     'basic_sentence': data.get('basic_sentence', ''),
