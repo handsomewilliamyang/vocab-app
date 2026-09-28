@@ -35,14 +35,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 側邊欄底部選單調整 CSS
+# 🎨 簡約乾淨的排版微調，保留右上角原生選單與佈景主題切換
 st.markdown("""
     <style>
-    /* 1. 隱藏預設的右上角選單 (Hamburger Menu) 與 Header */
-    #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
-
-    /* 2. 統整卡片容器：保持乾淨的深色風格與細緻邊框 */
+    /* 統整卡片容器：保持乾淨的邊框與適度留白 */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -50,7 +46,7 @@ st.markdown("""
         background-color: transparent !important;
     }
 
-    /* 3. 欄位文字與排版優化 */
+    /* 欄位文字與排版優化 */
     .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -60,7 +56,7 @@ st.markdown("""
         font-size: 15px !important;
     }
 
-    /* 4. 側邊欄與輸入框微調 */
+    /* 側邊欄與輸入框微調 */
     [data-testid="stSidebar"] .stRadio label p {
         font-size: 18px !important;
         font-weight: 500 !important;
@@ -116,9 +112,9 @@ selected_level = st.sidebar.radio(
     label_visibility="collapsed"
 )
 
-# 🛠️ 將原本隱藏在右上角的系統功能（清除快取、重新整理等）移至左側側邊欄下方
+# 🛠️ 側邊欄下方的快取清理工具
 st.sidebar.markdown("---")
-st.sidebar.markdown("##### ⚙️ 系統與快取工具")
+st.sidebar.markdown("##### ⚙️ 系統維護工具")
 if st.sidebar.button("🧹 清除應用程式快取", use_container_width=True):
     st.cache_data.clear()
     st.cache_resource.clear()
