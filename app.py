@@ -374,7 +374,7 @@ if main_menu == "✨ 新增單字":
         
         pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 詞性 | 英文釋義 | 例句 | 搭配詞）：", placeholder="drink | 喝 | v. | take liquid | Drink some water. | drink water", height=140)
         
-        valid_lines = [l for l in pasted_text.strip().split('\n'] if l.strip()] if pasted_text else []
+        valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
         if total_preview_count > 0:
             st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個單字準備匯入至「{current_unit_tag}」")
@@ -386,7 +386,7 @@ if main_menu == "✨ 新增單字":
 
         if st.button("📥 批次匯入完整清單", use_container_width=True):
             if pasted_text:
-                lines = [l for l in pasted_text.strip().split('\n'] if l.strip()]
+                lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
                 total_q = len(lines)
                 df_current = load_vocab_dataframe(active_worksheet)
                 count = 0
@@ -448,7 +448,6 @@ if main_menu == "✨ 新增單字":
                             )
 
                             target_pos = data.get('part_of_speech', '')
-                            # 以「單字 + 詞性」雙重判定，確保一字多義（不同詞性）各自獨立成行
                             match_mask = (df_current['word'].astype(str).str.strip().str.lower() == w.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == target_pos.lower())
                             
                             if not df_current.empty and match_mask.any():
