@@ -35,35 +35,95 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 🎨 設計師優化：全新的全局 CSS 樣式，打造 Notion 風格的簡潔高質感
 st.markdown("""
     <style>
+    /* 1. 全局字體與表格舒適度優化 */
     .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
         white-space: normal !important;
         word-wrap: break-word !important;
         height: auto !important;
-        padding-top: 10px !important;
-        padding-bottom: 10px !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        font-size: 15px !important;
     }
-    /* 放大側邊欄選項字體，提升操作體驗 */
+    
+    /* 2. 側邊欄導覽列高質感化 */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa; /* 非常淡的灰底，區分主畫面 */
+    }
     [data-testid="stSidebar"] .stRadio label p {
-        font-size: 19px !important;
-        font-weight: 500 !important;
+        font-size: 18px !important;
+        font-weight: 600 !important;
+        color: #334155;
+        padding: 4px 0px;
     }
     [data-testid="stSidebar"] h5 {
-        font-size: 18px !important;
-    }
-    /* 主畫面輸入框與下拉選單標題字體放大 */
-    .stSelectbox label, .stTextInput label, .stTextArea label, .stRadio label {
         font-size: 17px !important;
-        font-weight: 600 !important;
+        color: #64748b;
+        font-weight: 700;
+        letter-spacing: 0.5px;
     }
-    /* 針對手機與平板模式（螢幕寬度較小）進行響應式微調，避免過大跑版 */
+
+    /* 3. 主畫面輸入框與下拉選單 */
+    .stSelectbox label, .stTextInput label, .stTextArea label, .stRadio label {
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        color: #475569;
+    }
+    
+    /* 讓所有的輸入框、下拉選單有更柔和的圓角 */
+    div[data-baseweb="select"] > div, div[data-baseweb="input"] {
+        border-radius: 8px !important;
+    }
+
+    /* 4. 卡片式 UI (Card Design)：讓帶有 border 的 container 更有質感 */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 16px !important;
+        border: 1px solid rgba(0, 0, 0, 0.08) !important;
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04) !important;
+        padding: 10px;
+        background-color: #ffffff;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* 5. Streamlit 預設按鈕美化 (匹配三國語音按鈕的質感) */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px;
+        transition: all 0.2s ease-in-out !important;
+        border: 1px solid rgba(0, 0, 0, 0.15) !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+    }
+    .stButton > button:active {
+        transform: scale(0.97) !important;
+    }
+
+    /* RWD 響應式微調 */
     @media (max-width: 768px) {
-        [data-testid="stSidebar"] .stRadio label p {
-            font-size: 16px !important;
+        [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
+        [data-testid="stSidebar"] h5 { font-size: 15px !important; }
+        h1 { font-size: 42px !important; }
+    }
+    
+    /* 深色模式(Dark Mode)的字體與卡片適配 */
+    @media (prefers-color-scheme: dark) {
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: #1e1e1e;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
         }
-        [data-testid="stSidebar"] h5 {
-            font-size: 15px !important;
+        [data-testid="stSidebar"] {
+            background-color: #1a1a1a;
+        }
+        [data-testid="stSidebar"] .stRadio label p, .stSelectbox label, .stTextInput label {
+            color: #e2e8f0;
         }
     }
     </style>
@@ -471,7 +531,7 @@ def get_hierarchical_units(df):
         
     return sorted(semesters), semester_to_units
 
-# ★★★ 終極版高質感多國語音模組：解決過暗問題、位置置中對齊 ★★★
+# ★★★ 終極版高質感多國語音模組：保持凍結不變 ★★★
 def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"):
     return f"""
     <!DOCTYPE html>
@@ -484,7 +544,6 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"):
                 overflow: hidden; height: 100vh;
             }}
             button {{
-                /* 完美還原上一題/下一題按鈕的高質感配色 */
                 background-color: rgba(255, 255, 255, 0.08); 
                 border: 1px solid rgba(255, 255, 255, 0.25); 
                 border-radius: 6px;
@@ -505,7 +564,6 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"):
             button:active {{
                 transform: scale(0.95);
             }}
-            /* 防呆：如果使用者的系統是淺色模式時的自動適配 */
             @media (prefers-color-scheme: light) {{
                 button {{
                     background-color: rgba(0, 0, 0, 0.03);
@@ -802,7 +860,6 @@ elif main_menu == "🎯 背誦單字":
             row = df_filtered_flash.iloc[st.session_state.flashcard_index]
             
             with st.container(border=True):
-                # 1. 產生三國口音音檔
                 audio_us = generate_audio_bytes(row['word'], 'com')
                 audio_uk = generate_audio_bytes(row['word'], 'co.uk')
                 audio_au = generate_audio_bytes(row['word'], 'com.au')
@@ -810,24 +867,23 @@ elif main_menu == "🎯 背誦單字":
                 b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                 b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                 
-                # 2. 單字大寫置中
-                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{row['word']}</h1>", unsafe_allow_html=True)
+                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px; font-weight: 700; color: #1e293b;'>{row['word']}</h1>", unsafe_allow_html=True)
                 
-                # 3. 三國語音按鈕直接置中放在單字正下方
                 if b64_us and b64_uk and b64_au:
                     components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"), height=45)
                 
-                # 4. 音標與詞性在下方
-                st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; color: #94a3b8; font-size: 17px; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
-                st.markdown("---")
-                st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 1.5em 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
+                
+                # 🎨 設計師優化：將原本的強烈色系改為更耐看、現代感的「莫蘭迪/微調色系」
+                st.markdown(f"<h4 style='color: #10b981; font-weight: 700; margin-bottom: 15px;'>📝 中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
                 if row.get('advanced_sentence'):
-                    st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence')}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='color: #3b82f6; font-weight: 600; font-size: 18px; margin-bottom: 12px;'>📖 英文釋義：{row.get('advanced_sentence')}</p>", unsafe_allow_html=True)
                 if row.get('basic_sentence'):
-                    st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='color: #f59e0b; font-weight: 500; font-size: 18px; margin-bottom: 12px; font-style: italic;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
                 if row.get('collocations'):
-                    st.markdown(f"<p style='font-weight: 500; font-size: 17px; color: #E91E63;'>🔗 搭配詞：{row.get('collocations')}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='color: #ec4899; font-weight: 600; font-size: 17px; margin-bottom: 12px;'>🔗 搭配詞：{row.get('collocations')}</p>", unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             if c1.button("⬅️ 上一個", use_container_width=True):
@@ -897,7 +953,7 @@ elif main_menu == "🎮 我是拼字王":
                 with st.container(border=True):
                     q_col1, q_col2 = st.columns([5, 1])
                     with q_col2:
-                        st.markdown(f"<div style='text-align: right; color: gray; font-size: 15px; font-weight: bold;'>剩餘題數：{remaining_count} / {total_q_count}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align: right; color: #94a3b8; font-size: 15px; font-weight: 600;'>剩餘題數：{remaining_count} / {total_q_count}</div>", unsafe_allow_html=True)
 
                     if "標準模式" in game_mode:
                         audio_us = generate_audio_bytes(target_word, 'com')
@@ -907,10 +963,11 @@ elif main_menu == "🎮 我是拼字王":
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                         
-                        st.markdown(f"<h2 style='color: #4CAF50; margin-bottom: 5px;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                        # 🎨 色彩統一：使用 #10b981 (祖母綠) 取代原本過於明亮的綠色
+                        st.markdown(f"<h2 style='color: #10b981; margin-bottom: 5px; font-weight: 700;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
                         if b64_us:
                             components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
-                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='margin-top: 12px; font-size: 18px; color: #475569;'><b>🔤 拼字提示：</b> <code style='font-size: 20px; background-color: #f1f5f9; padding: 4px 8px; border-radius: 6px;'>{hint_masked}</code></div>", unsafe_allow_html=True)
                     else:
                         audio_us = generate_audio_bytes(target_adv_def, 'com')
                         audio_uk = generate_audio_bytes(target_adv_def, 'co.uk')
@@ -919,11 +976,12 @@ elif main_menu == "🎮 我是拼字王":
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                         
-                        st.markdown(f"<h2 style='color: #2196F3; margin-bottom: 5px; font-size: 22px;'>🔊 英文解釋聽力提示：</h2>", unsafe_allow_html=True)
-                        st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 5px; margin-bottom: 10px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
+                        # 🎨 色彩統一：使用 #3b82f6 (矢車菊藍) 取代原本過亮的藍色
+                        st.markdown(f"<h2 style='color: #3b82f6; margin-bottom: 5px; font-size: 22px; font-weight: 700;'>🔊 英文解釋聽力提示：</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 5px; margin-bottom: 12px; color: #475569;'>{target_adv_def}</p>", unsafe_allow_html=True)
                         if b64_us:
                             components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
-                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='margin-top: 12px; font-size: 18px; color: #475569;'><b>🔤 拼字提示：</b> <code style='font-size: 20px; background-color: #f1f5f9; padding: 4px 8px; border-radius: 6px;'>{hint_masked}</code></div>", unsafe_allow_html=True)
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
