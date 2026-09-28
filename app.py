@@ -35,30 +35,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 完美隱藏右下角 Manage app 浮動標籤，並讓側邊欄收合箭頭更醒目
+# 🎨 優化手機排版：增加底部安全距離，避免鍵盤擋住輸入框
 st.markdown("""
     <style>
-    /* 1. 徹底隱藏 Streamlit 雲端右下角的 Manage app 浮動按鈕與標籤 */
-    div[class*="viewerBadge"], 
-    a[href*="streamlit.io/cloud"],
-    .viewerBadge_container__1QSob {
-        display: none !important;
+    /* 1. 針對行動裝置與桌面版增加底部空間，避免虛擬鍵盤彈出時遮擋輸入框 */
+    .main .block-container {
+        padding-bottom: 150px !important;
     }
 
-    /* 2. 讓左上角側邊欄收合/展開箭頭變得非常醒目 */
-    [data-testid="collapsedControl"] {
-        background-color: rgba(255, 75, 75, 0.2) !important;
-        border: 2px solid #ff4b4b !important;
-        border-radius: 8px !important;
-        color: #ff4b4b !important;
-        box-shadow: 0 0 12px rgba(255, 75, 75, 0.4) !important;
-        transition: all 0.2s ease-in-out;
-        z-index: 999999 !important;
-    }
-    [data-testid="collapsedControl"]:hover {
-        background-color: #ff4b4b !important;
-        color: white !important;
-        transform: scale(1.1);
+    /* 2. 讓輸入框獲得焦點時具備平滑滾動與適當外距 */
+    input[type="text"], textarea {
+        scroll-margin-bottom: 200px !important;
     }
 
     /* 3. 統整卡片容器：保持乾淨的邊框與適度留白 */
@@ -97,6 +84,9 @@ st.markdown("""
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
+        .main .block-container {
+            padding-bottom: 220px !important; /* 手機上預留更多底部空間給虛擬鍵盤 */
+        }
     }
     </style>
 """, unsafe_allow_html=True)
