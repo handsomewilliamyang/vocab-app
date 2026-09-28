@@ -223,9 +223,9 @@ def get_word_record_data_clean(word, raw_def=""):
         "phonetic": fetched_phonetic,
         "part_of_speech": simple_s2t_convert(fetched_pos),
         "definition": cleaned_def,
-        "advanced_sentence": real_eng_def if real_eng_def else "", # 保留英文釋義
-        "basic_sentence": "",    # 例句保持乾淨空白
-        "collocations": ""       # 搭配詞保持乾淨空白
+        "advanced_sentence": real_eng_def if real_eng_def else "",
+        "basic_sentence": "",
+        "collocations": ""
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
@@ -295,6 +295,8 @@ if main_menu == "✨ 新增單字":
         st.subheader("📝 單筆快速建檔")
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
         single_def = st.text_input("中文釋義（選填）：", placeholder="例如：有彈性的、韌性強的")
+        single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
+        single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
                 with st.spinner("🔍 正在查詢字典並寫入..."):
@@ -302,12 +304,15 @@ if main_menu == "✨ 新增單字":
                     word = data.get('word')
                     
                     df_current = load_vocab_dataframe(active_worksheet)
-                    if not df_current.empty and word.lower() in df_current['word'].str.lower().values:
-                        idx = df_current.index[df_current['word'].str.lower() == word.lower()].tolist()[0]
+                    match_mask = df_current['word'].astype(str).str.strip().str.lower() == word.lower()
+                    if not df_current.empty and match_mask.any():
+                        idx = df_current.index[match_mask].tolist()[0]
                         df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
                         df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         if data.get('definition'): df_current.at[idx, 'definition'] = data.get('definition')
                         if data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence')
+                        if single_sent: df_current.at[idx, 'basic_sentence'] = single_sent
+                        if single_colloc: df_current.at[idx, 'collocations'] = single_colloc
                         df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
                         next_id = len(df_current) + 1
@@ -318,8 +323,8 @@ if main_menu == "✨ 新增單字":
                             'part_of_speech': data.get('part_of_speech', ''),
                             'definition': data.get('definition', ''),
                             'advanced_sentence': data.get('advanced_sentence', ''),
-                            'basic_sentence': '',
-                            'collocations': '',
+                            'basic_sentence': single_sent,
+                            'collocations': single_colloc,
                             'unit_tag': current_unit_tag,
                             'srs_stage': 0
                         }])
@@ -331,28 +336,43 @@ if main_menu == "✨ 新增單字":
                     st.rerun()
 
     with col_input2:
-        st.subheader("📋 文字/CSV 快速貼上匯入")
-        st.markdown("您可以直接將單字清單貼在下方（每行一個，格式：`單字, 中文釋義` 或直接從 Excel 複製貼上）：")
+        st.subheader("📋 智慧多格式快速貼上匯入")
+        st.markdown("支援 `|` 豎線、Tab 或逗號分隔：`單字 | 中文釋義 | 例句 | 搭配詞`")
         
-        pasted_text = st.text_area("貼上單字清單：", placeholder="resilient, 彈性的\nefficient, 有效率的", height=150)
-        if st.button("📥 批次匯入文字清單", use_container_width=True):
+        pasted_text = st.text_area("貼上完整單字清單：", placeholder="pop | (意外地)出現 | A great idea popped | pop up, pop out", height=150)
+        if st.button("📥 批次匯入完整清單", use_container_width=True):
             if pasted_text:
                 lines = pasted_text.strip().split('\n')
                 df_current = load_vocab_dataframe(active_worksheet)
                 count = 0
                 for line in lines:
-                    parts = [p.strip() for p in re.split(r'[,;\t|]', line) if p.strip()]
-                    if parts:
-                        w = parts[0]
-                        d = parts[1] if len(parts) > 1 else ""
-                        if w and len(w) < 35:
+                    if not line.strip():
+                        continue
+                    # 💡 智慧解析：自動適應 |、Tab 或逗號
+                    if '|' in line:
+                        parts = [p.strip() for p in line.split('|')]
+                    elif '\t' in line:
+                        parts = [p.strip() for p in line.split('\t')]
+                    else:
+                        parts = [p.strip() for p in line.split(',')]
+                        
+                    if parts and parts[0].strip():
+                        w = parts[0].strip()
+                        d = parts[1].strip() if len(parts) > 1 else ""
+                        s = parts[2].strip() if len(parts) > 2 else ""
+                        c = parts[3].strip() if len(parts) > 3 else ""
+                        
+                        if len(w) < 35:
                             data = get_word_record_data_clean(w, raw_def=d)
-                            if not df_current.empty and w.lower() in df_current['word'].str.lower().values:
-                                idx = df_current.index[df_current['word'].str.lower() == w.lower()].tolist()[0]
+                            match_mask = df_current['word'].astype(str).str.strip().str.lower() == w.lower()
+                            if not df_current.empty and match_mask.any():
+                                idx = df_current.index[match_mask].tolist()[0]
                                 df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
                                 df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                                 if d: df_current.at[idx, 'definition'] = simple_s2t_convert(d)
                                 if data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence')
+                                if s: df_current.at[idx, 'basic_sentence'] = s
+                                if c: df_current.at[idx, 'collocations'] = c
                                 df_current.at[idx, 'unit_tag'] = current_unit_tag
                             else:
                                 next_id = len(df_current) + 1
@@ -363,15 +383,15 @@ if main_menu == "✨ 新增單字":
                                     'part_of_speech': data.get('part_of_speech', ''),
                                     'definition': simple_s2t_convert(d),
                                     'advanced_sentence': data.get('advanced_sentence', ''),
-                                    'basic_sentence': '',
-                                    'collocations': '',
+                                    'basic_sentence': s,
+                                    'collocations': c,
                                     'unit_tag': current_unit_tag,
                                     'srs_stage': 0
                                 }])
                                 df_current = pd.concat([df_current, new_row], ignore_index=True)
                             count += 1
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success(f"🎊 成功匯入 {count} 個單字！")
+                st.success(f"🎊 成功匯入/更新 {count} 個單字的例句與搭配詞！")
                 time.sleep(1)
                 st.rerun()
 
@@ -382,48 +402,13 @@ elif main_menu == "📖 字彙管理":
         unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else []
         unit_list = ["全部單字"] + [u for u in unit_list if u.strip() != ""]
         
-        col_f1, col_f2 = st.columns([1.5, 1])
-        with col_f1:
-            selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
-        with col_f2:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            # 💡 嚴格只清空例句與搭配詞，保留英文釋義
-            if st.button("🧹 一鍵清空「例句」與「搭配詞」(保留英文釋義)", type="primary", use_container_width=True):
-                df_current = load_vocab_dataframe(active_worksheet, force_reload=True).copy()
-                if selected_unit_filter != "全部單字":
-                    target_indices = df_current[df_current['unit_tag'] == selected_unit_filter].index
-                    df_current.loc[target_indices, 'basic_sentence'] = ""
-                    df_current.loc[target_indices, 'collocations'] = ""
-                else:
-                    df_current['basic_sentence'] = ""
-                    df_current['collocations'] = ""
-                
-                success, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
-                if success:
-                    st.success("✅ 已成功清空所選範圍的例句與搭配詞（英文釋義已完整保留）！")
-                else:
-                    st.warning(f"⚠️ 雲端更新稍有延遲 ({msg})")
-                time.sleep(1.5)
-                st.rerun()
+        selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
-        col_s1, col_s2 = st.columns([2, 1])
-        with col_s1:
-            search_query = st.text_input("🔍 搜尋單字或釋義：")
-        with col_s2:
-            words_to_delete = st.multiselect("🗑️ 勾選要刪除的單字：", filtered_df['word'].tolist(), placeholder="選擇要刪除的單字...")
-
+        search_query = st.text_input("🔍 搜尋單字或釋義：")
         if search_query:
             filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
-        
-        if words_to_delete:
-            if st.button("⚠️ 確認刪除已勾選的單字", type="primary"):
-                df_current = load_vocab_dataframe(active_worksheet)
-                df_current = df_current[~df_current['word'].isin(words_to_delete)]
-                save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success("已成功刪除勾選的單字！")
-                st.rerun()
 
         with st.expander("📋 單字總表與快速編輯", expanded=True):
             st.dataframe(
@@ -441,48 +426,6 @@ elif main_menu == "📖 字彙管理":
                     "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
                 }
             )
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            with st.container(border=True):
-                st.markdown("#### ✏️ 雲端單字快速編輯修正")
-                if not filtered_df.empty:
-                    word_options = {f"{row['word']} ({row['definition'] if row['definition'] else '無中文'})": row for _, row in filtered_df.iterrows()}
-                    selected_option = st.selectbox("選擇要編輯的單字：", list(word_options.keys()), key="table_edit_select")
-                    
-                    if selected_option:
-                        target_row = word_options[selected_option]
-                        with st.form(key=f"table_edit_form_{target_row['word']}"):
-                            col_e1, col_e2, col_e3 = st.columns(3)
-                            with col_e1:
-                                edit_word = st.text_input("單字 (Word)", value=target_row['word'])
-                            with col_e2:
-                                edit_phonetic = st.text_input("音標 (Phonetic)", value=target_row.get('phonetic', ''))
-                            with col_e3:
-                                edit_pos = st.text_input("詞性 (POS)", value=target_row.get('part_of_speech', ''))
-                                
-                            edit_def = st.text_input("中文釋義 (Definition)", value=target_row.get('definition', ''))
-                            edit_adv = st.text_input("英文釋義 (English Def)", value=target_row.get('advanced_sentence', ''))
-                            edit_basic = st.text_area("真實例句 (Sentence)", value=target_row.get('basic_sentence', ''))
-                            edit_colloc = st.text_input("搭配詞 (Collocations)", value=target_row.get('collocations', ''))
-                            
-                            submit_table_edit = st.form_submit_button("💾 儲存修改至雲端", type="primary")
-                            
-                            if submit_table_edit:
-                                df_current = load_vocab_dataframe(active_worksheet)
-                                idxs = df_current.index[df_current['word'] == target_row['word']].tolist()
-                                if idxs:
-                                    idx = idxs[0]
-                                    df_current.at[idx, 'word'] = edit_word
-                                    df_current.at[idx, 'phonetic'] = edit_phonetic
-                                    df_current.at[idx, 'part_of_speech'] = edit_pos
-                                    df_current.at[idx, 'definition'] = simple_s2t_convert(edit_def)
-                                    df_current.at[idx, 'advanced_sentence'] = edit_adv
-                                    df_current.at[idx, 'basic_sentence'] = edit_basic
-                                    df_current.at[idx, 'collocations'] = edit_colloc
-                                    save_all_vocab_to_sheet(active_worksheet, df_current)
-                                    st.success("✅ 雲端修改成功！")
-                                    time.sleep(0.5)
-                                    st.rerun()
 
 elif main_menu == "🎯 背誦單字":
     if df_vocab.empty:
@@ -493,15 +436,8 @@ elif main_menu == "🎯 背誦單字":
         
         df_filtered_flash = df_vocab if selected_flash_unit == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_flash_unit]
         
-        if df_filtered_flash.empty:
-            st.warning("📭 該分類中沒有單字！")
-        else:
-            if "current_flash_unit" not in st.session_state or st.session_state.current_flash_unit != selected_flash_unit:
-                st.session_state.current_flash_unit = selected_flash_unit
-                st.session_state.flashcard_index = 0
-                
+        if not df_filtered_flash.empty:
             if "flashcard_index" not in st.session_state: st.session_state.flashcard_index = 0
-            
             total_count = len(df_filtered_flash)
             st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
             row = df_filtered_flash.iloc[st.session_state.flashcard_index]
@@ -509,59 +445,12 @@ elif main_menu == "🎯 背誦單字":
             with st.container(border=True):
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
-                
-                ac_col1, ac_col2, ac_col3 = st.columns(3)
-                with ac_col1:
-                    if st.button("🔊 美式發音 (US)", use_container_width=True, key=f"us_{st.session_state.flashcard_index}"):
-                        safe_w = row['word'].replace("'", "\\'").replace('"', '\\"')
-                        components.html(f"""
-                        <script>
-                            if ('speechSynthesis' in window) {{
-                                window.speechSynthesis.cancel();
-                                var utterance = new SpeechSynthesisUtterance("{safe_w}");
-                                utterance.lang = 'en-US';
-                                utterance.rate = 0.9;
-                                window.speechSynthesis.speak(utterance);
-                            }}
-                        </script>
-                        """, height=0)
-                with ac_col2:
-                    if st.button("🔊 英式發音 (UK)", use_container_width=True, key=f"uk_{st.session_state.flashcard_index}"):
-                        safe_w = row['word'].replace("'", "\\'").replace('"', '\\"')
-                        components.html(f"""
-                        <script>
-                            if ('speechSynthesis' in window) {{
-                                window.speechSynthesis.cancel();
-                                var utterance = new SpeechSynthesisUtterance("{safe_w}");
-                                utterance.lang = 'en-GB';
-                                utterance.rate = 0.9;
-                                window.speechSynthesis.speak(utterance);
-                            }}
-                        </script>
-                        """, height=0)
-                with ac_col3:
-                    if st.button("🔊 澳洲發音 (AU)", use_container_width=True, key=f"au_{st.session_state.flashcard_index}"):
-                        safe_w = row['word'].replace("'", "\\'").replace('"', '\\"')
-                        components.html(f"""
-                        <script>
-                            if ('speechSynthesis' in window) {{
-                                window.speechSynthesis.cancel();
-                                var utterance = new SpeechSynthesisUtterance("{safe_w}");
-                                utterance.lang = 'en-AU';
-                                utterance.rate = 0.9;
-                                window.speechSynthesis.speak(utterance);
-                            }}
-                        </script>
-                        """, height=0)
-                
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
                 if row.get('advanced_sentence'):
                     st.markdown(f"<p style='color: #2196F3; font-weight: bold; font-size: 19px;'>📖 英文釋義：{row.get('advanced_sentence')}</p>", unsafe_allow_html=True)
-                
                 if row.get('basic_sentence'):
                     st.markdown(f"<p style='font-style: italic; font-weight: 500; font-size: 19px; color: #FFC107;'>💬 例句：{row.get('basic_sentence')}</p>", unsafe_allow_html=True)
-                
                 if row.get('collocations'):
                     st.markdown(f"<p style='font-weight: 500; font-size: 17px; color: #E91E63;'>🔗 搭配詞：{row.get('collocations')}</p>", unsafe_allow_html=True)
             
@@ -579,20 +468,15 @@ elif main_menu == "🎮 我是拼字王":
     else:
         game_mode = st.radio("選擇遊戲模式：🎮", ["標準模式 (中文提示 + 發音)", "進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
         st.markdown("---")
-        
         unit_list_game = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
         selected_game_unit = st.selectbox("選擇遊戲挑戰的單元範圍：", unit_list_game, key="game_unit_select")
-        
         df_filtered_game = df_vocab if selected_game_unit == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_game_unit]
         
-        if df_filtered_game.empty:
-            st.warning("📭 該分類中沒有單字！")
-        else:
+        if not df_filtered_game.empty:
             state_key = f"game_started_{game_mode}"
-            if state_key not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit or st.session_state.get("current_game_mode") != game_mode:
+            if state_key not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
                 st.session_state[state_key] = True
                 st.session_state.current_game_unit = selected_game_unit
-                st.session_state.current_game_mode = game_mode
                 st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
@@ -605,22 +489,6 @@ elif main_menu == "🎮 我是拼字王":
             if st.session_state.get("is_finished", False):
                 st.balloons()
                 st.markdown("## 🎉 測驗圓滿結束！")
-                total_q = len(st.session_state.game_queue)
-                wrong_q = len(st.session_state.wrong_answers)
-                correct_q = total_q - wrong_q
-                
-                col_res1, col_res2 = st.columns(2)
-                col_res1.metric(label="總題數", value=f"{total_q} 題")
-                col_res2.metric(label="答對題數", value=f"{correct_q} 題")
-                
-                if wrong_q > 0:
-                    st.markdown("---")
-                    st.markdown(f"### ❌ 總共錯誤題數：{wrong_q} 題（錯題與英文解釋總複習）：")
-                    for w_item in st.session_state.wrong_answers:
-                        st.markdown(f"- **單字：** `{w_item['word']}` | **中文：** {w_item['definition']} \n  - 📖 **英文解釋：** _{w_item.get('advanced_sentence', '無')}_")
-                else:
-                    st.success("🏆 太神啦！全部答對，完美過關！")
-
                 if st.button("🔄 重新挑戰本單元", type="primary", use_container_width=True):
                     del st.session_state[state_key]
                     st.rerun()
@@ -631,86 +499,14 @@ elif main_menu == "🎮 我是拼字王":
                 target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or "No English definition provided."
                 hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
                 
-                current_idx = st.session_state.game_index + 1
-                total_q_len = len(st.session_state.game_queue)
-                
-                def play_audio_compact_game(text_to_speak, label_key="🔊"):
-                    safe_text = text_to_speak.replace("'", "\\'").replace('"', '\\"')
-                    html_code = f"""
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <style>
-                        body {{ margin: 0; padding: 0; background: transparent; }}
-                        .speak-btn {{
-                            width: 100%;
-                            padding: 0.35rem 0.5rem;
-                            background-color: transparent;
-                            color: canvasText;
-                            border: 1px solid rgba(128, 128, 128, 0.4);
-                            border-radius: 0.4rem;
-                            font-size: 14px;
-                            font-family: inherit;
-                            cursor: pointer;
-                            text-align: center;
-                            transition: all 0.2s ease;
-                        }}
-                        @media (prefers-color-scheme: dark) {{
-                            .speak-btn {{ color: #ffffff; border-color: rgba(255, 255, 255, 0.3); }}
-                        }}
-                        .speak-btn:hover {{
-                            background-color: rgba(128, 128, 128, 0.15);
-                            border-color: #ff4b4b;
-                            color: #ff4b4b;
-                        }}
-                    </style>
-                    </head>
-                    <body>
-                        <button class="speak-btn" onclick="speakText()">{label_key}</button>
-                        <script>
-                            function speakText() {{
-                                if ('speechSynthesis' in window) {{
-                                    window.speechSynthesis.cancel();
-                                    var utterance = new SpeechSynthesisUtterance("{safe_text}");
-                                    utterance.lang = 'en-US';
-                                    utterance.rate = 0.9;
-                                    window.speechSynthesis.speak(utterance);
-                                }}
-                            }}
-                        </script>
-                    </body>
-                    </html>
-                    """
-                    components.html(html_code, height=40)
-
                 with st.container(border=True):
-                    col_h1, col_h2, col_h3 = st.columns([5, 1, 1])
-                    with col_h1:
-                        if game_mode.startswith("標準"):
-                            st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                        else:
-                            st.markdown(f"<h4 style='color: #2196F3; margin: 0;'>📖 英文解釋：{target_adv_def}</h4>", unsafe_allow_html=True)
-                    with col_h2:
-                        try:
-                            if game_mode.startswith("標準"):
-                                play_audio_compact_game(target_word, "🔊 發音")
-                            else:
-                                play_audio_compact_game(target_adv_def, "🔊 發音")
-                        except: pass
-                    with col_h3:
-                        st.markdown(f"<p style='text-align: right; color: gray; font-size: 18px; font-weight: bold; margin: 0; padding-top: 5px;'>{current_idx} / {total_q_len}</p>", unsafe_allow_html=True)
-                    
-                    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-                    st.markdown(f"**🔤 拼字提示：** `{hint_masked}` &nbsp;&nbsp; (長度: {len(target_word)} 字母)")
+                    st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                    st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
-                    if fb["type"] == "success":
-                        st.success(fb["msg"])
-                    else:
-                        st.error(fb["msg"])
-                    
+                    if fb["type"] == "success": st.success(fb["msg"])
+                    else: st.error(fb["msg"])
                     if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
                         st.session_state.last_feedback = None
                         st.session_state.game_index += 1
@@ -718,24 +514,10 @@ elif main_menu == "🎮 我是拼字王":
                 else:
                     with st.form(key=f"quiz_form_{st.session_state.game_index}"):
                         user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
-                        
-                        col_btn1, col_btn2 = st.columns(2)
-                        with col_btn1:
-                            submit_ans = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
-                        with col_btn2:
-                            skip_ans = st.form_submit_button("⏭️ 略過本題", use_container_width=True)
-                            
-                        if submit_ans:
+                        if st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True):
                             if user_ans == target_word.lower():
                                 st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
                             else:
-                                if current_item not in st.session_state.wrong_answers:
-                                    st.session_state.wrong_answers.append(current_item)
-                                st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
-                            st.rerun()
-                            
-                        if skip_ans:
-                            if current_item not in st.session_state.wrong_answers:
                                 st.session_state.wrong_answers.append(current_item)
-                            st.session_state.last_feedback = {"type": "error", "msg": f"⏩ 已略過。正確答案是：`{target_word}` (英文解釋: {target_adv_def})"}
+                                st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
                             st.rerun()
