@@ -186,17 +186,14 @@ def simple_s2t_convert(text):
         text = text.replace(s, t)
     return text
 
-def fetch_all_free_dictionaries(word):
+def fetch_all_meanings_from_dictionary(word):
     w_clean = word.strip().lower()
-    real_def = ""
-    real_example = ""
-    phonetic = ""
-    pos = ""
-
+    results = []
+    phonetic = f"/{w_clean}/"
     try:
         encoded_word = urllib.parse.quote(w_clean)
         url_fd = f"https://api.dictionaryapi.dev/api/v2/entries/en/{encoded_word}"
-        res_fd = requests.get(url_fd, timeout=2)
+        res_fd = requests.get(url_fd, timeout=3)
         if res_fd.status_code == 200:
             data = res_fd.json()
             if isinstance(data, list) and len(data) > 0:
@@ -210,75 +207,205 @@ def fetch_all_free_dictionaries(word):
                             break
                 
                 for meaning in entry.get('meanings', []):
-                    if not pos:
-                        pos = meaning.get('partOfSpeech', '')
-                    for definition_obj in meaning.get('definitions', []):
-                        if not real_def:
-                            real_def = definition_obj.get('definition', '')
-                        ex_candidate = definition_obj.get('example', '')
-                        if ex_candidate:
-                            real_example = ex_candidate
-                        if real_def and real_example:
+                    raw_pos = meaning.get('partOfSpeech', 'n.')
+                    pos_map = {
+                        'noun': 'n.', 'verb': 'v.', 'adjective': 'adj.', 
+                        'adverb': 'adv.', 'pronoun': 'pron.', 'preposition': 'prep.', 
+                        'conjunction': 'conj.', 'interjection': 'interj.', 'phr.': 'phr.'
+                    }
+                    pos = pos_map.get(raw_pos.lower(), raw_pos if raw_pos.endswith('.') else raw_pos + '.')
+                    
+                    def_text = ""
+                    ex_text = ""
+                    for def_obj in meaning.get('definitions', []):
+                        if not def_text:
+                            def_text = def_obj.get('definition', '')
+                        if not ex_text and def_obj.get('example'):
+                            ex_text = def_obj.get('example')
+                        if def_text and ex_text:
                             break
-                    if real_def and real_example:
-                        break
+                    
+                    results.append({
+                        'pos': pos,
+                        'definition': def_text,
+                        'example': ex_text,
+                        'phonetic': phonetic
+                    })
     except Exception:
         pass
+    return results
 
-    return real_def, real_example, phonetic, pos
-
-def get_word_record_data_clean(word, raw_def="", pasted_pos="", pasted_eng_def="", pasted_sent="", pasted_colloc=""):
+def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", pasted_sent="", pasted_colloc=""):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
-
-    real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
-
+    
+    records = []
+    
+    # 1. 若明確給定詞性（如透過管道符號）
     if pasted_pos:
-        fetched_pos = simple_s2t_convert(pasted_pos)
+        pos_list = [p.strip() for p in re.split(r'[,/]', pasted_pos) if p.strip()]
+        for p in pos_list:
+            records.append({
+                "word": w_clean,
+                "phonetic": f"/{w_lower}/",
+                "part_of_speech": simple_s2t_convert(p),
+                "definition": cleaned_def,
+                "advanced_sentence": pasted_eng_def or f"An English term meaning {cleaned_def}.",
+                "basic_sentence": pasted_sent,
+                "collocations": pasted_colloc
+            })
+        return records
 
-    if not real_eng_def or pasted_eng_def:
-        if pasted_eng_def:
-            real_eng_def = simple_s2t_convert(pasted_eng_def)
+    # 2. 檢查定義中是否內含多個詞性標記（例如 "v.張貼 ; n.職位"）
+    pos_tokens = ['adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'phr.', 'aux.', 'det.', 'int.', 'n.', 'v.']
+    pos_regex = re.compile(r'\b(v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.|aux\.)', re.IGNORECASE)
+    pos_matches = list(pos_regex.finditer(cleaned_def))
+    
+    if len(pos_matches) > 0:
+        for i in range(len(pos_matches)):
+            p_match = pos_matches[i]
+            p = p_match.group(1).lower()
+            if not p.endswith('.'): p += '.'
+            
+            start_idx = p_match.end()
+            end_idx = pos_matches[i+1].start() if i + 1 < len(pos_matches) else len(cleaned_def)
+            
+            chunk = cleaned_def[start_idx:end_idx].strip().strip(';').strip(',').strip('；').strip()
+            if chunk:
+                records.append({
+                    "word": w_clean,
+                    "phonetic": f"/{w_lower}/",
+                    "part_of_speech": simple_s2t_convert(p),
+                    "definition": simple_s2t_convert(chunk),
+                    "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
+                    "basic_sentence": pasted_sent,
+                    "collocations": pasted_colloc
+                })
+    
+    # 3. 檢查字尾黏著多重詞性（例如 "v.n.", "n.v.adj."）
+    if not records:
+        temp_def = cleaned_def
+        extracted_pos = []
+        while True:
+            temp_lower = temp_def.lower().strip()
+            matched = False
+            for p in sorted(pos_tokens, key=len, reverse=True):
+                if temp_lower.endswith(p):
+                    extracted_pos.insert(0, p)
+                    temp_def = temp_def[:-len(p)].strip().strip(';').strip(',').strip('；').strip()
+                    matched = True
+                    break
+            if not matched:
+                break
+        
+        if extracted_pos:
+            def_parts = re.split(r'[；;,]', temp_def)
+            def_parts = [dp.strip() for dp in def_parts if dp.strip()]
+            
+            if len(extracted_pos) > 1 and len(def_parts) == len(extracted_pos):
+                for p, dp in zip(extracted_pos, def_parts):
+                    records.append({
+                        "word": w_clean,
+                        "phonetic": f"/{w_lower}/",
+                        "part_of_speech": simple_s2t_convert(p),
+                        "definition": simple_s2t_convert(dp),
+                        "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
+                        "basic_sentence": pasted_sent,
+                        "collocations": pasted_colloc
+                    })
+            elif len(extracted_pos) > 1 and len(def_parts) == 1:
+                for p in extracted_pos:
+                    records.append({
+                        "word": w_clean,
+                        "phonetic": f"/{w_lower}/",
+                        "part_of_speech": simple_s2t_convert(p),
+                        "definition": simple_s2t_convert(def_parts[0]),
+                        "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
+                        "basic_sentence": pasted_sent,
+                        "collocations": pasted_colloc
+                    })
+            elif len(extracted_pos) > 1:
+                for i, p in enumerate(extracted_pos):
+                    dp = def_parts[i] if i < len(def_parts) else def_parts[-1] if def_parts else temp_def
+                    records.append({
+                        "word": w_clean,
+                        "phonetic": f"/{w_lower}/",
+                        "part_of_speech": simple_s2t_convert(p),
+                        "definition": simple_s2t_convert(dp),
+                        "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
+                        "basic_sentence": pasted_sent,
+                        "collocations": pasted_colloc
+                    })
+            else:
+                records.append({
+                    "word": w_clean,
+                    "phonetic": f"/{w_lower}/",
+                    "part_of_speech": simple_s2t_convert(extracted_pos[0]),
+                    "definition": simple_s2t_convert(temp_def),
+                    "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
+                    "basic_sentence": pasted_sent,
+                    "collocations": pasted_colloc
+                })
 
-    if not real_eng_def and HAS_GEMINI and st.session_state.get("gemini_api_key"):
-        try:
-            genai.configure(api_key=st.session_state["gemini_api_key"])
-            model = genai.GenerativeModel(
-                "gemini-1.5-flash",
-                generation_config={"response_mime_type": "application/json", "temperature": 0.7}
-            )
-            prompt = f"""Provide a professional, clear English definition for: "{w_clean}" as a {fetched_pos} meaning "{cleaned_def}".
-            Return a JSON object strictly matching this schema:
-            {{
-              "english_definition": "A clear and concise definition in English."
-            }}"""
-            response = model.generate_content(prompt)
-            data_json = json.loads(response.text)
-            real_eng_def = data_json.get("english_definition", "")
-        except Exception:
-            pass
-
-    if not real_eng_def:
-        if cleaned_def:
-            real_eng_def = f"An English term meaning {cleaned_def}."
+    # 4. 若無任何標記，查詢線上字典或預設
+    if not records:
+        dict_meanings = fetch_all_meanings_from_dictionary(w_clean)
+        if dict_meanings and not cleaned_def:
+            for dm in dict_meanings:
+                pos = simple_s2t_convert(dm['pos'])
+                d_text = simple_s2t_convert(dm['definition'])
+                eng_def = pasted_eng_def or dm['example'] or f"An English term referring to {w_clean}."
+                records.append({
+                    "word": w_clean,
+                    "phonetic": dm['phonetic'],
+                    "part_of_speech": pos,
+                    "definition": d_text,
+                    "advanced_sentence": eng_def,
+                    "basic_sentence": pasted_sent,
+                    "collocations": pasted_colloc
+                })
         else:
-            real_eng_def = f"A standard English expression referring to {w_clean}."
+            fallback_pos = "phr." if " " in w_clean else "n."
+            records.append({
+                "word": w_clean,
+                "phonetic": f"/{w_lower}/",
+                "part_of_speech": fallback_pos,
+                "definition": cleaned_def,
+                "advanced_sentence": pasted_eng_def or f"A standard English expression referring to {w_clean}.",
+                "basic_sentence": pasted_sent,
+                "collocations": pasted_colloc
+            })
+    
+    return records
 
-    if not fetched_phonetic:
-        fetched_phonetic = f"/{w_lower.replace(' ', '')}/"
-    if not fetched_pos:
-        fetched_pos = "phr." if " " in w_clean else "n."
+def parse_raw_vocab_line_advanced(line):
+    line_clean = re.sub(r'^\d+[\.\s]*', '', line).strip()
+    if not line_clean:
+        return []
 
-    return {
-        "word": w_clean,
-        "phonetic": fetched_phonetic,
-        "part_of_speech": simple_s2t_convert(fetched_pos),
-        "definition": cleaned_def,
-        "advanced_sentence": real_eng_def,
-        "basic_sentence": pasted_sent,
-        "collocations": pasted_colloc
-    }
+    match_split = re.search(r'([\u4e00-\u9fa5]|v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.)', line_clean, re.IGNORECASE)
+    if not match_split:
+        return [{"word": line_clean, "definition": "", "pos": "n."}]
+    
+    word_end_idx = match_split.start()
+    word = line_clean[:word_end_idx].strip()
+    rest = line_clean[word_end_idx:].strip()
+    
+    if not word:
+        parts = line_clean.split(maxsplit=1)
+        word = parts[0] if len(parts) > 0 else line_clean
+        rest = parts[1] if len(parts) > 1 else ""
+
+    sub_records = parse_mixed_vocab_input(word, raw_def=rest)
+    formatted_results = []
+    for sr in sub_records:
+        formatted_results.append({
+            "word": sr["word"],
+            "definition": sr["definition"],
+            "pos": sr["part_of_speech"]
+        })
+    return formatted_results
 
 def save_all_vocab_to_sheet(_worksheet, df):
     cache_key = f"vocab_df_{_worksheet.title}"
@@ -380,44 +507,45 @@ if main_menu == "✨ 新增單字":
     with col_input1:
         st.subheader("📝 單筆快速建檔")
         single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
-        single_def = st.text_input("中文釋義（選填）：", placeholder="例如：有彈性的、韌性強的")
+        single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
         single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
         single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
                 with st.spinner("🔍 正在查詢字典與寫入..."):
-                    data = get_word_record_data_clean(single_word, raw_def=single_def)
-                    word = data.get('word')
-                    pos = data.get('part_of_speech', '')
-                    
+                    records = parse_mixed_vocab_input(single_word, raw_def=single_def, pasted_sent=single_sent, pasted_colloc=single_colloc)
                     df_current = load_vocab_dataframe(active_worksheet)
-                    match_mask = (df_current['word'].astype(str).str.strip().str.lower() == word.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == pos.lower())
-                    if not df_current.empty and match_mask.any():
-                        idx = df_current.index[match_mask].tolist()[0]
-                        df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
-                        if data.get('definition'): df_current.at[idx, 'definition'] = data.get('definition')
-                        df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
-                        if single_sent: df_current.at[idx, 'basic_sentence'] = single_sent
-                        if single_colloc: df_current.at[idx, 'collocations'] = single_colloc
-                        df_current.at[idx, 'unit_tag'] = current_unit_tag
-                    else:
-                        next_id = len(df_current) + 1
-                        new_row = pd.DataFrame([{
-                            'id': next_id,
-                            'word': word,
-                            'phonetic': data.get('phonetic', ''),
-                            'part_of_speech': pos,
-                            'definition': data.get('definition', ''),
-                            'advanced_sentence': data.get('advanced_sentence', ''),
-                            'basic_sentence': single_sent,
-                            'collocations': single_colloc,
-                            'unit_tag': current_unit_tag,
-                            'srs_stage': 0
-                        }])
-                        df_current = pd.concat([df_current, new_row], ignore_index=True)
+                    
+                    for data in records:
+                        word = data.get('word')
+                        pos = data.get('part_of_speech', '')
+                        match_mask = (df_current['word'].astype(str).str.strip().str.lower() == word.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == pos.lower())
+                        if not df_current.empty and match_mask.any():
+                            idx = df_current.index[match_mask].tolist()[0]
+                            df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
+                            if data.get('definition'): df_current.at[idx, 'definition'] = data.get('definition')
+                            df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
+                            if single_sent: df_current.at[idx, 'basic_sentence'] = single_sent
+                            if single_colloc: df_current.at[idx, 'collocations'] = single_colloc
+                            df_current.at[idx, 'unit_tag'] = current_unit_tag
+                        else:
+                            next_id = len(df_current) + 1
+                            new_row = pd.DataFrame([{
+                                'id': next_id,
+                                'word': word,
+                                'phonetic': data.get('phonetic', ''),
+                                'part_of_speech': pos,
+                                'definition': data.get('definition', ''),
+                                'advanced_sentence': data.get('advanced_sentence', ''),
+                                'basic_sentence': single_sent,
+                                'collocations': single_colloc,
+                                'unit_tag': current_unit_tag,
+                                'srs_stage': 0
+                            }])
+                            df_current = pd.concat([df_current, new_row], ignore_index=True)
                         
                     save_all_vocab_to_sheet(active_worksheet, df_current)
-                    st.success(f"🎉 成功新增單字：{word} ({pos})")
+                    st.success(f"🎉 成功新增單字：{single_word}（多重詞性已嚴格獨立拆分）")
                     time.sleep(0.5)
                     st.rerun()
 
@@ -430,7 +558,7 @@ if main_menu == "✨ 新增單字":
         valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
         if total_preview_count > 0:
-            st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個單字準備匯入至「{current_unit_tag}」")
+            st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
         else:
             st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
 
@@ -451,62 +579,41 @@ if main_menu == "✨ 新增單字":
                     status_box.markdown(f"還剩 **{remaining_num}** 個單字")
                     progress_box.progress(current_num / total_q)
                     
+                    records = []
                     if '|' in line:
                         parts = [p.strip() for p in line.split('|')]
-                    elif '\t' in line:
-                        parts = [p.strip() for p in line.split('\t')]
-                    else:
-                        parts = [p.strip() for p in line.split(',')]
-                        
-                    if parts and parts[0].strip():
                         w = parts[0].strip()
                         d = parts[1].strip() if len(parts) > 1 else ""
-                        
-                        pasted_p = ""
-                        pasted_eng = ""
-                        pasted_s = ""
-                        pasted_c = ""
-                        
-                        if len(parts) >= 6:
-                            pasted_p = parts[2].strip()
-                            pasted_eng = parts[3].strip()
-                            pasted_s = parts[4].strip()
-                            pasted_c = parts[5].strip()
-                        elif len(parts) == 5:
-                            candidate_pos = parts[2].strip().lower()
-                            pos_keywords = ['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'phr.', 'aux.', '名詞', '動詞', '形容詞']
-                            is_pos = any(k in candidate_pos for k in pos_keywords) and len(candidate_pos) < 15
-                            if is_pos:
-                                pasted_p = parts[2].strip()
-                                pasted_eng = parts[3].strip()
-                                pasted_s = parts[4].strip()
-                            else:
-                                pasted_eng = parts[2].strip()
-                                pasted_s = parts[3].strip()
-                                pasted_c = parts[4].strip()
-                        elif len(parts) == 4:
-                            pasted_eng = parts[2].strip()
-                            pasted_s = parts[3].strip()
-                        elif len(parts) == 3:
-                            pasted_eng = parts[2].strip()
-                        
-                        if len(w) < 35:
-                            data = get_word_record_data_clean(
-                                w, 
-                                raw_def=d, 
-                                pasted_pos=pasted_p, 
-                                pasted_eng_def=pasted_eng, 
-                                pasted_sent=pasted_s, 
-                                pasted_colloc=pasted_c
+                        pasted_p = parts[2].strip() if len(parts) > 2 else ""
+                        pasted_eng = parts[3].strip() if len(parts) > 3 else ""
+                        pasted_s = parts[4].strip() if len(parts) > 4 else ""
+                        pasted_c = parts[5].strip() if len(parts) > 5 else ""
+                        records = parse_mixed_vocab_input(w, raw_def=d, pasted_pos=pasted_p, pasted_eng_def=pasted_eng, pasted_sent=pasted_s, pasted_colloc=pasted_c)
+                    elif '\t' in line:
+                        parts = [p.strip() for p in line.split('\t')]
+                        w = parts[0].strip()
+                        d = parts[1].strip() if len(parts) > 1 else ""
+                        pasted_p = parts[2].strip() if len(parts) > 2 else ""
+                        records = parse_mixed_vocab_input(w, raw_def=d, pasted_pos=pasted_p)
+                    else:
+                        raw_items = parse_raw_vocab_line_advanced(line)
+                        for item in raw_items:
+                            rec_list = parse_mixed_vocab_input(
+                                item["word"], 
+                                raw_def=item["definition"], 
+                                pasted_pos=item["pos"]
                             )
-
+                            records.extend(rec_list)
+                    
+                    if records:
+                        for data in records:
                             target_pos = data.get('part_of_speech', '')
-                            match_mask = (df_current['word'].astype(str).str.strip().str.lower() == w.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == target_pos.lower())
+                            match_mask = (df_current['word'].astype(str).str.strip().str.lower() == data.get('word','').lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == target_pos.lower())
                             
                             if not df_current.empty and match_mask.any():
                                 idx = df_current.index[match_mask].tolist()[0]
                                 df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
-                                if d: df_current.at[idx, 'definition'] = simple_s2t_convert(d)
+                                if data.get('definition'): df_current.at[idx, 'definition'] = simple_s2t_convert(data.get('definition'))
                                 df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                                 if data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence')
                                 if data.get('collocations'): df_current.at[idx, 'collocations'] = data.get('collocations')
@@ -515,10 +622,10 @@ if main_menu == "✨ 新增單字":
                                 next_id = len(df_current) + 1
                                 new_row = pd.DataFrame([{
                                     'id': next_id,
-                                    'word': w,
+                                    'word': data.get('word', ''),
                                     'phonetic': data.get('phonetic', ''),
                                     'part_of_speech': target_pos,
-                                    'definition': simple_s2t_convert(d),
+                                    'definition': simple_s2t_convert(data.get('definition', '')),
                                     'advanced_sentence': data.get('advanced_sentence', ''),
                                     'basic_sentence': data.get('basic_sentence', ''),
                                     'collocations': data.get('collocations', ''),
@@ -526,9 +633,9 @@ if main_menu == "✨ 新增單字":
                                     'srs_stage': 0
                                 }])
                                 df_current = pd.concat([df_current, new_row], ignore_index=True)
-                            count += 1
+                        count += 1
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                status_box.success(f"🎊 成功匯入/更新 {count} 個單字的完整資料（分類：{current_unit_tag}）！")
+                status_box.success(f"🎊 成功匯入/更新 {count} 個項目（多重詞性與釋義已嚴格獨立拆分）！")
                 time.sleep(1.5)
                 st.rerun()
 
@@ -687,7 +794,6 @@ elif main_menu == "🎮 我是拼字王":
         else:
             df_filtered_game = df_vocab[df_vocab['unit_tag'] == f"{sel_sem_game} > {sel_unit_game}"]
         
-        # 拼字王專用：過濾重複單字，確保測驗不重複出現相同單字
         df_game_queue_source = df_filtered_game.drop_duplicates(subset=['word'])
 
         if not df_filtered_game.empty:
