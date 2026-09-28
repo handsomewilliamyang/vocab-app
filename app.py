@@ -211,7 +211,7 @@ def get_word_record_data_clean(word, raw_def="", pasted_eng_def=""):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
 
-    # 1. 絕對優先：先強制調用外部字典 API 抓取英文釋義
+    # 1. 絕對優先：先調用外部字典 API 抓取英文釋義
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
 
     # 2. 如果外部字典查不到，才使用您貼給我的（或 AI 生成的）英文釋義
@@ -371,7 +371,7 @@ if main_menu == "✨ 新增單字":
         
         pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 英文釋義 | 例句 | 搭配詞）：", placeholder="together | 一起 | with each other | We work together. | work together", height=140)
         
-        valid_lines = [l for l in pasted_text.strip().split('\n'] if l.strip()] if pasted_text else []
+        valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
         if total_preview_count > 0:
             st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個單字準備匯入至「{current_unit_tag}」")
@@ -383,7 +383,7 @@ if main_menu == "✨ 新增單字":
 
         if st.button("📥 批次匯入完整清單", use_container_width=True):
             if pasted_text:
-                lines = [l for l in pasted_text.strip().split('\n'] if l.strip()]
+                lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
                 total_q = len(lines)
                 df_current = load_vocab_dataframe(active_worksheet)
                 count = 0
@@ -410,7 +410,6 @@ if main_menu == "✨ 新增單字":
                         c = parts[4].strip() if len(parts) > 4 else ""
                         
                         if len(w) < 35:
-                            # 傳入您提供的備用英文釋義，但內部會嚴格「先優先調用字典」
                             data = get_word_record_data_clean(w, raw_def=d, pasted_eng_def=eng_def_input)
 
                             match_mask = df_current['word'].astype(str).str.strip().str.lower() == w.lower()
@@ -565,7 +564,7 @@ elif main_menu == "🎮 我是拼字王":
                         user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
                         if st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True):
                             if user_ans == target_word.lower():
-                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
+                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了!就是 `{target_word}`"}
                             else:
                                 st.session_state.wrong_answers.append(current_item)
                                 st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
