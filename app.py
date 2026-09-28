@@ -294,6 +294,19 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
+def parse_lesson_number(unit_str):
+    match = re.search(r'第([一二三四五六七八九十百0-9]+)課', unit_str)
+    if match:
+        num_str = match.group(1)
+        try:
+            return int(num_str)
+        except ValueError:
+            cn_map = {'一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10,
+                      '十一':11, '十二':12, '十三':13, '十四':14, '十五':15, '十六':16, '十七':17, '十八':18, '十九':19, '二十':20}
+            if num_str in cn_map:
+                return cn_map[num_str]
+    return 999
+
 def get_hierarchical_units(df):
     semesters = []
     semester_to_units = {}
@@ -309,6 +322,10 @@ def get_hierarchical_units(df):
                     semester_to_units[sem] = []
                 if un not in semester_to_units[sem]:
                     semester_to_units[sem].append(un)
+                    
+    for sem in semester_to_units:
+        semester_to_units[sem].sort(key=parse_lesson_number)
+        
     return sorted(semesters), semester_to_units
 
 st.title("📚 我愛背單字")
@@ -412,7 +429,7 @@ if main_menu == "✨ 新增單字":
                     current_num = i + 1
                     remaining_num = total_q - current_num
                     
-                    status_box.markdown(f"🔄 **[執行狀態]** 正在匯入：`{current_unit_tag}` | 目前進度 : 第 **{current_num}** / {total_q} 個字（還剩 **{remaining_num}** 個字）")
+                    status_box.markdown(f"🔄 **[執行狀態]** 正在匯入：`{current_unit_tag}` | 目前進度：第 **{current_num}** / {total_q} 個字（還剩 **{remaining_num}** 個字）")
                     progress_box.progress(current_num / total_q)
                     
                     if '|' in line:
@@ -502,7 +519,6 @@ elif main_menu == "📖 字彙管理":
     else:
         semesters, sem_to_units = get_hierarchical_units(df_vocab)
         
-        # 雙層聯動選單
         col_sel1, col_sel2 = st.columns(2, gap="medium")
         with col_sel1:
             sem_options = ["全部單字"] + semesters
@@ -519,7 +535,6 @@ elif main_menu == "📖 字彙管理":
                 else:
                     selected_unit_filter = f"{selected_sem} > {selected_unit}"
 
-        # 篩選 DataFrame
         if selected_unit_filter == "全部單字":
             filtered_df = df_vocab
         elif " > " not in selected_unit_filter:
