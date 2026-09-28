@@ -337,18 +337,38 @@ if main_menu == "✨ 新增單字":
 
     with col_input2:
         st.subheader("📋 智慧多格式快速貼上匯入")
-        st.markdown("支援 `|` 豎線、Tab 或逗號分隔：`單字 | 中文釋義 | 例句 | 搭配詞`")
         
-        pasted_text = st.text_area("貼上完整單字清單：", placeholder="pop | (意外地)出現 | A great idea popped | pop up, pop out", height=150)
+        # 💡 狀態欄：即時顯示目前目標分組與準備匯入數
+        st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
+        
+        pasted_text = st.text_area("貼上完整單字清單：", placeholder="pop | (意外地)出現 | A great idea popped | pop up, pop out", height=140)
+        
+        valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
+        total_preview_count = len(valid_lines)
+        if total_preview_count > 0:
+            st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個單字準備匯入至「{current_unit_tag}」")
+        else:
+            st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
+
+        # 💡 匯入執行中的動態進度與狀態佔位區
+        status_box = st.empty()
+        progress_box = st.empty()
+
         if st.button("📥 批次匯入完整清單", use_container_width=True):
             if pasted_text:
-                lines = pasted_text.strip().split('\n')
+                lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
+                total_q = len(lines)
                 df_current = load_vocab_dataframe(active_worksheet)
                 count = 0
-                for line in lines:
-                    if not line.strip():
-                        continue
-                    # 💡 智慧解析：自動適應 |、Tab 或逗號
+                
+                for i, line in enumerate(lines):
+                    current_num = i + 1
+                    remaining_num = total_q - current_num
+                    
+                    # 動態更新狀態欄（目前匯入到第幾個字、還剩多少個字）
+                    status_box.markdown(f"🔄 **[執行狀態]** 正在匯入：`{current_unit_tag}` | 目前進度：第 **{current_num}** / {total_q} 個字（還剩 **{remaining_num}** 個字）")
+                    progress_box.progress(current_num / total_q)
+                    
                     if '|' in line:
                         parts = [p.strip() for p in line.split('|')]
                     elif '\t' in line:
@@ -391,8 +411,8 @@ if main_menu == "✨ 新增單字":
                                 df_current = pd.concat([df_current, new_row], ignore_index=True)
                             count += 1
                 save_all_vocab_to_sheet(active_worksheet, df_current)
-                st.success(f"🎊 成功匯入/更新 {count} 個單字的例句與搭配詞！")
-                time.sleep(1)
+                status_box.success(f"🎊 成功匯入/更新 {count} 個單字（分類：{current_unit_tag}）！")
+                time.sleep(1.5)
                 st.rerun()
 
 elif main_menu == "📖 字彙管理":
