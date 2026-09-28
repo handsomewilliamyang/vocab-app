@@ -687,12 +687,15 @@ elif main_menu == "🎮 我是拼字王":
         else:
             df_filtered_game = df_vocab[df_vocab['unit_tag'] == f"{sel_sem_game} > {sel_unit_game}"]
         
+        # 拼字王專用：過濾重複單字，確保測驗不重複出現相同單字
+        df_game_queue_source = df_filtered_game.drop_duplicates(subset=['word'])
+
         if not df_filtered_game.empty:
             state_key = f"game_started_{game_mode}"
             if state_key not in st.session_state or st.session_state.get("current_game_unit") != f"{sel_sem_game}_{sel_unit_game}":
                 st.session_state[state_key] = True
                 st.session_state.current_game_unit = f"{sel_sem_game}_{sel_unit_game}"
-                st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
+                st.session_state.game_queue = df_game_queue_source.sample(frac=1).to_dict('records')
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
