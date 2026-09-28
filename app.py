@@ -47,13 +47,10 @@ st.markdown("""
     audio {
         display: none !important;
     }
-    /* 放大側邊欄標題與選項字體，提升操作體驗 */
+    /* 放大側邊欄選項字體，提升操作體驗 */
     [data-testid="stSidebar"] .stRadio label p {
         font-size: 19px !important;
         font-weight: 500 !important;
-    }
-    [data-testid="stSidebar"] h2 {
-        font-size: 22px !important;
     }
     [data-testid="stSidebar"] h5 {
         font-size: 18px !important;
@@ -67,9 +64,6 @@ st.markdown("""
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p {
             font-size: 16px !important;
-        }
-        [data-testid="stSidebar"] h2 {
-            font-size: 19px !important;
         }
         [data-testid="stSidebar"] h5 {
             font-size: 15px !important;
@@ -97,9 +91,6 @@ except Exception as e:
     st.error(f"⚠️ Google Sheets 連線設定錯誤：{e}")
     st.stop()
 
-st.sidebar.markdown("<h2>⚙️ 系統導覽與設定</h2>", unsafe_allow_html=True)
-st.sidebar.markdown("---")
-
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
     ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
@@ -107,9 +98,10 @@ main_menu = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("##### 📚 選擇級別")
 
 selected_level = st.sidebar.radio(
-    "選擇目前目標級別：",
+    "選擇級別：",
     ["國中部", "高中部", "TOEIC"],
     label_visibility="collapsed"
 )
