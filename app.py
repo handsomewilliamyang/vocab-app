@@ -44,9 +44,6 @@ st.markdown("""
         padding-top: 10px !important;
         padding-bottom: 10px !important;
     }
-    audio {
-        display: none !important;
-    }
     /* 放大側邊欄選項字體，提升操作體驗 */
     [data-testid="stSidebar"] .stRadio label p {
         font-size: 19px !important;
@@ -242,7 +239,6 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
     
     records = []
     
-    # 1. 若明確給定詞性（如透過管道符號）
     if pasted_pos:
         pos_list = [p.strip() for p in re.split(r'[,/]', pasted_pos) if p.strip()]
         for p in pos_list:
@@ -259,7 +255,6 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
 
     pos_tokens = ['adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'phr.', 'aux.', 'det.', 'int.', 'n.', 'v.']
     
-    # 2. 檢查是否為「交錯型多重詞性」（例如 "v.張貼 ; 郵寄=mail; n.職位" 或 "v.宣判; n.句子"）
     pos_pattern = r'(v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.|aux\.)'
     parts = re.split(pos_pattern, cleaned_def, flags=re.IGNORECASE)
     if len(parts) >= 3:
@@ -282,7 +277,6 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
         if records:
             return records
 
-    # 3. 檢查是否為「字尾黏著多重詞性」（例如 "v.n.", "n.v.adj."）
     if not records:
         temp_def = cleaned_def
         extracted_pos = []
@@ -349,7 +343,6 @@ def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", 
                 })
             return records
 
-    # 4. 若無任何標記，查詢線上字典或預設
     dict_meanings = fetch_all_meanings_from_dictionary(w_clean)
     if dict_meanings and not cleaned_def:
         for dm in dict_meanings:
@@ -746,6 +739,11 @@ elif main_menu == "🎯 背誦單字":
             with st.container(border=True):
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+                try:
+                    audio_bytes = generate_audio_bytes(row['word'])
+                    st.audio(audio_bytes, format='audio/mp3')
+                except Exception:
+                    pass
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
                 if row.get('advanced_sentence'):
@@ -813,12 +811,27 @@ elif main_menu == "🎮 我是拼字王":
                 current_item = st.session_state.game_queue[st.session_state.game_index]
                 target_word = str(current_item['word']).strip()
                 target_def = str(current_item['definition']).strip() if str(current_item['definition']).strip() else "(尚無中文釋義)"
-                target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or "No English definition provided."
+                target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or f"An English term referring to {target_word}."
                 hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
                 
                 with st.container(border=True):
-                    st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                    st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
+                    if "標準模式" in game_mode:
+                        st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
+                        try:
+                            audio_bytes = generate_audio_bytes(target_word)
+                            st.audio(audio_bytes, format='audio/mp3')
+                        except Exception:
+                            pass
+                    else:
+                        st.markdown(f"<h2 style='color: #2196F3; margin: 0;'>🔊 英文解釋/例句聽力提示：</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: 19px; font-weight: 500; margin-top: 10px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
+                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
+                        try:
+                            audio_bytes = generate_audio_bytes(target_adv_def)
+                            st.audio(audio_bytes, format='audio/mp3')
+                        except Exception:
+                            pass
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
