@@ -737,7 +737,6 @@ elif main_menu == "🎯 背誦單字":
             row = df_filtered_flash.iloc[st.session_state.flashcard_index]
             
             with st.container(border=True):
-                # 閃卡模式頂部（標題 + 內嵌精巧喇叭按鈕）
                 audio_bytes = generate_audio_bytes(row['word'])
                 b64_flash = base64.b64encode(audio_bytes).decode()
                 st.markdown(f"""
@@ -823,7 +822,6 @@ elif main_menu == "🎮 我是拼字王":
                 remaining_count = total_q_count - current_q_num + 1
 
                 with st.container(border=True):
-                    # 頂部列：左側為題目，右側顯示剩餘題數
                     q_col1, q_col2 = st.columns([4, 1])
                     with q_col2:
                         st.markdown(f"<div style='text-align: right; color: gray; font-size: 15px; font-weight: bold;'>剩餘題數：{remaining_count} / {total_q_count}</div>", unsafe_allow_html=True)
@@ -846,7 +844,7 @@ elif main_menu == "🎮 我是拼字王":
                         with q_col1:
                             st.markdown(f"""
                                 <div style="display: flex; align-items: center; gap: 10px; margin: 0;">
-                                    <h2 style='color: #2196F3; margin: 0;'>🔊 英文解釋/例句聽力提示：</h2>
+                                    <h2 style='color: #2196F3; margin: 0;'>🔊 英文解釋聽力提示：</h2>
                                     <audio id="game_audio_{st.session_state.game_index}" src="data:audio/mp3;base64,{b64_game}"></audio>
                                     <button onclick="document.getElementById('game_audio_{st.session_state.game_index}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
                                 </div>
