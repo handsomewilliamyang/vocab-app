@@ -35,10 +35,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 極簡乾淨排版：移除多餘設定區塊，維持畫面清爽
+# 🎨 隱藏 Manage app 並讓左上角側邊欄收合箭頭變得非常醒目
 st.markdown("""
     <style>
-    /* 統整卡片容器：保持乾淨的邊框與適度留白 */
+    /* 1. 隱藏左上角的 Manage app 按鈕/標籤 */
+    [data-testid="stToolbar"], div[data-testid="stDecoration"], .viewerBadge_container__1QSob, iframe[title="streamlit_analytics"] {
+        display: none !important;
+    }
+    button[kind="header"] {
+        display: none !important;
+    }
+    /* 針對 Streamlit 雲端工具列的通用隱藏選擇器 */
+    div.stApp > header:first-child {
+        display: none !important;
+    }
+
+    /* 2. 讓收合/展開側邊欄的箭頭變得非常醒目 */
+    [data-testid="collapsedControl"] {
+        background-color: rgba(255, 75, 75, 0.15) !important;
+        border: 2px solid #ff4b4b !important;
+        border-radius: 8px !important;
+        color: #ff4b4b !important;
+        box-shadow: 0 0 10px rgba(255, 75, 75, 0.3) !important;
+        transition: all 0.2s ease-in-out;
+    }
+    [data-testid="collapsedControl"]:hover {
+        background-color: #ff4b4b !important;
+        color: white !important;
+        transform: scale(1.05);
+    }
+
+    /* 3. 統整卡片容器：保持乾淨的邊框與適度留白 */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -46,7 +73,7 @@ st.markdown("""
         background-color: transparent !important;
     }
 
-    /* 欄位文字與排版優化 */
+    /* 4. 欄位文字與排版優化 */
     .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -56,7 +83,7 @@ st.markdown("""
         font-size: 15px !important;
     }
 
-    /* 側邊欄與輸入框微調 */
+    /* 5. 側邊欄與輸入框微調 */
     [data-testid="stSidebar"] .stRadio label p {
         font-size: 18px !important;
         font-weight: 500 !important;
