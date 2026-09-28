@@ -211,10 +211,10 @@ def get_word_record_data_clean(word, raw_def=""):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
 
-    # 1. 先查免費字典 API
+    # 1. 嚴格優先：先調用外部字典 API 抓取英文釋義
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
 
-    # 2. 如果字典查不到（例如片語或生難字），透過 Gemini AI 翻譯/生成精準英文釋義
+    # 2. 如果外部字典查不到，才使用 AI 翻譯生成英文釋義
     if not real_eng_def and HAS_GEMINI and st.session_state.get("gemini_api_key"):
         try:
             genai.configure(api_key=st.session_state["gemini_api_key"])
@@ -233,7 +233,7 @@ def get_word_record_data_clean(word, raw_def=""):
         except Exception:
             pass
 
-    # 3. 終極智慧保底
+    # 3. 智慧保底
     if not real_eng_def:
         if cleaned_def:
             real_eng_def = f"An English term meaning {cleaned_def}."
@@ -413,7 +413,7 @@ if main_menu == "✨ 新增單字":
                                 df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
                                 df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                                 if d: df_current.at[idx, 'definition'] = simple_s2t_convert(d)
-                                df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '') # 強制更新英文釋義
+                                df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                                 if s: df_current.at[idx, 'basic_sentence'] = s
                                 if c: df_current.at[idx, 'collocations'] = c
                                 df_current.at[idx, 'unit_tag'] = current_unit_tag
