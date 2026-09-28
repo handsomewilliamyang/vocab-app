@@ -213,11 +213,9 @@ def get_word_record_data_clean(word, raw_def="", pasted_pos="", pasted_eng_def="
 
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
 
-    # 優先採用您貼上來的詞性
     if pasted_pos:
         fetched_pos = simple_s2t_convert(pasted_pos)
 
-    # 優先採用您貼上來的英文釋義（若字典查不到或需要對應特定詞義）
     if not real_eng_def or pasted_eng_def:
         if pasted_eng_def:
             real_eng_def = simple_s2t_convert(pasted_eng_def)
@@ -229,7 +227,7 @@ def get_word_record_data_clean(word, raw_def="", pasted_pos="", pasted_eng_def="
                 "gemini-1.5-flash",
                 generation_config={"response_mime_type": "application/json", "temperature": 0.7}
             )
-            prompt = f"""Provide a professional, clear English definition for: "{w_clean}" as a {fetched_pos} meaning "{cleaned_def}".
+            prompt = f"""Provide a professional, clear English definition for: "{w_clean}" (Chinese meaning: "{cleaned_def}").
             Return a JSON object strictly matching this schema:
             {{
               "english_definition": "A clear and concise definition in English."
@@ -335,13 +333,13 @@ if main_menu == "✨ 新增單字":
                 with st.spinner("🔍 正在查詢字典與寫入..."):
                     data = get_word_record_data_clean(single_word, raw_def=single_def)
                     word = data.get('word')
-                    pos = data.get('part_of_speech', '')
                     
                     df_current = load_vocab_dataframe(active_worksheet)
-                    match_mask = (df_current['word'].astype(str).str.strip().str.lower() == word.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == pos.lower())
+                    match_mask = df_current['word'].astype(str).str.strip().str.lower() == word.lower()
                     if not df_current.empty and match_mask.any():
                         idx = df_current.index[match_mask].tolist()[0]
                         df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
+                        df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         if data.get('definition'): df_current.at[idx, 'definition'] = data.get('definition')
                         df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                         if single_sent: df_current.at[idx, 'basic_sentence'] = single_sent
@@ -353,7 +351,7 @@ if main_menu == "✨ 新增單字":
                             'id': next_id,
                             'word': word,
                             'phonetic': data.get('phonetic', ''),
-                            'part_of_speech': pos,
+                            'part_of_speech': data.get('part_of_speech', ''),
                             'definition': data.get('definition', ''),
                             'advanced_sentence': data.get('advanced_sentence', ''),
                             'basic_sentence': single_sent,
@@ -364,7 +362,7 @@ if main_menu == "✨ 新增單字":
                         df_current = pd.concat([df_current, new_row], ignore_index=True)
                         
                     save_all_vocab_to_sheet(active_worksheet, df_current)
-                    st.success(f"🎉 成功新增單字：{word} ({pos})")
+                    st.success(f"🎉 成功新增單字：{word}")
                     time.sleep(0.5)
                     st.rerun()
 
@@ -447,13 +445,12 @@ if main_menu == "✨ 新增單字":
                                 pasted_colloc=pasted_c
                             )
 
-                            target_pos = data.get('part_of_speech', '')
-                            # 以「單字 + 詞性」雙重判定，確保一字多義（不同詞性）不會互相覆蓋
-                            match_mask = (df_current['word'].astype(str).str.strip().str.lower() == w.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == target_pos.lower())
+                            match_mask = df_current['word'].astype(str).str.strip().str.lower() == w.lower()
                             
                             if not df_current.empty and match_mask.any():
                                 idx = df_current.index[match_mask].tolist()[0]
                                 df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
+                                df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                                 if d: df_current.at[idx, 'definition'] = simple_s2t_convert(d)
                                 df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                                 if data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence')
@@ -465,7 +462,7 @@ if main_menu == "✨ 新增單字":
                                     'id': next_id,
                                     'word': w,
                                     'phonetic': data.get('phonetic', ''),
-                                    'part_of_speech': target_pos,
+                                    'part_of_speech': data.get('part_of_speech', ''),
                                     'definition': simple_s2t_convert(d),
                                     'advanced_sentence': data.get('advanced_sentence', ''),
                                     'basic_sentence': data.get('basic_sentence', ''),
@@ -481,8 +478,58 @@ if main_menu == "✨ 新增單字":
                 st.rerun()
 
 elif main_menu == "📖 字彙管理":
+    st.subheader("🔍 全域單字搜尋與定位（跨級別查詢）")
+    global_search_query = st.text_input("輸入想要尋找的單字或中文（例如 borrow 或 借）：", placeholder="輸入關鍵字以尋找其位於哪一個級別與單元...")
+    
+    if global_search_query.strip():
+        st.markdown(f"**📍 正在所有語料庫中搜尋與「{global_search_query}」相關的單字...**")
+        found_results = []
+        
+        # 遍歷所有級別分頁
+        for lvl_name, sheet_title in level_sheet_mapping.items():
+            try:
+                ws_temp = spreadsheet.worksheet(sheet_title)
+                df_temp = load_vocab_dataframe(ws_temp)
+                if not df_temp.empty:
+                    match_res = df_temp[
+                        df_temp['word'].astype(str).str.contains(global_search_query, case=False, na=False) | 
+                        df_temp['definition'].astype(str).str.contains(global_search_query, case=False, na=False)
+                    ]
+                    for _, r in match_res.iterrows():
+                        found_results.append({
+                            "level": lvl_name,
+                            "unit_tag": r.get('unit_tag', '未分類'),
+                            "word": r.get('word', ''),
+                            "phonetic": r.get('phonetic', ''),
+                            "part_of_speech": r.get('part_of_speech', ''),
+                            "definition": r.get('definition', ''),
+                            "advanced_sentence": r.get('advanced_sentence', ''),
+                            "basic_sentence": r.get('basic_sentence', ''),
+                            "collocations": r.get('collocations', '')
+                        })
+            except Exception:
+                pass
+                
+        if found_results:
+            st.success(f"🎉 找到 {len(found_results)} 筆相符的單字！")
+            df_search_res = pd.DataFrame(found_results)
+            for idx, row in df_search_res.iterrows():
+                with st.container(border=True):
+                    st.markdown(f"### 📌 級別：`{row['level']}` ｜ 單元：`{row['unit_tag']}`")
+                    st.markdown(f"**單字：** `{row['word']}` ({row.get('phonetic','')}) | **詞性：** `{row.get('part_of_speech','')}` | **中文：** `{row.get('definition','')}`")
+                    if row.get('advanced_sentence'):
+                        st.markdown(f"📖 **英文釋義：** {row['advanced_sentence']}")
+                    if row.get('basic_sentence'):
+                        st.markdown(f"💬 **例句：** {row['basic_sentence']}")
+                    if row.get('collocations'):
+                        st.markdown(f"🔗 **搭配詞：** {row['collocations']}")
+        else:
+            st.warning("📭 找不到符合的單字。")
+            
+        st.markdown("---")
+
     if df_vocab.empty:
-        st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
+        st.info("📭 目前目前級別尚無單字！")
     else:
         unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else []
         unit_list = ["全部單字"] + [u for u in unit_list if u.strip() != ""]
@@ -491,11 +538,11 @@ elif main_menu == "📖 字彙管理":
 
         filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
         
-        search_query = st.text_input("🔍 搜尋單字或釋義：")
-        if search_query:
-            filtered_df = filtered_df[filtered_df['word'].str.contains(search_query, case=False, na=False) | filtered_df['definition'].str.contains(search_query, case=False, na=False)]
+        sub_search_query = st.text_input("🔍 在目前篩選範圍內搜尋：")
+        if sub_search_query:
+            filtered_df = filtered_df[filtered_df['word'].str.contains(sub_search_query, case=False, na=False) | filtered_df['definition'].str.contains(sub_search_query, case=False, na=False)]
 
-        with st.expander("📋 單字總表與快速編輯", expanded=True):
+        with st.expander("📋 單字總表與快速編輯（含刪除功能）", expanded=True):
             st.dataframe(
                 filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations']],
                 use_container_width=False,
@@ -511,6 +558,21 @@ elif main_menu == "📖 字彙管理":
                     "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
                 }
             )
+
+        st.markdown("---")
+        st.subheader("🗑️ 單字刪除管理")
+        word_to_delete = st.selectbox("選擇想要刪除的單字：", ["--請選擇--"] + filtered_df['word'].tolist())
+        if word_to_delete != "--請選擇--":
+            if st.button(f"⚠️ 確認刪除單字：{word_to_delete}", type="primary"):
+                df_current = load_vocab_dataframe(active_worksheet)
+                df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
+                # 重新編號 id
+                if not df_current.empty:
+                    df_current['id'] = range(1, len(df_current) + 1)
+                save_all_vocab_to_sheet(active_worksheet, df_current)
+                st.success(f"🗑️ 已成功刪除單字：{word_to_delete}")
+                time.sleep(1)
+                st.rerun()
 
 elif main_menu == "🎯 背誦單字":
     if df_vocab.empty:
