@@ -206,32 +206,35 @@ def fetch_all_free_dictionaries(word):
 
     return real_def, real_example, phonetic, pos
 
-def get_word_record_data_clean(word, raw_def=""):
+def get_word_record_data_clean(word, raw_def="", pasted_eng_def=""):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
 
-    # 1. 嚴格優先：先調用外部字典 API 抓取英文釋義
+    # 1. 絕對優先：先強制調用外部字典 API 抓取英文釋義
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
 
-    # 2. 如果外部字典查不到，才使用 AI 翻譯生成英文釋義
-    if not real_eng_def and HAS_GEMINI and st.session_state.get("gemini_api_key"):
-        try:
-            genai.configure(api_key=st.session_state["gemini_api_key"])
-            model = genai.GenerativeModel(
-                "gemini-1.5-flash",
-                generation_config={"response_mime_type": "application/json", "temperature": 0.7}
-            )
-            prompt = f"""Provide a professional, clear English definition for the target word or phrase: "{w_clean}" (Chinese meaning: "{cleaned_def}").
-            Return a JSON object strictly matching this schema:
-            {{
-              "english_definition": "A clear and concise definition in English."
-            }}"""
-            response = model.generate_content(prompt)
-            data = json.loads(response.text)
-            real_eng_def = data.get("english_definition", "")
-        except Exception:
-            pass
+    # 2. 如果外部字典查不到，才使用您貼給我的（或 AI 生成的）英文釋義
+    if not real_eng_def:
+        if pasted_eng_def:
+            real_eng_def = simple_s2t_convert(pasted_eng_def)
+        elif HAS_GEMINI and st.session_state.get("gemini_api_key"):
+            try:
+                genai.configure(api_key=st.session_state["gemini_api_key"])
+                model = genai.GenerativeModel(
+                    "gemini-1.5-flash",
+                    generation_config={"response_mime_type": "application/json", "temperature": 0.7}
+                )
+                prompt = f"""Provide a professional, clear English definition for the target word or phrase: "{w_clean}" (Chinese meaning: "{cleaned_def}").
+                Return a JSON object strictly matching this schema:
+                {{
+                  "english_definition": "A clear and concise definition in English."
+                }}"""
+                response = model.generate_content(prompt)
+                data_json = json.loads(response.text)
+                real_eng_def = data_json.get("english_definition", "")
+            except Exception:
+                pass
 
     # 3. 智慧保底
     if not real_eng_def:
@@ -326,7 +329,7 @@ if main_menu == "✨ 新增單字":
         single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🔍 正在查詢字典與產生解釋並寫入..."):
+                with st.spinner("🔍 正在查詢字典與寫入..."):
                     data = get_word_record_data_clean(single_word, raw_def=single_def)
                     word = data.get('word')
                     
@@ -366,9 +369,9 @@ if main_menu == "✨ 新增單字":
         st.subheader("📋 智慧多格式快速貼上匯入")
         st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
         
-        pasted_text = st.text_area("貼上完整單字清單：", placeholder="pop | (意外地)出現 | A great idea popped | pop up, pop out", height=140)
+        pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 英文釋義 | 例句 | 搭配詞）：", placeholder="together | 一起 | with each other | We work together. | work together", height=140)
         
-        valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
+        valid_lines = [l for l in pasted_text.strip().split('\n'] if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
         if total_preview_count > 0:
             st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個單字準備匯入至「{current_unit_tag}」")
@@ -380,7 +383,7 @@ if main_menu == "✨ 新增單字":
 
         if st.button("📥 批次匯入完整清單", use_container_width=True):
             if pasted_text:
-                lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
+                lines = [l for l in pasted_text.strip().split('\n'] if l.strip()]
                 total_q = len(lines)
                 df_current = load_vocab_dataframe(active_worksheet)
                 count = 0
@@ -402,11 +405,14 @@ if main_menu == "✨ 新增單字":
                     if parts and parts[0].strip():
                         w = parts[0].strip()
                         d = parts[1].strip() if len(parts) > 1 else ""
-                        s = parts[2].strip() if len(parts) > 2 else ""
-                        c = parts[3].strip() if len(parts) > 3 else ""
+                        eng_def_input = parts[2].strip() if len(parts) > 2 else ""
+                        s = parts[3].strip() if len(parts) > 3 else ""
+                        c = parts[4].strip() if len(parts) > 4 else ""
                         
                         if len(w) < 35:
-                            data = get_word_record_data_clean(w, raw_def=d)
+                            # 傳入您提供的備用英文釋義，但內部會嚴格「先優先調用字典」
+                            data = get_word_record_data_clean(w, raw_def=d, pasted_eng_def=eng_def_input)
+
                             match_mask = df_current['word'].astype(str).str.strip().str.lower() == w.lower()
                             if not df_current.empty and match_mask.any():
                                 idx = df_current.index[match_mask].tolist()[0]
