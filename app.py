@@ -47,6 +47,34 @@ st.markdown("""
     audio {
         display: none !important;
     }
+    /* 放大側邊欄標題與選項字體，提升操作體驗 */
+    [data-testid="stSidebar"] .stRadio label p {
+        font-size: 19px !important;
+        font-weight: 500 !important;
+    }
+    [data-testid="stSidebar"] h2 {
+        font-size: 22px !important;
+    }
+    [data-testid="stSidebar"] h5 {
+        font-size: 18px !important;
+    }
+    /* 主畫面輸入框與下拉選單標題字體放大 */
+    .stSelectbox label, .stTextInput label, .stTextArea label, .stRadio label {
+        font-size: 17px !important;
+        font-weight: 600 !important;
+    }
+    /* 針對手機與平板模式（螢幕寬度較小）進行響應式微調，避免過大跑版 */
+    @media (max-width: 768px) {
+        [data-testid="stSidebar"] .stRadio label p {
+            font-size: 16px !important;
+        }
+        [data-testid="stSidebar"] h2 {
+            font-size: 19px !important;
+        }
+        [data-testid="stSidebar"] h5 {
+            font-size: 15px !important;
+        }
+    }
     </style>
 """, unsafe_allow_html=True)
 
