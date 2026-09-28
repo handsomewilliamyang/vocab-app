@@ -294,6 +294,23 @@ def generate_audio_bytes(text, tld='com'):
     tts.write_to_fp(fp)
     return fp.getvalue()
 
+def get_hierarchical_units(df):
+    semesters = []
+    semester_to_units = {}
+    if 'unit_tag' in df.columns:
+        for ut in df['unit_tag'].dropna().unique():
+            if ' > ' in str(ut):
+                sem, un = str(ut).split(' > ', 1)
+                sem = sem.strip()
+                un = un.strip()
+                if sem not in semesters:
+                    semesters.append(sem)
+                if sem not in semester_to_units:
+                    semester_to_units[sem] = []
+                if un not in semester_to_units[sem]:
+                    semester_to_units[sem].append(un)
+    return sorted(semesters), semester_to_units
+
 st.title("📚 我愛背單字")
 
 try:
@@ -395,7 +412,7 @@ if main_menu == "✨ 新增單字":
                     current_num = i + 1
                     remaining_num = total_q - current_num
                     
-                    status_box.markdown(f"🔄 **[執行狀態]** 正在匯入：`{current_unit_tag}` | 目前進度：第 **{current_num}** / {total_q} 個字（還剩 **{remaining_num}** 個字）")
+                    status_box.markdown(f"🔄 **[執行狀態]** 正在匯入：`{current_unit_tag}` | 目前進度 : 第 **{current_num}** / {total_q} 個字（還剩 **{remaining_num}** 個字）")
                     progress_box.progress(current_num / total_q)
                     
                     if '|' in line:
@@ -483,13 +500,33 @@ elif main_menu == "📖 字彙管理":
     if df_vocab.empty:
         st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
     else:
-        unit_list = sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else []
-        unit_list = ["全部單字"] + [u for u in unit_list if u.strip() != ""]
+        semesters, sem_to_units = get_hierarchical_units(df_vocab)
         
-        selected_unit_filter = st.selectbox("依學習單元篩選顯示：", unit_list)
+        # 雙層聯動選單
+        col_sel1, col_sel2 = st.columns(2, gap="medium")
+        with col_sel1:
+            sem_options = ["全部單字"] + semesters
+            selected_sem = st.selectbox("1️⃣ 選擇學期/階段：", sem_options)
+        with col_sel2:
+            if selected_sem == "全部單字":
+                selected_unit_filter = "全部單字"
+                st.selectbox("2️⃣ 選擇課次單元：", ["全部課次"], disabled=True)
+            else:
+                unit_options = ["全部課次"] + sem_to_units.get(selected_sem, [])
+                selected_unit = st.selectbox("2️⃣ 選擇課次單元：", unit_options)
+                if selected_unit == "全部課次":
+                    selected_unit_filter = selected_sem
+                else:
+                    selected_unit_filter = f"{selected_sem} > {selected_unit}"
 
-        filtered_df = df_vocab if selected_unit_filter == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
-        
+        # 篩選 DataFrame
+        if selected_unit_filter == "全部單字":
+            filtered_df = df_vocab
+        elif " > " not in selected_unit_filter:
+            filtered_df = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(selected_unit_filter)]
+        else:
+            filtered_df = df_vocab[df_vocab['unit_tag'] == selected_unit_filter]
+
         col_f1, col_f2 = st.columns(2, gap="medium")
         with col_f1:
             search_query = st.text_input("🔍 搜尋單字或釋義：")
@@ -513,8 +550,8 @@ elif main_menu == "📖 字彙管理":
                 st.write("") 
                 st.write("")
                 if st.button("🗑️ 刪除該課", type="secondary", use_container_width=True):
-                    if selected_unit_filter == "全部單字":
-                        st.warning("⚠️ 請先在上方下拉選單選擇特定單元，才能執行刪除該課！")
+                    if selected_unit_filter == "全部單字" or " > " not in selected_unit_filter:
+                        st.warning("⚠️ 請先在上方選單選擇到具體某一課，才能執行刪除該課！")
                     else:
                         df_current = load_vocab_dataframe(active_worksheet)
                         df_current = df_current[df_current['unit_tag'] != selected_unit_filter]
@@ -548,10 +585,23 @@ elif main_menu == "🎯 背誦單字":
     if df_vocab.empty:
         st.warning(f"📭 目前雲端沒有單字！")
     else:
-        unit_list_flash = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
-        selected_flash_unit = st.selectbox("🎯 選擇要複習的單元：", unit_list_flash, key="flash_unit_select")
-        
-        df_filtered_flash = df_vocab if selected_flash_unit == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_flash_unit]
+        semesters, sem_to_units = get_hierarchical_units(df_vocab)
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            sel_sem_flash = st.selectbox("🎯 選擇學期/階段：", ["全部單字"] + semesters, key="flash_sem_select")
+        with col_f2:
+            if sel_sem_flash == "全部單字":
+                sel_unit_flash = "全部單字"
+                st.selectbox("🎯 選擇課次單元：", ["全部課次"], disabled=True, key="flash_unit_disabled")
+            else:
+                sel_unit_flash = st.selectbox("🎯 選擇課次單元：", ["全部課次"] + sem_to_units.get(sel_sem_flash, []), key="flash_unit_select")
+
+        if sel_sem_flash == "全部單字":
+            df_filtered_flash = df_vocab
+        elif sel_unit_flash == "全部課次":
+            df_filtered_flash = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(sel_sem_flash)]
+        else:
+            df_filtered_flash = df_vocab[df_vocab['unit_tag'] == f"{sel_sem_flash} > {sel_unit_flash}"]
         
         if not df_filtered_flash.empty:
             if "flashcard_index" not in st.session_state: st.session_state.flashcard_index = 0
@@ -585,15 +635,29 @@ elif main_menu == "🎮 我是拼字王":
     else:
         game_mode = st.radio("選擇遊戲模式：🎮", ["標準模式 (中文提示 + 發音)", "進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
         st.markdown("---")
-        unit_list_game = ["全部單字"] + sorted(df_vocab['unit_tag'].dropna().unique().tolist()) if 'unit_tag' in df_vocab.columns else ["全部單字"]
-        selected_game_unit = st.selectbox("選擇遊戲挑戰的單元範圍：", unit_list_game, key="game_unit_select")
-        df_filtered_game = df_vocab if selected_game_unit == "全部單字" else df_vocab[df_vocab['unit_tag'] == selected_game_unit]
+        semesters, sem_to_units = get_hierarchical_units(df_vocab)
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            sel_sem_game = st.selectbox("選擇學期/階段範圍：", ["全部單字"] + semesters, key="game_sem_select")
+        with col_g2:
+            if sel_sem_game == "全部單字":
+                sel_unit_game = "全部單字"
+                st.selectbox("選擇課次單元範圍：", ["全部課次"], disabled=True, key="game_unit_disabled")
+            else:
+                sel_unit_game = st.selectbox("選擇課次單元範圍：", ["全部課次"] + sem_to_units.get(sel_sem_game, []), key="game_unit_select")
+
+        if sel_sem_game == "全部單字":
+            df_filtered_game = df_vocab
+        elif sel_unit_game == "全部課次":
+            df_filtered_game = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(sel_sem_game)]
+        else:
+            df_filtered_game = df_vocab[df_vocab['unit_tag'] == f"{sel_sem_game} > {sel_unit_game}"]
         
         if not df_filtered_game.empty:
             state_key = f"game_started_{game_mode}"
-            if state_key not in st.session_state or st.session_state.get("current_game_unit") != selected_game_unit:
+            if state_key not in st.session_state or st.session_state.get("current_game_unit") != f"{sel_sem_game}_{sel_unit_game}":
                 st.session_state[state_key] = True
-                st.session_state.current_game_unit = selected_game_unit
+                st.session_state.current_game_unit = f"{sel_sem_game}_{sel_unit_game}"
                 st.session_state.game_queue = df_filtered_game.sample(frac=1).to_dict('records')
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
@@ -606,7 +670,7 @@ elif main_menu == "🎮 我是拼字王":
             if st.session_state.get("is_finished", False):
                 st.balloons()
                 st.markdown("## 🎉 測驗圓滿結束！")
-                if st.button("🔄 重新挑戰本單元", type="primary", use_container_width=True):
+                if st.button("🔄 重新挑戰本範圍", type="primary", use_container_width=True):
                     del st.session_state[state_key]
                     st.rerun()
             else:
