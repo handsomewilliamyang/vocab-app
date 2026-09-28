@@ -35,15 +35,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 極簡乾淨版 CSS：去除所有過重的顏色與突兀白框，完美融入深色模式
+# 🎨 側邊欄底部選單調整 CSS
 st.markdown("""
     <style>
-    /* 1. 隱藏預設雜項 */
+    /* 1. 隱藏預設的右上角選單 (Hamburger Menu) 與 Header */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
-    footer {visibility: hidden;}
 
-    /* 2. 統整卡片容器：保持原生沈穩的深色風格與細緻邊框 */
+    /* 2. 統整卡片容器：保持乾淨的深色風格與細緻邊框 */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -117,7 +116,16 @@ selected_level = st.sidebar.radio(
     label_visibility="collapsed"
 )
 
+# 🛠️ 將原本隱藏在右上角的系統功能（清除快取、重新整理等）移至左側側邊欄下方
 st.sidebar.markdown("---")
+st.sidebar.markdown("##### ⚙️ 系統與快取工具")
+if st.sidebar.button("🧹 清除應用程式快取", use_container_width=True):
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.sidebar.success("✅ 快取已成功清除！")
+    time.sleep(0.5)
+    st.rerun()
+
 st.sidebar.markdown(
     "<p style='text-align: center; color: gray; font-size: 13px; margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
