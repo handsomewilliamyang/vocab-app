@@ -206,15 +206,19 @@ def fetch_all_free_dictionaries(word):
 
     return real_def, real_example, phonetic, pos
 
-def get_word_record_data_clean(word, raw_def="", pasted_eng_def=""):
+def get_word_record_data_clean(word, raw_def="", pasted_pos="", pasted_eng_def="", pasted_sent="", pasted_colloc=""):
     w_clean = word.strip()
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
 
-    # 1. 絕對優先：先調用外部字典 API 抓取英文釋義
+    # 1. 絕對優先：先調用外部字典 API 抓取英文釋義與詞性
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
 
-    # 2. 如果外部字典查不到，才使用您貼給我的（或 AI 生成的）英文釋義
+    # 2. 如果字典抓不到詞性，使用您貼上來的詞性
+    if not fetched_pos and pasted_pos:
+        fetched_pos = simple_s2t_convert(pasted_pos)
+
+    # 3. 如果字典抓不到英文釋義，使用您貼上來的英文釋義
     if not real_eng_def:
         if pasted_eng_def:
             real_eng_def = simple_s2t_convert(pasted_eng_def)
@@ -225,18 +229,22 @@ def get_word_record_data_clean(word, raw_def="", pasted_eng_def=""):
                     "gemini-1.5-flash",
                     generation_config={"response_mime_type": "application/json", "temperature": 0.7}
                 )
-                prompt = f"""Provide a professional, clear English definition for the target word or phrase: "{w_clean}" (Chinese meaning: "{cleaned_def}").
+                prompt = f"""Provide a professional, clear English definition and part of speech for: "{w_clean}" (Chinese meaning: "{cleaned_def}").
                 Return a JSON object strictly matching this schema:
                 {{
-                  "english_definition": "A clear and concise definition in English."
+                  "english_definition": "A clear and concise definition in English.",
+                  "part_of_speech": "n. / v. / adj. / phr. etc."
                 }}"""
                 response = model.generate_content(prompt)
                 data_json = json.loads(response.text)
-                real_eng_def = data_json.get("english_definition", "")
+                if not real_eng_def:
+                    real_eng_def = data_json.get("english_definition", "")
+                if not fetched_pos:
+                    fetched_pos = data_json.get("part_of_speech", "")
             except Exception:
                 pass
 
-    # 3. 智慧保底
+    # 4. 智慧保底
     if not real_eng_def:
         if cleaned_def:
             real_eng_def = f"An English term meaning {cleaned_def}."
@@ -254,8 +262,8 @@ def get_word_record_data_clean(word, raw_def="", pasted_eng_def=""):
         "part_of_speech": simple_s2t_convert(fetched_pos),
         "definition": cleaned_def,
         "advanced_sentence": real_eng_def,
-        "basic_sentence": "",
-        "collocations": ""
+        "basic_sentence": pasted_sent,
+        "collocations": pasted_colloc
     }
 
 def save_all_vocab_to_sheet(_worksheet, df):
@@ -307,6 +315,9 @@ clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("�
 col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
 
 st.markdown("<br>", unsafe_allow_html=True)
+
+if main_menu == "✨ 新支援新增單字":
+    pass
 
 if main_menu == "✨ 新增單字":
     if selected_level == "國中部":
@@ -369,7 +380,7 @@ if main_menu == "✨ 新增單字":
         st.subheader("📋 智慧多格式快速貼上匯入")
         st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
         
-        pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 英文釋義 | 例句 | 搭配詞）：", placeholder="together | 一起 | with each other | We work together. | work together", height=140)
+        pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 詞性 | 英文釋義 | 例句 | 搭配詞）：", placeholder="together | 一起 | adv. | with each other | We work together. | work together", height=140)
         
         valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
@@ -405,12 +416,45 @@ if main_menu == "✨ 新增單字":
                     if parts and parts[0].strip():
                         w = parts[0].strip()
                         d = parts[1].strip() if len(parts) > 1 else ""
-                        eng_def_input = parts[2].strip() if len(parts) > 2 else ""
-                        s = parts[3].strip() if len(parts) > 3 else ""
-                        c = parts[4].strip() if len(parts) > 4 else ""
+                        
+                        # 智慧解析支援 5 欄或 6 欄格式
+                        pasted_p = ""
+                        pasted_eng = ""
+                        pasted_s = ""
+                        pasted_c = ""
+                        
+                        if len(parts) >= 6:
+                            pasted_p = parts[2].strip()
+                            pasted_eng = parts[3].strip()
+                            pasted_s = parts[4].strip()
+                            pasted_c = parts[5].strip()
+                        elif len(parts) == 5:
+                            candidate_pos = parts[2].strip().lower()
+                            pos_keywords = ['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'phr.', 'aux.', '名詞', '動詞', '形容詞']
+                            is_pos = any(k in candidate_pos for k in pos_keywords) and len(candidate_pos) < 15
+                            if is_pos:
+                                pasted_p = parts[2].strip()
+                                pasted_eng = parts[3].strip()
+                                pasted_s = parts[4].strip()
+                            else:
+                                pasted_eng = parts[2].strip()
+                                pasted_s = parts[3].strip()
+                                pasted_c = parts[4].strip()
+                        elif len(parts) == 4:
+                            pasted_eng = parts[2].strip()
+                            pasted_s = parts[3].strip()
+                        elif len(parts) == 3:
+                            pasted_eng = parts[2].strip()
                         
                         if len(w) < 35:
-                            data = get_word_record_data_clean(w, raw_def=d, pasted_eng_def=eng_def_input)
+                            data = get_word_record_data_clean(
+                                w, 
+                                raw_def=d, 
+                                pasted_pos=pasted_p, 
+                                pasted_eng_def=pasted_eng, 
+                                pasted_sent=pasted_s, 
+                                pasted_colloc=pasted_c
+                            )
 
                             match_mask = df_current['word'].astype(str).str.strip().str.lower() == w.lower()
                             if not df_current.empty and match_mask.any():
@@ -419,8 +463,8 @@ if main_menu == "✨ 新增單字":
                                 df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                                 if d: df_current.at[idx, 'definition'] = simple_s2t_convert(d)
                                 df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
-                                if s: df_current.at[idx, 'basic_sentence'] = s
-                                if c: df_current.at[idx, 'collocations'] = c
+                                if data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence')
+                                if data.get('collocations'): df_current.at[idx, 'collocations'] = data.get('collocations')
                                 df_current.at[idx, 'unit_tag'] = current_unit_tag
                             else:
                                 next_id = len(df_current) + 1
@@ -431,8 +475,8 @@ if main_menu == "✨ 新增單字":
                                     'part_of_speech': data.get('part_of_speech', ''),
                                     'definition': simple_s2t_convert(d),
                                     'advanced_sentence': data.get('advanced_sentence', ''),
-                                    'basic_sentence': s,
-                                    'collocations': c,
+                                    'basic_sentence': data.get('basic_sentence', ''),
+                                    'collocations': data.get('collocations', ''),
                                     'unit_tag': current_unit_tag,
                                     'srs_stage': 0
                                 }])
@@ -564,7 +608,7 @@ elif main_menu == "🎮 我是拼字王":
                         user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
                         if st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True):
                             if user_ans == target_word.lower():
-                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了!就是 `{target_word}`"}
+                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
                             else:
                                 st.session_state.wrong_answers.append(current_item)
                                 st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
