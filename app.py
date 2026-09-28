@@ -211,40 +211,33 @@ def get_word_record_data_clean(word, raw_def="", pasted_pos="", pasted_eng_def="
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
 
-    # 1. 絕對優先：先調用外部字典 API 抓取英文釋義與詞性
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
 
-    # 2. 如果字典抓不到詞性，使用您貼上來的詞性
-    if not fetched_pos and pasted_pos:
+    if pasted_pos:
         fetched_pos = simple_s2t_convert(pasted_pos)
 
-    # 3. 如果字典抓不到英文釋義，使用您貼上來的英文釋義
-    if not real_eng_def:
+    if not real_eng_def or pasted_eng_def:
         if pasted_eng_def:
             real_eng_def = simple_s2t_convert(pasted_eng_def)
-        elif HAS_GEMINI and st.session_state.get("gemini_api_key"):
-            try:
-                genai.configure(api_key=st.session_state["gemini_api_key"])
-                model = genai.GenerativeModel(
-                    "gemini-1.5-flash",
-                    generation_config={"response_mime_type": "application/json", "temperature": 0.7}
-                )
-                prompt = f"""Provide a professional, clear English definition and part of speech for: "{w_clean}" (Chinese meaning: "{cleaned_def}").
-                Return a JSON object strictly matching this schema:
-                {{
-                  "english_definition": "A clear and concise definition in English.",
-                  "part_of_speech": "n. / v. / adj. / phr. etc."
-                }}"""
-                response = model.generate_content(prompt)
-                data_json = json.loads(response.text)
-                if not real_eng_def:
-                    real_eng_def = data_json.get("english_definition", "")
-                if not fetched_pos:
-                    fetched_pos = data_json.get("part_of_speech", "")
-            except Exception:
-                pass
 
-    # 4. 智慧保底
+    if not real_eng_def and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+        try:
+            genai.configure(api_key=st.session_state["gemini_api_key"])
+            model = genai.GenerativeModel(
+                "gemini-1.5-flash",
+                generation_config={"response_mime_type": "application/json", "temperature": 0.7}
+            )
+            prompt = f"""Provide a professional, clear English definition for: "{w_clean}" (Chinese meaning: "{cleaned_def}").
+            Return a JSON object strictly matching this schema:
+            {{
+              "english_definition": "A clear and concise definition in English."
+            }}"""
+            response = model.generate_content(prompt)
+            data_json = json.loads(response.text)
+            real_eng_def = data_json.get("english_definition", "")
+        except Exception:
+            pass
+
     if not real_eng_def:
         if cleaned_def:
             real_eng_def = f"An English term meaning {cleaned_def}."
@@ -316,9 +309,6 @@ col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if main_menu == "✨ 新支援新增單字":
-    pass
-
 if main_menu == "✨ 新增單字":
     if selected_level == "國中部":
         semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
@@ -345,6 +335,7 @@ if main_menu == "✨ 新增單字":
                     word = data.get('word')
                     
                     df_current = load_vocab_dataframe(active_worksheet)
+                    # 以「單字」本身作為唯一識別（確保每個單字只有一個大格）
                     match_mask = df_current['word'].astype(str).str.strip().str.lower() == word.lower()
                     if not df_current.empty and match_mask.any():
                         idx = df_current.index[match_mask].tolist()[0]
@@ -380,7 +371,7 @@ if main_menu == "✨ 新增單字":
         st.subheader("📋 智慧多格式快速貼上匯入")
         st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
         
-        pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 詞性 | 英文釋義 | 例句 | 搭配詞）：", placeholder="together | 一起 | adv. | with each other | We work together. | work together", height=140)
+        pasted_text = st.text_area("貼上完整單字清單（支援：單字 | 中文 | 詞性 | 英文釋義 | 例句 | 搭配詞）：", placeholder="drink | 喝 | v. | take liquid | Drink some water. | drink water", height=140)
         
         valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
         total_preview_count = len(valid_lines)
@@ -417,7 +408,6 @@ if main_menu == "✨ 新增單字":
                         w = parts[0].strip()
                         d = parts[1].strip() if len(parts) > 1 else ""
                         
-                        # 智慧解析支援 5 欄或 6 欄格式
                         pasted_p = ""
                         pasted_eng = ""
                         pasted_s = ""
@@ -456,7 +446,9 @@ if main_menu == "✨ 新增單字":
                                 pasted_colloc=pasted_c
                             )
 
+                            # 以「單字」本身作為唯一識別，確保每個單字只會有一行（一個大格）
                             match_mask = df_current['word'].astype(str).str.strip().str.lower() == w.lower()
+                            
                             if not df_current.empty and match_mask.any():
                                 idx = df_current.index[match_mask].tolist()[0]
                                 df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
