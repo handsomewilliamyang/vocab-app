@@ -211,8 +211,34 @@ def get_word_record_data_clean(word, raw_def=""):
     w_lower = w_clean.lower()
     cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
 
-    # 💡 這裡修復了：成功將抓取到的英文釋義 (real_eng_def) 賦值並回傳！
+    # 1. 先查免費字典 API
     real_eng_def, _, fetched_phonetic, fetched_pos = fetch_all_free_dictionaries(w_clean)
+
+    # 2. 如果字典查不到（例如片語或生難字），透過 Gemini AI 翻譯/生成精準英文釋義
+    if not real_eng_def and HAS_GEMINI and st.session_state.get("gemini_api_key"):
+        try:
+            genai.configure(api_key=st.session_state["gemini_api_key"])
+            model = genai.GenerativeModel(
+                "gemini-1.5-flash",
+                generation_config={"response_mime_type": "application/json", "temperature": 0.7}
+            )
+            prompt = f"""Provide a professional, clear English definition for the target word or phrase: "{w_clean}" (Chinese meaning: "{cleaned_def}").
+            Return a JSON object strictly matching this schema:
+            {{
+              "english_definition": "A clear and concise definition in English."
+            }}"""
+            response = model.generate_content(prompt)
+            data = json.loads(response.text)
+            real_eng_def = data.get("english_definition", "")
+        except Exception:
+            pass
+
+    # 3. 終極智慧保底
+    if not real_eng_def:
+        if cleaned_def:
+            real_eng_def = f"An English term meaning {cleaned_def}."
+        else:
+            real_eng_def = f"A standard English expression referring to {w_clean}."
 
     if not fetched_phonetic:
         fetched_phonetic = f"/{w_lower.replace(' ', '')}/"
@@ -224,7 +250,7 @@ def get_word_record_data_clean(word, raw_def=""):
         "phonetic": fetched_phonetic,
         "part_of_speech": simple_s2t_convert(fetched_pos),
         "definition": cleaned_def,
-        "advanced_sentence": real_eng_def if real_eng_def else f"Definition for {w_clean}",
+        "advanced_sentence": real_eng_def,
         "basic_sentence": "",
         "collocations": ""
     }
@@ -300,7 +326,7 @@ if main_menu == "✨ 新增單字":
         single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
         if st.button("🚀 查字典並寫入雲端", type="primary", use_container_width=True):
             if single_word:
-                with st.spinner("🔍 正在查詢字典並寫入..."):
+                with st.spinner("🔍 正在查詢字典與產生解釋並寫入..."):
                     data = get_word_record_data_clean(single_word, raw_def=single_def)
                     word = data.get('word')
                     
@@ -311,7 +337,7 @@ if main_menu == "✨ 新增單字":
                         df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
                         df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                         if data.get('definition'): df_current.at[idx, 'definition'] = data.get('definition')
-                        if data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence')
+                        df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                         if single_sent: df_current.at[idx, 'basic_sentence'] = single_sent
                         if single_colloc: df_current.at[idx, 'collocations'] = single_colloc
                         df_current.at[idx, 'unit_tag'] = current_unit_tag
@@ -387,7 +413,7 @@ if main_menu == "✨ 新增單字":
                                 df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
                                 df_current.at[idx, 'part_of_speech'] = data.get('part_of_speech', '')
                                 if d: df_current.at[idx, 'definition'] = simple_s2t_convert(d)
-                                if data.get('advanced_sentence'): df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence')
+                                df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '') # 強制更新英文釋義
                                 if s: df_current.at[idx, 'basic_sentence'] = s
                                 if c: df_current.at[idx, 'collocations'] = c
                                 df_current.at[idx, 'unit_tag'] = current_unit_tag
