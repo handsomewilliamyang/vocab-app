@@ -428,10 +428,13 @@ def save_all_vocab_to_sheet(_worksheet, df):
 
 @st.cache_data(show_spinner=False)
 def generate_audio_bytes(text, tld='com'):
-    tts = gTTS(text=text, lang='en', tld=tld)
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    return fp.getvalue()
+    try:
+        tts = gTTS(text=text, lang='en', tld=tld)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except Exception:
+        return b""
 
 def parse_lesson_number(unit_str):
     match = re.search(r'第([一二三四五六七八九十百0-9]+)課', unit_str)
@@ -466,6 +469,45 @@ def get_hierarchical_units(df):
         semester_to_units[sem].sort(key=parse_lesson_number)
         
     return sorted(semesters), semester_to_units
+
+# ★★★ 最核心的安全語音模組（絕不崩潰） ★★★
+def create_audio_button(b64_audio):
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                background-color: transparent;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                height: 100vh;
+            }}
+            button {{
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                font-size: 28px;
+                padding: 0;
+                margin: 0;
+                outline: none;
+                transition: transform 0.1s;
+            }}
+            button:active {{
+                transform: scale(0.85);
+            }}
+        </style>
+    </head>
+    <body>
+        <audio id="snd" src="data:audio/mp3;base64,{b64_audio}"></audio>
+        <button onclick="document.getElementById('snd').play()" title="點擊發音">🔊</button>
+    </body>
+    </html>
+    """
 
 st.title("📚 我愛背單字")
 
@@ -738,13 +780,17 @@ elif main_menu == "🎯 背誦單字":
             
             with st.container(border=True):
                 audio_bytes = generate_audio_bytes(row['word'])
-                b64_flash = base64.b64encode(audio_bytes).decode()
-                st.markdown(f"""
-                    <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 0;">
-                        <h1 style='text-align: center; font-size: 54px; margin: 0;'>{row['word']}</h1>
-                        <button onclick="new Audio('data:audio/mp3;base64,{b64_flash}').play()" style="background:none;border:none;cursor:pointer;font-size:32px;padding:0;" title="播放發音">🔊</button>
-                    </div>
-                """, unsafe_allow_html=True)
+                b64_flash = base64.b64encode(audio_bytes).decode() if audio_bytes else ""
+                
+                col_sp1, col_w, col_btn, col_sp2 = st.columns([2, 4, 1, 2])
+                with col_w:
+                    st.markdown(f"<h1 style='text-align: right; font-size: 54px; margin: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
+                with col_btn:
+                    if b64_flash:
+                        st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
+                        components.html(create_audio_button(b64_flash), height=45, width=45)
+                        st.markdown("</div>", unsafe_allow_html=True)
+
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
@@ -827,25 +873,29 @@ elif main_menu == "🎮 我是拼字王":
 
                     if "標準模式" in game_mode:
                         audio_bytes = generate_audio_bytes(target_word)
-                        b64_game = base64.b64encode(audio_bytes).decode()
+                        b64_game = base64.b64encode(audio_bytes).decode() if audio_bytes else ""
                         with q_col1:
-                            st.markdown(f"""
-                                <div style="display: flex; align-items: center; gap: 10px; margin: 0;">
-                                    <h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>
-                                    <button onclick="new Audio('data:audio/mp3;base64,{b64_game}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
-                                </div>
-                            """, unsafe_allow_html=True)
+                            sub_c1, sub_c2 = st.columns([5, 1])
+                            with sub_c1:
+                                st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                            with sub_c2:
+                                if b64_game:
+                                    st.markdown("<div style='margin-top: 5px;'>", unsafe_allow_html=True)
+                                    components.html(create_audio_button(b64_game), height=45, width=45)
+                                    st.markdown("</div>", unsafe_allow_html=True)
                         st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
                         audio_bytes = generate_audio_bytes(target_adv_def)
-                        b64_game = base64.b64encode(audio_bytes).decode()
+                        b64_game = base64.b64encode(audio_bytes).decode() if audio_bytes else ""
                         with q_col1:
-                            st.markdown(f"""
-                                <div style="display: flex; align-items: center; gap: 10px; margin: 0;">
-                                    <h2 style='color: #2196F3; margin: 0;'>🔊 英文解釋聽力提示：</h2>
-                                    <button onclick="new Audio('data:audio/mp3;base64,{b64_game}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
-                                </div>
-                            """, unsafe_allow_html=True)
+                            sub_c1, sub_c2 = st.columns([5, 1])
+                            with sub_c1:
+                                st.markdown(f"<h2 style='color: #2196F3; margin: 0; font-size: 22px;'>🔊 英文解釋聽力提示：</h2>", unsafe_allow_html=True)
+                            with sub_c2:
+                                if b64_game:
+                                    st.markdown("<div style='margin-top: 5px;'>", unsafe_allow_html=True)
+                                    components.html(create_audio_button(b64_game), height=45, width=45)
+                                    st.markdown("</div>", unsafe_allow_html=True)
                         st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 8px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
 
