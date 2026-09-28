@@ -35,7 +35,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 最佳化手機與鍵盤互動的排版
+# 🎨 最佳化排版與輸入框融合
 st.markdown("""
     <style>
     .main .block-container {
@@ -935,28 +935,30 @@ elif main_menu == "🎮 我是拼字王":
                         st.session_state.game_index += 1
                         st.rerun()
                 else:
-                    # 💡 即時拼字互動與水平並排表單
-                    with st.form(key=f"quiz_form_{st.session_state.game_index}"):
-                        user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}", label_visibility="collapsed", placeholder="在此輸入拼寫...")
-                        
-                        # 實時融合顯示打字內容
-                        current_typed = user_ans.strip().lower()
-                        display_chars = []
-                        for i, true_char in enumerate(target_word):
-                            if i < len(current_typed):
-                                typed_c = current_typed[i]
-                                if typed_c == true_char.lower():
-                                    display_chars.append(f"<span style='color: #4CAF50; font-weight: bold;'>{true_char}</span>")
-                                else:
-                                    display_chars.append(f"<span style='color: #ff4b4b; font-weight: bold;'>{typed_c}</span>")
+                    # 💡 將即時拼字進度視覺化呈現（結合底線與打字進度）作為區塊標題，並將輸入框與按鈕並排
+                    user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}", label_visibility="collapsed", placeholder="請在此輸入拼寫答案...")
+                    
+                    current_typed = user_ans.strip().lower()
+                    display_chars = []
+                    for i, true_char in enumerate(target_word):
+                        if i < len(current_typed):
+                            typed_c = current_typed[i]
+                            if typed_c == true_char.lower():
+                                display_chars.append(f"<span style='color: #4CAF50; font-weight: bold;'>{true_char}</span>")
                             else:
-                                display_chars.append(" _ ")
-                        
-                        merged_hint_html = "".join(display_chars)
-                        st.markdown(f"<div style='font-size: 24px; letter-spacing: 4px; margin: 15px 0;'><b>🔤 即時拼字：</b> {merged_hint_html}</div>", unsafe_allow_html=True)
+                                display_chars.append(f"<span style='color: #ff4b4b; font-weight: bold;'>{typed_c}</span>")
+                        else:
+                            display_chars.append(" _ ")
+                    
+                    merged_hint_html = "".join(display_chars)
+                    st.markdown(f"<div style='font-size: 26px; letter-spacing: 5px; margin: 10px 0 15px 0;'><b>拼字：</b> {merged_hint_html}</div>", unsafe_allow_html=True)
 
-                        col_f_btn1, col_f_btn2 = st.columns([3, 1])
-                        with col_f_btn2:
+                    with st.form(key=f"quiz_form_{st.session_state.game_index}"):
+                        col_f_in, col_f_btn = st.columns([3, 1], gap="small")
+                        with col_f_in:
+                            # 隱藏的佔位或直接用表單提交觸發
+                            st.markdown("<p style='font-size: 13px; color: gray; margin: 0;'>按 Enter 或點擊右側送出答案</p>", unsafe_allow_html=True)
+                        with col_f_btn:
                             submitted = st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True)
                         
                         if submitted:
