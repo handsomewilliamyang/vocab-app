@@ -471,8 +471,8 @@ def get_hierarchical_units(df):
         
     return sorted(semesters), semester_to_units
 
-# ★★★ 終極多國語音模組：美式、英式、澳洲腔 ★★★
-def create_multi_audio_buttons(b64_us, b64_uk, b64_au):
+# ★★★ 終極版高質感多國語音模組：解決過暗問題、位置置中對齊 ★★★
+def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"):
     return f"""
     <!DOCTYPE html>
     <html>
@@ -480,20 +480,43 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au):
         <style>
             body {{
                 margin: 0; padding: 0; background-color: transparent;
-                display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+                display: flex; align-items: center; justify-content: {justify}; gap: 10px;
                 overflow: hidden; height: 100vh;
             }}
             button {{
-                background: transparent; border: 1px solid #ccc; border-radius: 6px;
-                cursor: pointer; font-size: 15px; padding: 4px 8px;
-                outline: none; transition: transform 0.1s, background 0.2s;
-                display: flex; align-items: center; gap: 4px; color: #555; font-family: sans-serif;
+                /* 完美還原上一題/下一題按鈕的高質感配色 */
+                background-color: rgba(255, 255, 255, 0.08); 
+                border: 1px solid rgba(255, 255, 255, 0.25); 
+                border-radius: 6px;
+                cursor: pointer; 
+                font-size: 15px; 
+                padding: 6px 14px;
+                outline: none; 
+                transition: all 0.2s ease-in-out;
+                color: rgba(255, 255, 255, 0.95); 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                font-weight: 500;
             }}
             button:hover {{
-                background: #f0f0f0; border-color: #999; color: #222;
+                border-color: #ff4b4b; 
+                color: #ff4b4b;
+                background-color: rgba(255, 255, 255, 0.15);
             }}
             button:active {{
-                transform: scale(0.92);
+                transform: scale(0.95);
+            }}
+            /* 防呆：如果使用者的系統是淺色模式時的自動適配 */
+            @media (prefers-color-scheme: light) {{
+                button {{
+                    background-color: rgba(0, 0, 0, 0.03);
+                    border: 1px solid rgba(0, 0, 0, 0.2);
+                    color: rgba(0, 0, 0, 0.85);
+                }}
+                button:hover {{
+                    border-color: #ff4b4b; 
+                    color: #ff4b4b;
+                    background-color: rgba(0, 0, 0, 0.08);
+                }}
             }}
         </style>
     </head>
@@ -502,9 +525,9 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au):
         <audio id="snd_uk" src="data:audio/mp3;base64,{b64_uk}"></audio>
         <audio id="snd_au" src="data:audio/mp3;base64,{b64_au}"></audio>
         
-        <button onclick="document.getElementById('snd_us').play()" title="美式發音">🇺🇸 美式</button>
-        <button onclick="document.getElementById('snd_uk').play()" title="英式發音">🇬🇧 英式</button>
-        <button onclick="document.getElementById('snd_au').play()" title="澳洲腔">🇦🇺 澳洲</button>
+        <button onclick="document.getElementById('snd_us').play()" title="點擊播放美式發音">US 美式</button>
+        <button onclick="document.getElementById('snd_uk').play()" title="點擊播放英式發音">GB 英式</button>
+        <button onclick="document.getElementById('snd_au').play()" title="點擊播放澳洲腔">AU 澳洲</button>
     </body>
     </html>
     """
@@ -779,7 +802,7 @@ elif main_menu == "🎯 背誦單字":
             row = df_filtered_flash.iloc[st.session_state.flashcard_index]
             
             with st.container(border=True):
-                # 產生三國口音音檔
+                # 1. 產生三國口音音檔
                 audio_us = generate_audio_bytes(row['word'], 'com')
                 audio_uk = generate_audio_bytes(row['word'], 'co.uk')
                 audio_au = generate_audio_bytes(row['word'], 'com.au')
@@ -787,17 +810,16 @@ elif main_menu == "🎯 背誦單字":
                 b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                 b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                 
-                # 調整欄位比例容納三個按鈕
-                col_sp1, col_w, col_btn, col_sp2 = st.columns([1, 4, 3, 1])
-                with col_w:
-                    st.markdown(f"<h1 style='text-align: right; font-size: 54px; margin: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
-                with col_btn:
-                    if b64_us and b64_uk and b64_au:
-                        st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
-                        components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au), height=45, width=320)
-                        st.markdown("</div>", unsafe_allow_html=True)
-
+                # 2. 單字大寫置中
+                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{row['word']}</h1>", unsafe_allow_html=True)
+                
+                # 3. 三國語音按鈕直接置中放在單字正下方
+                if b64_us and b64_uk and b64_au:
+                    components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"), height=45)
+                
+                # 4. 音標與詞性在下方
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
+                
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
                 if row.get('advanced_sentence'):
@@ -885,15 +907,9 @@ elif main_menu == "🎮 我是拼字王":
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                         
-                        with q_col1:
-                            sub_c1, sub_c2 = st.columns([2, 3])
-                            with sub_c1:
-                                st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                            with sub_c2:
-                                if b64_us:
-                                    st.markdown("<div style='margin-top: 5px;'>", unsafe_allow_html=True)
-                                    components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au), height=45, width=320)
-                                    st.markdown("</div>", unsafe_allow_html=True)
+                        st.markdown(f"<h2 style='color: #4CAF50; margin-bottom: 5px;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
+                        if b64_us:
+                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
                         st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
                         audio_us = generate_audio_bytes(target_adv_def, 'com')
@@ -903,17 +919,11 @@ elif main_menu == "🎮 我是拼字王":
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                         
-                        with q_col1:
-                            sub_c1, sub_c2 = st.columns([2, 3])
-                            with sub_c1:
-                                st.markdown(f"<h2 style='color: #2196F3; margin: 0; font-size: 22px;'>🔊 英文解釋聽力提示：</h2>", unsafe_allow_html=True)
-                            with sub_c2:
-                                if b64_us:
-                                    st.markdown("<div style='margin-top: 0px;'>", unsafe_allow_html=True)
-                                    components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au), height=45, width=320)
-                                    st.markdown("</div>", unsafe_allow_html=True)
-                        st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 8px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
-                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
+                        st.markdown(f"<h2 style='color: #2196F3; margin-bottom: 5px; font-size: 22px;'>🔊 英文解釋聽力提示：</h2>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 5px; margin-bottom: 10px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
+                        if b64_us:
+                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
+                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
