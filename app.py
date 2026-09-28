@@ -737,13 +737,17 @@ elif main_menu == "🎯 背誦單字":
             row = df_filtered_flash.iloc[st.session_state.flashcard_index]
             
             with st.container(border=True):
-                st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 0;'>{row['word']}</h1>", unsafe_allow_html=True)
+                # 閃卡模式頂部（標題 + 內嵌精巧喇叭按鈕）
+                audio_bytes = generate_audio_bytes(row['word'])
+                b64_flash = base64.b64encode(audio_bytes).decode()
+                st.markdown(f"""
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 0;">
+                        <h1 style='text-align: center; font-size: 54px; margin: 0;'>{row['word']}</h1>
+                        <audio id="flash_audio" src="data:audio/mp3;base64,{b64_flash}"></audio>
+                        <button onclick="document.getElementById('flash_audio').play()" style="background:none;border:none;cursor:pointer;font-size:32px;padding:0;" title="播放發音">🔊</button>
+                    </div>
+                """, unsafe_allow_html=True)
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
-                try:
-                    audio_bytes = generate_audio_bytes(row['word'])
-                    st.audio(audio_bytes, format='audio/mp3')
-                except Exception:
-                    pass
                 st.markdown("---")
                 st.markdown(f"<h4 style='color: #4CAF50;'>中文釋義：{row['definition']}</h4>", unsafe_allow_html=True)
                 if row.get('advanced_sentence'):
@@ -814,24 +818,41 @@ elif main_menu == "🎮 我是拼字王":
                 target_adv_def = str(current_item.get('advanced_sentence', '')).strip() or f"An English term referring to {target_word}."
                 hint_masked = "".join([" _ " if c.isalpha() else "    " for c in target_word])
                 
+                total_q_count = len(st.session_state.game_queue)
+                current_q_num = st.session_state.game_index + 1
+                remaining_count = total_q_count - current_q_num + 1
+
                 with st.container(border=True):
+                    # 頂部列：左側為題目，右側顯示剩餘題數
+                    q_col1, q_col2 = st.columns([4, 1])
+                    with q_col2:
+                        st.markdown(f"<div style='text-align: right; color: gray; font-size: 15px; font-weight: bold;'>剩餘題數：{remaining_count} / {total_q_count}</div>", unsafe_allow_html=True)
+
                     if "標準模式" in game_mode:
-                        st.markdown(f"<h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                        st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
-                        try:
-                            audio_bytes = generate_audio_bytes(target_word)
-                            st.audio(audio_bytes, format='audio/mp3')
-                        except Exception:
-                            pass
+                        audio_bytes = generate_audio_bytes(target_word)
+                        b64_game = base64.b64encode(audio_bytes).decode()
+                        with q_col1:
+                            st.markdown(f"""
+                                <div style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                                    <h2 style='color: #4CAF50; margin: 0;'>中文釋義：{target_def}</h2>
+                                    <audio id="game_audio_{st.session_state.game_index}" src="data:audio/mp3;base64,{b64_game}"></audio>
+                                    <button onclick="document.getElementById('game_audio_{st.session_state.game_index}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
+                                </div>
+                            """, unsafe_allow_html=True)
+                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"<h2 style='color: #2196F3; margin: 0;'>🔊 英文解釋/例句聽力提示：</h2>", unsafe_allow_html=True)
-                        st.markdown(f"<p style='font-size: 19px; font-weight: 500; margin-top: 10px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
+                        audio_bytes = generate_audio_bytes(target_adv_def)
+                        b64_game = base64.b64encode(audio_bytes).decode()
+                        with q_col1:
+                            st.markdown(f"""
+                                <div style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                                    <h2 style='color: #2196F3; margin: 0;'>🔊 英文解釋/例句聽力提示：</h2>
+                                    <audio id="game_audio_{st.session_state.game_index}" src="data:audio/mp3;base64,{b64_game}"></audio>
+                                    <button onclick="document.getElementById('game_audio_{st.session_state.game_index}').play()" style="background:none;border:none;cursor:pointer;font-size:26px;padding:0;" title="播放發音">🔊</button>
+                                </div>
+                            """, unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 8px; color: #333;'>{target_adv_def}</p>", unsafe_allow_html=True)
                         st.markdown(f"**🔤 拼字提示：** `{hint_masked}`")
-                        try:
-                            audio_bytes = generate_audio_bytes(target_adv_def)
-                            st.audio(audio_bytes, format='audio/mp3')
-                        except Exception:
-                            pass
 
                 if st.session_state.get("last_feedback"):
                     fb = st.session_state.last_feedback
