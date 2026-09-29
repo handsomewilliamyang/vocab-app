@@ -132,43 +132,29 @@ if hidden_api_key and HAS_GEMINI:
 else:
     st.session_state.gemini_api_key = ""
 
+# 指定當前工作表名稱
+current_sheet_name = selected_level
+
 @st.cache_resource(show_spinner=False)
-def get_active_worksheet(_client, sheet_url, target_level):
+def get_active_worksheet(_client, sheet_url, sheet_name):
     spreadsheet = _client.open_by_url(sheet_url)
-    worksheets = spreadsheet.worksheets()
-    
-    # 🎯 智慧自動尋找最符合的工作表名稱（支援包含關鍵字或完全吻合）
-    target_clean = target_level.strip().lower()
-    matched_ws = None
-    
-    for ws in worksheets:
-        ws_title = ws.title.strip().lower()
-        if target_clean in ws_title or ws_title in target_clean:
-            matched_ws = ws
-            break
-            
-    # 如果找不到包含關鍵字的，就依據下拉選單的順序直接對應（第 1 個分頁=國中，第 2 個分頁=高中，第 3 個分頁=TOEIC）
-    if not matched_ws:
-        all_titles = [ws.title for ws in worksheets]
-        if target_level == "國中部" and len(worksheets) > 0:
-            matched_ws = worksheets[0]
-        elif target_level == "高中部" and len(worksheets) > 1:
-            matched_ws = worksheets[1]
-        elif target_level == "TOEIC" and len(worksheets) > 2:
-            matched_ws = worksheets[2]
-        else:
-            matched_ws = worksheets[0]
-            
-    return matched_ws
+    try:
+        return spreadsheet.worksheet(sheet_name)
+    except Exception:
+        try:
+            return spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
+        except Exception:
+            return spreadsheet.get_sheet(0)
 
 try:
-    active_worksheet = get_active_worksheet(gs_client, SHEET_URL, selected_level)
+    active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
 except Exception as e:
     st.error(f"⚠️ Google Sheets 連線失敗：{e}")
     st.stop()
 
+# 🎯 關鍵修正：加入 cache_key 參數，讓 Streamlit 依照不同分頁建立獨立快取！
 @st.cache_data(ttl=300, show_spinner=False)
-def load_vocab_dataframe(_worksheet):
+def load_vocab_dataframe(_worksheet, cache_key):
     try:
         all_values = _worksheet.get_all_values()
     except Exception:
@@ -201,7 +187,7 @@ S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
     "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
     "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
-    "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
+    "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "组", 
     "默认": "預設", "句": "句", "词": "词", "语法": "語法"
 }
 
@@ -426,7 +412,8 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
 st.title("📚 我愛背單字")
 
 with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
-    df_vocab = load_vocab_dataframe(active_worksheet)
+    # 🎯 使用 current_sheet_name 強制 Streamlit 依據分頁名稱分開快取！
+    df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
 
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
@@ -459,7 +446,7 @@ if main_menu == "✨ 新增單字":
         if st.button("🚀 瞬間寫入雲端", type="primary", use_container_width=True):
             if single_word:
                 records = parse_mixed_vocab_input(single_word, raw_def=single_def, pasted_sent=single_sent, pasted_colloc=single_colloc)
-                df_current = load_vocab_dataframe(active_worksheet).copy()
+                df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
                 
                 for data in records:
                     word = data.get('word')
@@ -511,7 +498,7 @@ if main_menu == "✨ 新增單字":
         if st.button("📥 批次秒速匯入", use_container_width=True):
             if pasted_text:
                 lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
-                df_current = load_vocab_dataframe(active_worksheet).copy()
+                df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
                 count = 0
                 
                 for line in lines:
@@ -589,7 +576,7 @@ elif main_menu == "📖 字彙管理":
                 word_to_delete = st.selectbox("🗑️ 快速刪除單字：", ["--請選擇要刪除的單字--"] + filtered_df['word'].tolist() if not filtered_df.empty else ["--請選擇要刪除的單字--"])
                 if word_to_delete != "--請選擇要刪除的單字--":
                     if st.button(f"確認刪除：{word_to_delete}", type="primary", use_container_width=True):
-                        df_current = load_vocab_dataframe(active_worksheet).copy()
+                        df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
                         df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
@@ -603,7 +590,7 @@ elif main_menu == "📖 字彙管理":
                     if selected_unit_filter == "全部單字" or " > " not in selected_unit_filter:
                         st.warning("⚠️ 請先在上方選單選擇到具體某一課，才能執行刪除該課！")
                     else:
-                        df_current = load_vocab_dataframe(active_worksheet).copy()
+                        df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
                         df_current = df_current[df_current['unit_tag'] != selected_unit_filter]
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
