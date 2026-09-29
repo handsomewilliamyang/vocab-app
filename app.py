@@ -132,12 +132,13 @@ if hidden_api_key and HAS_GEMINI:
 else:
     st.session_state.gemini_api_key = ""
 
+# 🎯 精確對應您試算表的真實分頁名稱
 level_sheet_mapping = {
     "國中部": "國中部",
     "高中部": "高中部",
-    "TOEIC": "多益"
+    "TOEIC": "TOEIC"
 }
-current_sheet_name = level_sheet_mapping.get(selected_level, "國中部")
+current_sheet_name = level_sheet_mapping.get(selected_level, "高中部")
 
 @st.cache_resource(show_spinner=False)
 def get_active_worksheet(_client, sheet_url, sheet_name):
