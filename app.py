@@ -132,6 +132,7 @@ if hidden_api_key and HAS_GEMINI:
 else:
     st.session_state.gemini_api_key = ""
 
+# 🎯 嚴格對應側邊欄選取的真實 Google 試算表分頁名稱
 current_sheet_name = selected_level
 
 @st.cache_resource(show_spinner=False)
@@ -337,18 +338,14 @@ def parse_lesson_number(unit_str):
                 return cn_map[num_str]
     return 999
 
-def get_hierarchical_units(df, level_name):
+def get_hierarchical_units(df):
     semesters = []
     semester_to_units = {}
     if 'unit_tag' in df.columns:
         for ut in df['unit_tag'].dropna().unique():
             ut_str = str(ut).strip()
-            # 🎯 嚴格過濾：國中部只抓「國」開頭的標籤，高中部只抓「高」開頭的標籤
-            if level_name == "國中部" and not ut_str.startswith("國"):
+            if not ut_str:
                 continue
-            if level_name == "高中部" and not ut_str.startswith("高"):
-                continue
-                
             if ' > ' in ut_str:
                 sem, un = ut_str.split(' > ', 1)
                 sem = sem.strip()
@@ -541,7 +538,7 @@ elif main_menu == "📖 字彙管理":
     if df_vocab.empty:
         st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
     else:
-        semesters, sem_to_units = get_hierarchical_units(df_vocab, selected_level)
+        semesters, sem_to_units = get_hierarchical_units(df_vocab)
         
         col_sel1, col_sel2 = st.columns(2, gap="medium")
         with col_sel1:
@@ -560,13 +557,7 @@ elif main_menu == "📖 字彙管理":
                     selected_unit_filter = f"{selected_sem} > {selected_unit}"
 
         if selected_unit_filter == "全部單字":
-            # 確保「全部單字」也只抓取對應級別的資料
-            if selected_level == "國中部":
-                filtered_df = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith("國")]
-            elif selected_level == "高中部":
-                filtered_df = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith("高")]
-            else:
-                filtered_df = df_vocab
+            filtered_df = df_vocab
         elif " > " not in selected_unit_filter:
             filtered_df = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(selected_unit_filter)]
         else:
@@ -628,7 +619,7 @@ elif main_menu == "🎯 背誦單字":
     if df_vocab.empty:
         st.warning(f"📭 目前雲端沒有單字！")
     else:
-        semesters, sem_to_units = get_hierarchical_units(df_vocab, selected_level)
+        semesters, sem_to_units = get_hierarchical_units(df_vocab)
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             sel_sem_flash = st.selectbox("🎯 選擇學期/階段：", ["全部單字"] + semesters, key="flash_sem_select")
@@ -640,12 +631,7 @@ elif main_menu == "🎯 背誦單字":
                 sel_unit_flash = st.selectbox("🎯 選擇課次單元：", ["全部課次"] + sem_to_units.get(sel_sem_flash, []), key="flash_unit_select")
 
         if sel_sem_flash == "全部單字":
-            if selected_level == "國中部":
-                df_filtered_flash = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith("國")]
-            elif selected_level == "高中部":
-                df_filtered_flash = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith("高")]
-            else:
-                df_filtered_flash = df_vocab
+            df_filtered_flash = df_vocab
         elif sel_unit_flash == "全部課次":
             df_filtered_flash = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(sel_sem_flash)]
         else:
@@ -695,7 +681,7 @@ elif main_menu == "🎮 我是拼字王":
     else:
         game_mode = st.radio("選擇遊戲模式：🎮", ["標準模式 (中文提示 + 發音)", "進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
         st.markdown("---")
-        semesters, sem_to_units = get_hierarchical_units(df_vocab, selected_level)
+        semesters, sem_to_units = get_hierarchical_units(df_vocab)
         col_g1, col_g2 = st.columns(2)
         with col_g1:
             sel_sem_game = st.selectbox("選擇學期/階段範圍：", ["全部單字"] + semesters, key="game_sem_select")
@@ -707,12 +693,7 @@ elif main_menu == "🎮 我是拼字王":
                 sel_unit_game = st.selectbox("選擇課次單元範圍：", ["全部課次"] + sem_to_units.get(sel_sem_game, []), key="game_unit_select")
 
         if sel_sem_game == "全部單字":
-            if selected_level == "國中部":
-                df_filtered_game = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith("國")]
-            elif selected_level == "高中部":
-                df_filtered_game = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith("高")]
-            else:
-                df_filtered_game = df_vocab
+            df_filtered_game = df_vocab
         elif sel_unit_game == "全部課次":
             df_filtered_game = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(sel_sem_game)]
         else:
