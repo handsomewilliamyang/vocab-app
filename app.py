@@ -52,7 +52,7 @@ st.markdown("""
         to { opacity: 1; transform: translateY(0); }
     }
 
-    /* 💡 讓表單內的左右欄位垂直置中對齊，按鈕與輸入框保持完美水平線 */
+    /* 讓表單內的左右欄位垂直置中對齊，按鈕與輸入框保持完美水平線 */
     div[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
         align-items: flex-end !important;
     }
@@ -156,38 +156,36 @@ except Exception as e:
     st.error(f"⚠️ Google Sheets 連線失敗：{e}")
     st.stop()
 
-def load_vocab_dataframe(_worksheet, force_reload=False):
-    cache_key = f"vocab_df_{_worksheet.title}"
-    if force_reload or cache_key not in st.session_state:
-        try:
-            all_values = _worksheet.get_all_values()
-        except Exception:
-            all_values = []
-            
-        if len(all_values) > 1:
-            headers = [str(h).strip().lower() for h in all_values[0]]
-            data_rows = all_values[1:]
-            df_temp = pd.DataFrame(data_rows, columns=headers[:len(all_values[0])])
-        else:
-            df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage'])
-            
-        required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
-        for col in required_cols:
-            if col not in df_temp.columns:
-                df_temp[col] = ""
-                
-        df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
-        df_temp = df_temp[df_temp['word'].notna()]
+# 💡 優化資料讀取效能：使用 TTL 快取機制提升各區塊反應速度
+@st.cache_data(ttl=60, show_spinner=False)
+def load_vocab_dataframe(_worksheet):
+    try:
+        all_values = _worksheet.get_all_values()
+    except Exception:
+        all_values = []
         
-        for idx in df_temp.index:
-            for col in df_temp.columns:
-                val = str(df_temp.at[idx, col])
-                if val == "nan" or val.lower() == "none" or val.strip() == "":
-                    df_temp.at[idx, col] = ""
-                    
-        st.session_state[cache_key] = df_temp
+    if len(all_values) > 1:
+        headers = [str(h).strip().lower() for h in all_values[0]]
+        data_rows = all_values[1:]
+        df_temp = pd.DataFrame(data_rows, columns=headers[:len(all_values[0])])
+    else:
+        df_temp = pd.DataFrame(columns=['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage'])
+        
+    required_cols = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
+    for col in required_cols:
+        if col not in df_temp.columns:
+            df_temp[col] = ""
+            
+    df_temp = df_temp[df_temp['word'].astype(str).str.strip() != '']
+    df_temp = df_temp[df_temp['word'].notna()]
     
-    return st.session_state[cache_key]
+    for idx in df_temp.index:
+        for col in df_temp.columns:
+            val = str(df_temp.at[idx, col])
+            if val == "nan" or val.lower() == "none" or val.strip() == "":
+                df_temp.at[idx, col] = ""
+                
+    return df_temp
 
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
@@ -299,7 +297,6 @@ def parse_raw_vocab_line_advanced(line):
     return parse_mixed_vocab_input(word, raw_def=rest)
 
 def save_all_vocab_to_sheet(_worksheet, df):
-    cache_key = f"vocab_df_{_worksheet.title}"
     try:
         _worksheet.clear()
         headers = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
@@ -318,10 +315,9 @@ def save_all_vocab_to_sheet(_worksheet, df):
                 str(row.get('srs_stage', 0))
             ])
         _worksheet.update(rows)
-        st.session_state[cache_key] = df.copy()
+        st.cache_data.clear() # 清除快取以確保資料即時更新
         return True, "成功"
     except Exception as e:
-        st.session_state[cache_key] = df.copy() 
         return False, str(e)
 
 @st.cache_data(show_spinner=False)
@@ -428,11 +424,7 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
 
 st.title("📚 我愛背單字")
 
-try:
-    df_vocab = load_vocab_dataframe(active_worksheet)
-except Exception:
-    time.sleep(1)
-    df_vocab = load_vocab_dataframe(active_worksheet, force_reload=True)
+df_vocab = load_vocab_dataframe(active_worksheet)
 
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
@@ -465,7 +457,7 @@ if main_menu == "✨ 新增單字":
         if st.button("🚀 瞬間寫入雲端", type="primary", use_container_width=True):
             if single_word:
                 records = parse_mixed_vocab_input(single_word, raw_def=single_def, pasted_sent=single_sent, pasted_colloc=single_colloc)
-                df_current = load_vocab_dataframe(active_worksheet)
+                df_current = load_vocab_dataframe(active_worksheet).copy()
                 
                 for data in records:
                     word = data.get('word')
@@ -517,7 +509,7 @@ if main_menu == "✨ 新增單字":
         if st.button("📥 批次秒速匯入", use_container_width=True):
             if pasted_text:
                 lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
-                df_current = load_vocab_dataframe(active_worksheet)
+                df_current = load_vocab_dataframe(active_worksheet).copy()
                 count = 0
                 
                 for line in lines:
@@ -595,7 +587,7 @@ elif main_menu == "📖 字彙管理":
                 word_to_delete = st.selectbox("🗑️ 快速刪除單字：", ["--請選擇要刪除的單字--"] + filtered_df['word'].tolist() if not filtered_df.empty else ["--請選擇要刪除的單字--"])
                 if word_to_delete != "--請選擇要刪除的單字--":
                     if st.button(f"確認刪除：{word_to_delete}", type="primary", use_container_width=True):
-                        df_current = load_vocab_dataframe(active_worksheet)
+                        df_current = load_vocab_dataframe(active_worksheet).copy()
                         df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
@@ -609,7 +601,7 @@ elif main_menu == "📖 字彙管理":
                     if selected_unit_filter == "全部單字" or " > " not in selected_unit_filter:
                         st.warning("⚠️ 請先在上方選單選擇到具體某一課，才能執行刪除該課！")
                     else:
-                        df_current = load_vocab_dataframe(active_worksheet)
+                        df_current = load_vocab_dataframe(active_worksheet).copy()
                         df_current = df_current[df_current['unit_tag'] != selected_unit_filter]
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
