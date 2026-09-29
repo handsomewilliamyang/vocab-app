@@ -35,7 +35,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約排版與平順過場動畫微調
+# 🎨 簡約排版與平順過場動畫微調（新增縮短輸入框與按鈕的專屬樣式）
 st.markdown("""
     <style>
     /* 統整卡片容器：保持乾淨的邊框與適度留白，並加入平順淡入特效 */
@@ -50,6 +50,11 @@ st.markdown("""
     @keyframes fadeIn {
         from { opacity: 0.4; transform: translateY(4px); }
         to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 💡 將遊戲輸入框與送出按鈕的寬度縮短並置中或靠左 */
+    div[data-testid="stForm"] {
+        max-width: 450px !important;
     }
 
     /* 欄位文字與排版優化 */
@@ -80,6 +85,7 @@ st.markdown("""
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
+        div[data-testid="stForm"] { max-width: 100% !important; }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -748,7 +754,6 @@ elif main_menu == "🎮 我是拼字王":
                 current_q_num = st.session_state.game_index + 1
                 remaining_count = total_q_count - current_q_num + 1
 
-                # 💡 將整道題目（中文/聽力、發音按鈕、提示、輸入框與送出按鈕）全部整合在同一個卡片區塊內
                 with st.container(border=True):
                     q_col1, q_col2 = st.columns([5, 1])
                     with q_col2:
@@ -762,7 +767,6 @@ elif main_menu == "🎮 我是拼字王":
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                         
-                        # 中文與發音按鈕排在同一行
                         r_col1, r_col2 = st.columns([2, 3])
                         with r_col1:
                             st.markdown(f"<h3 style='margin: 0; padding-top: 5px;'>中文：{target_def}</h3>", unsafe_allow_html=True)
@@ -774,7 +778,7 @@ elif main_menu == "🎮 我是拼字王":
                     else:
                         audio_us = generate_audio_bytes(target_adv_def, 'com')
                         audio_uk = generate_audio_bytes(target_adv_def, 'co.uk')
-                        audio_au = generate_audio_bytes(target_adv_def, 'com.au')
+                        audio_au = generate_audio_bytes(target_adv_def, 'co.uk')
                         b64_us = base64.b64encode(audio_us).decode() if audio_us else ""
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
