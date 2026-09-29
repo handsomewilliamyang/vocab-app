@@ -28,15 +28,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約排版與平順過場動畫微調
+# 🎨 簡約排版與手機深色模式亮度優化
 st.markdown("""
     <style>
     /* 統整卡片容器：保持乾淨的邊框與適度留白，並加入平順淡入特效 */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 14px !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
         padding: 20px !important;
-        background-color: transparent !important;
+        background-color: rgba(255, 255, 255, 0.02) !important;
         animation: fadeIn 0.25s ease-in-out;
     }
 
@@ -74,10 +74,13 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* RWD 響應式 */
+    /* RWD 手機版介面強化：提高字體亮度與對比度 */
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
+        body, p, span, label, h3, h4, h5 {
+            color: #f1f1f1 !important;
+        }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -372,37 +375,25 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
                 overflow: hidden; height: 100vh;
             }}
             button {{
-                background-color: rgba(255, 255, 255, 0.08); 
-                border: 1px solid rgba(255, 255, 255, 0.25); 
+                background-color: rgba(255, 255, 255, 0.2) !important; 
+                border: 1px solid rgba(255, 255, 255, 0.5) !important; 
                 border-radius: 6px;
                 cursor: pointer; 
                 font-size: 15px; 
-                padding: 6px 14px;
+                padding: 8px 16px;
                 outline: none; 
                 transition: all 0.2s ease-in-out;
-                color: rgba(255, 255, 255, 0.95); 
+                color: #ffffff !important; 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                font-weight: 500;
+                font-weight: 600;
             }}
             button:hover {{
                 border-color: #ff4b4b; 
                 color: #ff4b4b;
-                background-color: rgba(255, 255, 255, 0.15);
+                background-color: rgba(255, 255, 255, 0.3) !important;
             }}
             button:active {{
                 transform: scale(0.95);
-            }}
-            @media (prefers-color-scheme: light) {{
-                button {{
-                    background-color: rgba(0, 0, 0, 0.03);
-                    border: 1px solid rgba(0, 0, 0, 0.2);
-                    color: rgba(0, 0, 0, 0.85);
-                }}
-                button:hover {{
-                    border-color: #ff4b4b; 
-                    color: #ff4b4b;
-                    background-color: rgba(0, 0, 0, 0.08);
-                }}
             }}
         </style>
     </head>
@@ -664,7 +655,7 @@ elif main_menu == "🎯 背誦單字":
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{row['word']}</h1>", unsafe_allow_html=True)
                 
                 if b64_us and b64_uk and b64_au:
-                    components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"), height=45)
+                    components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"), height=50)
                 
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
@@ -760,7 +751,7 @@ elif main_menu == "🎮 我是拼字王":
                             st.markdown(f"<h3 style='margin: 0; padding-top: 5px;'>中文：{target_def}</h3>", unsafe_allow_html=True)
                         with r_col2:
                             if b64_us:
-                                components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=40)
+                                components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
                                 
                         st.markdown(f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
@@ -774,7 +765,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"<h3 style='margin-bottom: 5px;'>🔊 英文解釋聽力提示：</h3>", unsafe_allow_html=True)
                         st.markdown(f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{target_adv_def}</p>", unsafe_allow_html=True)
                         if b64_us:
-                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=40)
+                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
                         st.markdown(f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
 
                     if st.session_state.get("last_feedback"):
