@@ -35,15 +35,21 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約乾淨的排版微調
+# 🎨 簡約排版與平順過場動畫微調
 st.markdown("""
     <style>
-    /* 統整卡片容器：保持乾淨的邊框與適度留白 */
+    /* 統整卡片容器：保持乾淨的邊框與適度留白，並加入平順淡入特效 */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
         padding: 20px !important;
         background-color: transparent !important;
+        animation: fadeIn 0.25s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0.4; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
     /* 欄位文字與排版優化 */
@@ -313,7 +319,6 @@ def save_all_vocab_to_sheet(_worksheet, df):
         st.session_state[cache_key] = df.copy() 
         return False, str(e)
 
-# 💡 關鍵優化：加上 @st.cache_data 快取，讓語音檔直接從記憶體秒開
 @st.cache_data(show_spinner=False)
 def generate_audio_bytes(text, tld='com'):
     try:
@@ -358,7 +363,7 @@ def get_hierarchical_units(df):
         
     return sorted(semesters), semester_to_units
 
-def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"):
+def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
     return f"""
     <!DOCTYPE html>
     <html>
@@ -743,6 +748,7 @@ elif main_menu == "🎮 我是拼字王":
                 current_q_num = st.session_state.game_index + 1
                 remaining_count = total_q_count - current_q_num + 1
 
+                # 💡 將整道題目（中文/聽力、發音按鈕、提示、輸入框與送出按鈕）全部整合在同一個卡片區塊內
                 with st.container(border=True):
                     q_col1, q_col2 = st.columns([5, 1])
                     with q_col2:
@@ -756,10 +762,15 @@ elif main_menu == "🎮 我是拼字王":
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                         
-                        st.markdown(f"<h2 style='margin-bottom: 5px;'>中文釋義：{target_def}</h2>", unsafe_allow_html=True)
-                        if b64_us:
-                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
-                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
+                        # 中文與發音按鈕排在同一行
+                        r_col1, r_col2 = st.columns([2, 3])
+                        with r_col1:
+                            st.markdown(f"<h3 style='margin: 0; padding-top: 5px;'>中文：{target_def}</h3>", unsafe_allow_html=True)
+                        with r_col2:
+                            if b64_us:
+                                components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=40)
+                                
+                        st.markdown(f"<div style='margin-top: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
                         audio_us = generate_audio_bytes(target_adv_def, 'com')
                         audio_uk = generate_audio_bytes(target_adv_def, 'co.uk')
@@ -768,27 +779,29 @@ elif main_menu == "🎮 我是拼字王":
                         b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
                         b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
                         
-                        st.markdown(f"<h2 style='margin-bottom: 5px; font-size: 22px;'>🔊 英文解釋聽力提示：</h2>", unsafe_allow_html=True)
-                        st.markdown(f"<p style='font-size: 18px; font-weight: 500; margin-top: 5px; margin-bottom: 10px;'>{target_adv_def}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<h3 style='margin-bottom: 5px;'>🔊 英文解釋聽力提示：</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{target_adv_def}</p>", unsafe_allow_html=True)
                         if b64_us:
-                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
-                        st.markdown(f"<div style='margin-top: 10px;'><b>🔤 拼字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
+                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=40)
+                        st.markdown(f"<div style='margin-top: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
 
-                if st.session_state.get("last_feedback"):
-                    fb = st.session_state.last_feedback
-                    if fb["type"] == "success": st.success(fb["msg"])
-                    else: st.error(fb["msg"])
-                    if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
-                        st.session_state.last_feedback = None
-                        st.session_state.game_index += 1
-                        st.rerun()
-                else:
-                    with st.form(key=f"quiz_form_{st.session_state.game_index}"):
-                        user_ans = st.text_input("📝 請輸入您的拼寫答案：", key=f"ans_input_{st.session_state.game_index}").strip().lower()
-                        if st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True):
-                            if user_ans == target_word.lower():
-                                st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
-                            else:
-                                st.session_state.wrong_answers.append(current_item)
-                                st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
+                    st.markdown("---")
+
+                    if st.session_state.get("last_feedback"):
+                        fb = st.session_state.last_feedback
+                        if fb["type"] == "success": st.success(fb["msg"])
+                        else: st.error(fb["msg"])
+                        if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
+                            st.session_state.last_feedback = None
+                            st.session_state.game_index += 1
                             st.rerun()
+                    else:
+                        with st.form(key=f"quiz_form_{st.session_state.game_index}"):
+                            user_ans = st.text_input("輸入答案", placeholder="在此輸入拼寫答案...", key=f"ans_input_{st.session_state.game_index}").strip().lower()
+                            if st.form_submit_button("🚀 送出答案", type="primary", use_container_width=True):
+                                if user_ans == target_word.lower():
+                                    st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
+                                else:
+                                    st.session_state.wrong_answers.append(current_item)
+                                    st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
+                                st.rerun()
