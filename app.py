@@ -132,22 +132,37 @@ if hidden_api_key and HAS_GEMINI:
 else:
     st.session_state.gemini_api_key = ""
 
-# 🎯 嚴格對應側邊欄選取的真實 Google 試算表分頁名稱
-current_sheet_name = selected_level
-
 @st.cache_resource(show_spinner=False)
-def get_active_worksheet(_client, sheet_url, sheet_name):
+def get_active_worksheet(_client, sheet_url, target_level):
     spreadsheet = _client.open_by_url(sheet_url)
-    try:
-        return spreadsheet.worksheet(sheet_name)
-    except Exception:
-        try:
-            return spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
-        except Exception:
-            return spreadsheet.get_sheet(0)
+    worksheets = spreadsheet.worksheets()
+    
+    # 🎯 智慧自動尋找最符合的工作表名稱（支援包含關鍵字或完全吻合）
+    target_clean = target_level.strip().lower()
+    matched_ws = None
+    
+    for ws in worksheets:
+        ws_title = ws.title.strip().lower()
+        if target_clean in ws_title or ws_title in target_clean:
+            matched_ws = ws
+            break
+            
+    # 如果找不到包含關鍵字的，就依據下拉選單的順序直接對應（第 1 個分頁=國中，第 2 個分頁=高中，第 3 個分頁=TOEIC）
+    if not matched_ws:
+        all_titles = [ws.title for ws in worksheets]
+        if target_level == "國中部" and len(worksheets) > 0:
+            matched_ws = worksheets[0]
+        elif target_level == "高中部" and len(worksheets) > 1:
+            matched_ws = worksheets[1]
+        elif target_level == "TOEIC" and len(worksheets) > 2:
+            matched_ws = worksheets[2]
+        else:
+            matched_ws = worksheets[0]
+            
+    return matched_ws
 
 try:
-    active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
+    active_worksheet = get_active_worksheet(gs_client, SHEET_URL, selected_level)
 except Exception as e:
     st.error(f"⚠️ Google Sheets 連線失敗：{e}")
     st.stop()
