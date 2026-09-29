@@ -89,7 +89,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def init_gsheets_client():
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
@@ -143,21 +143,25 @@ level_sheet_mapping = {
 }
 current_sheet_name = level_sheet_mapping.get(selected_level, "國中部")
 
-try:
-    spreadsheet = gs_client.open_by_url(SHEET_URL)
+# 💡 使用快取與載入優化，大幅提升第一次連線及讀取速度
+@st.cache_resource(show_spinner=False)
+def get_active_worksheet(_client, sheet_url, sheet_name):
+    spreadsheet = _client.open_by_url(sheet_url)
     try:
-        active_worksheet = spreadsheet.worksheet(current_sheet_name)
+        return spreadsheet.worksheet(sheet_name)
     except Exception:
         try:
-            active_worksheet = spreadsheet.add_worksheet(title=current_sheet_name, rows="1000", cols="10")
+            return spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
         except Exception:
-            active_worksheet = spreadsheet.get_worksheet(0)
+            return spreadsheet.get_sheet(0)
+
+try:
+    active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
 except Exception as e:
     st.error(f"⚠️ Google Sheets 連線失敗：{e}")
     st.stop()
 
-# 💡 優化資料讀取效能：使用 TTL 快取機制提升各區塊反應速度
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_vocab_dataframe(_worksheet):
     try:
         all_values = _worksheet.get_all_values()
@@ -315,7 +319,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
                 str(row.get('srs_stage', 0))
             ])
         _worksheet.update(rows)
-        st.cache_data.clear() # 清除快取以確保資料即時更新
+        st.cache_data.clear()
         return True, "成功"
     except Exception as e:
         return False, str(e)
@@ -424,7 +428,8 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
 
 st.title("📚 我愛背單字")
 
-df_vocab = load_vocab_dataframe(active_worksheet)
+with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
+    df_vocab = load_vocab_dataframe(active_worksheet)
 
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
