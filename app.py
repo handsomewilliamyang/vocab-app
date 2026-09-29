@@ -35,7 +35,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約排版與平順過場動畫微調
+# 🎨 簡約排版與平順過場動畫微調（新增表單欄位垂直完美對齊設定）
 st.markdown("""
     <style>
     /* 統整卡片容器：保持乾淨的邊框與適度留白，並加入平順淡入特效 */
@@ -50,6 +50,11 @@ st.markdown("""
     @keyframes fadeIn {
         from { opacity: 0.4; transform: translateY(4px); }
         to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 💡 讓表單內的左右欄位垂直置中對齊，按鈕與輸入框保持完美水平線 */
+    div[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+        align-items: flex-end !important;
     }
 
     /* 欄位文字與排版優化 */
@@ -795,12 +800,10 @@ elif main_menu == "🎮 我是拼字王":
                             st.rerun()
                     else:
                         with st.form(key=f"quiz_form_{st.session_state.game_index}"):
-                            # 💡 將輸入框與送出按鈕改為左右並排 (左邊輸入答案、右邊送出按鈕)
                             f_col1, f_col2 = st.columns([4, 1], gap="small")
                             with f_col1:
                                 user_ans = st.text_input("輸入答案", placeholder="在此輸入拼寫答案...", key=f"ans_input_{st.session_state.game_index}", label_visibility="collapsed").strip().lower()
                             with f_col2:
-                                st.markdown("<div style='margin-top: 2px;'></div>", unsafe_allow_html=True)
                                 submitted = st.form_submit_button("🚀 送出", type="primary", use_container_width=True)
                                 
                             if submitted:
