@@ -313,6 +313,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
         st.session_state[cache_key] = df.copy() 
         return False, str(e)
 
+# 💡 關鍵優化：加上 @st.cache_data 快取，讓語音檔直接從記憶體秒開
 @st.cache_data(show_spinner=False)
 def generate_audio_bytes(text, tld='com'):
     try:
