@@ -35,7 +35,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約排版與平順過場動畫微調（新增表單欄位垂直完美對齊設定）
+# 🎨 簡約排版與平順過場動畫微調
 st.markdown("""
     <style>
     /* 統整卡片容器：保持乾淨的邊框與適度留白，並加入平順淡入特效 */
@@ -773,7 +773,7 @@ elif main_menu == "🎮 我是拼字王":
                             if b64_us:
                                 components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=40)
                                 
-                        st.markdown(f"<div style='margin-top: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
                         audio_us = generate_audio_bytes(target_adv_def, 'com')
                         audio_uk = generate_audio_bytes(target_adv_def, 'co.uk')
@@ -786,9 +786,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{target_adv_def}</p>", unsafe_allow_html=True)
                         if b64_us:
                             components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=40)
-                        st.markdown(f"<div style='margin-top: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
-
-                    st.markdown("---")
+                        st.markdown(f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
 
                     if st.session_state.get("last_feedback"):
                         fb = st.session_state.last_feedback
