@@ -3,7 +3,6 @@ import streamlit as st
 import json
 import os
 import time
-import docx
 import random
 import requests
 import re  
@@ -15,12 +14,6 @@ import streamlit.components.v1 as components
 
 import gspread
 from google.oauth2.service_account import Credentials
-
-try:
-    import fitz  # PyMuPDF 用於高效解析 PDF
-    HAS_FITZ = True
-except ImportError:
-    HAS_FITZ = False
 
 try:
     import google.generativeai as genai
@@ -143,7 +136,6 @@ level_sheet_mapping = {
 }
 current_sheet_name = level_sheet_mapping.get(selected_level, "國中部")
 
-# 💡 使用快取與載入優化，大幅提升第一次連線及讀取速度
 @st.cache_resource(show_spinner=False)
 def get_active_worksheet(_client, sheet_url, sheet_name):
     spreadsheet = _client.open_by_url(sheet_url)
