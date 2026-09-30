@@ -69,9 +69,9 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 徹底強制隱藏右下角所有 Streamlit 浮動工具列、標誌與開發者選單 */
+    /* 徹底強制隱藏右下角所有 Streamlit 浮動工具列、標誌與開發者選單 (已移除誤殺喇叭的語法) */
     #MainMenu, footer, [data-testid="stStatusWidget"], div[data-testid="stDecoration"], 
-    [data-testid="stToolbar"], div[class*="viewerBadge"], iframe[sandbox] {
+    [data-testid="stToolbar"], div[class*="viewerBadge"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
@@ -207,7 +207,7 @@ S2T_DICT = {
     "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
     "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
     "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
-    "默认": "預設", "句": "句", "词": "词", "语法": "語法"
+    "默认": "预設", "句": "句", "词": "詞", "语法": "語法"
 }
 
 def simple_s2t_convert(text):
@@ -360,7 +360,6 @@ def get_hierarchical_units(df):
             ut_str = str(ut).strip()
             if not ut_str:
                 continue
-            # 改為只要有 > 就直接切割，不受空白影響
             if '>' in ut_str:
                 sem, un = ut_str.split('>', 1)
                 sem = sem.strip()
