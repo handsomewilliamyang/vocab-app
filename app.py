@@ -28,10 +28,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約排版與自動適應亮/暗色主題優化 (修正手機版文字消失問題)
+# 🎨 簡約排版與自動適應亮/暗色主題優化
 st.markdown("""
     <style>
-    /* 統整卡片容器：將邊框與背景改為中性灰色透明度，確保亮/暗色主題都好看 */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 14px !important;
         border: 1px solid rgba(128, 128, 128, 0.2) !important;
@@ -45,12 +44,10 @@ st.markdown("""
         to { opacity: 1; transform: translateY(0); }
     }
 
-    /* 讓表單內的左右欄位垂直置中對齊，按鈕與輸入框保持完美水平線 */
     div[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
         align-items: flex-end !important;
     }
 
-    /* 欄位文字與排版優化 */
     .stDataFrame [data-testid="stTable"] td, .stDataFrame div[data-baseweb="table"] td, div[data-testid="stDataFrame"] div.dvn-scroller td {
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -60,7 +57,6 @@ st.markdown("""
         font-size: 15px !important;
     }
 
-    /* 側邊欄與輸入框微調 */
     [data-testid="stSidebar"] .stRadio label p {
         font-size: 18px !important;
         font-weight: 500 !important;
@@ -74,7 +70,6 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* RWD 手機版介面強化：移除強制白色字體，讓系統原生接管顏色 */
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
@@ -129,27 +124,29 @@ if hidden_api_key and HAS_GEMINI:
 else:
     st.session_state.gemini_api_key = ""
 
-# 指定當前工作表名稱
 current_sheet_name = selected_level
 
 @st.cache_resource(show_spinner=False)
 def get_active_worksheet(_client, sheet_url, sheet_name):
-    spreadsheet = _client.open_by_url(sheet_url)
+    try:
+        spreadsheet = _client.open_by_url(sheet_url)
+    except Exception as ex:
+        raise RuntimeError(f"無法開啟 Google 試算表網址，請檢查 secrets 中的 sheet_url 是否正確。錯誤：{ex}")
+    
     try:
         return spreadsheet.worksheet(sheet_name)
     except Exception:
         try:
             return spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
-        except Exception:
-            return spreadsheet.get_sheet(0)
+        except Exception as ex:
+            raise RuntimeError(f"無法讀取或建立分頁「{sheet_name}」，請確認試算表內是否有此分頁。錯誤：{ex}")
 
 try:
     active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
 except Exception as e:
-    st.error(f"⚠️ Google Sheets 連線失敗：{e}")
+    st.error(f"⚠️ {e}")
     st.stop()
 
-# 🎯 關鍵修正：加入 cache_key 參數，讓 Streamlit 依照不同分頁建立獨立快取！
 @st.cache_data(ttl=300, show_spinner=False)
 def load_vocab_dataframe(_worksheet, cache_key):
     try:
@@ -392,7 +389,6 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
             button:active {{
                 transform: scale(0.95);
             }}
-            /* 加入自動適應黑夜/白天模式的按鈕字體顏色調整 */
             @media (prefers-color-scheme: light) {{
                 button {{ color: #333333 !important; border-color: rgba(0, 0, 0, 0.2) !important; }}
                 button:hover {{ color: #ff4b4b !important; border-color: #ff4b4b !important; }}
@@ -414,8 +410,11 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
 st.title("📚 我愛背單字")
 
 with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
-    # 🎯 使用 current_sheet_name 強制 Streamlit 依據分頁名稱分開快取！
-    df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
+    try:
+        df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
+    except Exception as e:
+        st.error(f"⚠️ 載入資料失敗：{e}")
+        st.stop()
 
 total_words = len(df_vocab)
 col_m1, col_m2 = st.columns(2)
