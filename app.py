@@ -76,26 +76,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 🛡️ 加上安全防護的 Google Sheets 連線初始化
-try:
-    if "gcp_service_account" not in st.secrets or "sheet_url" not in st.secrets:
-        st.error("⚠️️ 嚴重錯誤：請在 Streamlit Secrets 中設定 `gcp_service_account` 與 `sheet_url`！")
-        st.stop()
-
-    scopes = [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive'
-    ]
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scopes
-    )
-    gs_client = gspread.authorize(creds)
-    SHEET_URL = st.secrets["sheet_url"]
-except Exception as e:
-    st.error(f"⚠️ Google Sheets 授權連線失敗：{e}")
-    st.stop()
-
+# 🎯 先建立側邊欄選單（確保畫面第一時間能順利渲染，不卡死）
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
     ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
@@ -126,12 +107,26 @@ else:
 
 current_sheet_name = selected_level
 
+st.title("📚 我愛背單字")
+
+# 🛡️ 在畫面渲染後，才安全地進行 Google Sheets 連線與資料讀取
+@st.cache_resource(show_spinner=False)
+def init_gsheets_client():
+    if "gcp_service_account" not in st.secrets or "sheet_url" not in st.secrets:
+        raise RuntimeError("請在 Streamlit Secrets 中設定 gcp_service_account 與 sheet_url！")
+    scopes = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+    ]
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scopes
+    )
+    return gspread.authorize(creds)
+
+@st.cache_resource(show_spinner=False)
 def get_active_worksheet(_client, sheet_url, sheet_name):
-    try:
-        spreadsheet = _client.open_by_url(sheet_url)
-    except Exception as ex:
-        raise RuntimeError(f"無法開啟 Google 試算表網址，請檢查 secrets 中的 sheet_url。錯誤：{ex}")
-    
+    spreadsheet = _client.open_by_url(sheet_url)
     try:
         return spreadsheet.worksheet(sheet_name)
     except Exception:
@@ -139,12 +134,6 @@ def get_active_worksheet(_client, sheet_url, sheet_name):
             return spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
         except Exception as ex:
             raise RuntimeError(f"無法讀取或建立分頁「{sheet_name}」。錯誤：{ex}")
-
-try:
-    active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
-except Exception as e:
-    st.error(f"⚠️ 工作表讀取失敗：{e}")
-    st.stop()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_vocab_dataframe(_worksheet, cache_key):
@@ -175,6 +164,26 @@ def load_vocab_dataframe(_worksheet, cache_key):
                 df_temp.at[idx, col] = ""
                 
     return df_temp
+
+# 執行連線與讀取
+try:
+    with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
+        gs_client = init_gsheets_client()
+        SHEET_URL = st.secrets["sheet_url"]
+        active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
+        df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
+except Exception as e:
+    st.error(f"⚠️ 連線或讀取 Google 試算表發生錯誤：{e}")
+    st.stop()
+
+total_words = len(df_vocab)
+col_m1, col_m2 = st.columns(2)
+col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
+
+clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
+col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
@@ -405,24 +414,6 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
     </body>
     </html>
     """
-
-st.title("📚 我愛背單字")
-
-with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
-    try:
-        df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
-    except Exception as e:
-        st.error(f"⚠️ 載入資料庫失敗：{e}")
-        st.stop()
-
-total_words = len(df_vocab)
-col_m1, col_m2 = st.columns(2)
-col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
-
-clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
-col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
-
-st.markdown("<br>", unsafe_allow_html=True)
 
 if main_menu == "✨ 新增單字":
     if selected_level == "國中部":
