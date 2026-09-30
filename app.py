@@ -28,7 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 簡約排版與自動適應亮/暗色主題優化
 st.markdown("""
     <style>
     [data-testid="stVerticalBlockBorderWrapper"] {
@@ -77,8 +76,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-@st.cache_resource(show_spinner=False)
-def init_gsheets_client():
+# 🛡️ 加上安全防護的 Google Sheets 連線初始化
+try:
+    if "gcp_service_account" not in st.secrets or "sheet_url" not in st.secrets:
+        st.error("⚠️️ 嚴重錯誤：請在 Streamlit Secrets 中設定 `gcp_service_account` 與 `sheet_url`！")
+        st.stop()
+
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive'
@@ -87,13 +90,10 @@ def init_gsheets_client():
         st.secrets["gcp_service_account"],
         scopes=scopes
     )
-    return gspread.authorize(creds)
-
-try:
-    gs_client = init_gsheets_client()
+    gs_client = gspread.authorize(creds)
     SHEET_URL = st.secrets["sheet_url"]
 except Exception as e:
-    st.error(f"⚠️ Google Sheets 連線設定錯誤：{e}")
+    st.error(f"⚠️ Google Sheets 授權連線失敗：{e}")
     st.stop()
 
 main_menu = st.sidebar.radio(
@@ -126,12 +126,11 @@ else:
 
 current_sheet_name = selected_level
 
-@st.cache_resource(show_spinner=False)
 def get_active_worksheet(_client, sheet_url, sheet_name):
     try:
         spreadsheet = _client.open_by_url(sheet_url)
     except Exception as ex:
-        raise RuntimeError(f"無法開啟 Google 試算表網址，請檢查 secrets 中的 sheet_url 是否正確。錯誤：{ex}")
+        raise RuntimeError(f"無法開啟 Google 試算表網址，請檢查 secrets 中的 sheet_url。錯誤：{ex}")
     
     try:
         return spreadsheet.worksheet(sheet_name)
@@ -139,12 +138,12 @@ def get_active_worksheet(_client, sheet_url, sheet_name):
         try:
             return spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
         except Exception as ex:
-            raise RuntimeError(f"無法讀取或建立分頁「{sheet_name}」，請確認試算表內是否有此分頁。錯誤：{ex}")
+            raise RuntimeError(f"無法讀取或建立分頁「{sheet_name}」。錯誤：{ex}")
 
 try:
     active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
 except Exception as e:
-    st.error(f"⚠️ {e}")
+    st.error(f"⚠️ 工作表讀取失敗：{e}")
     st.stop()
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -413,7 +412,7 @@ with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
     try:
         df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
     except Exception as e:
-        st.error(f"⚠️ 載入資料失敗：{e}")
+        st.error(f"⚠️ 載入資料庫失敗：{e}")
         st.stop()
 
 total_words = len(df_vocab)
