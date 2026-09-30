@@ -76,7 +76,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 🎯 先建立側邊欄選單（確保畫面第一時間能順利渲染，不卡死）
+# 🎯 先建立側邊欄選單
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
     ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
@@ -109,7 +109,6 @@ current_sheet_name = selected_level
 
 st.title("📚 我愛背單字")
 
-# 🛡️ 在畫面渲染後，才安全地進行 Google Sheets 連線與資料讀取
 @st.cache_resource(show_spinner=False)
 def init_gsheets_client():
     if "gcp_service_account" not in st.secrets or "sheet_url" not in st.secrets:
@@ -165,7 +164,6 @@ def load_vocab_dataframe(_worksheet, cache_key):
                 
     return df_temp
 
-# 執行連線與讀取
 try:
     with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
         gs_client = init_gsheets_client()
@@ -329,17 +327,8 @@ def generate_audio_bytes(text, tld='com'):
         return b""
 
 def parse_lesson_number(unit_str):
-    match = re.search(r'第([一二三四五六七八九十百0-9]+)課', unit_str)
-    if match:
-        num_str = match.group(1)
-        try:
-            return int(num_str)
-        except ValueError:
-            cn_map = {'一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10,
-                      '十一':11, '十二':12, '十三':13, '十四':14, '十五':15, '十六':16, '十七':17, '十八':18, '十九':19, '二十':20}
-            if num_str in cn_map:
-                return cn_map[num_str]
-    return 999
+    order_map = {'上': 1, '中': 2, '下': 3}
+    return order_map.get(unit_str, 99)
 
 def get_hierarchical_units(df):
     semesters = []
@@ -418,11 +407,14 @@ def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
 if main_menu == "✨ 新增單字":
     if selected_level == "國中部":
         semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+        unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     elif selected_level == "高中部":
         semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+        unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     else:
-        semester = st.selectbox("選擇階段：", ["TOEIC核心", "TOEIC進階", "商用英文"])
-    unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
+        semester = st.selectbox("選擇 TOEIC 主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
+        unit = st.selectbox("選擇階段：", ["上", "中", "下"])
+        
     current_unit_tag = f"{semester} > {unit}"
     
     st.markdown("---")
@@ -536,15 +528,15 @@ elif main_menu == "📖 字彙管理":
         col_sel1, col_sel2 = st.columns(2, gap="medium")
         with col_sel1:
             sem_options = ["全部單字"] + semesters
-            selected_sem = st.selectbox("1️⃣ 選擇學期/階段：", sem_options)
+            selected_sem = st.selectbox("1️⃣ 選擇學期/篇章：", sem_options)
         with col_sel2:
             if selected_sem == "全部單字":
                 selected_unit_filter = "全部單字"
-                st.selectbox("2️⃣ 選擇課次單元：", ["全部課次"], disabled=True)
+                st.selectbox("2️⃣ 選擇單元/級別：", ["全部單元"], disabled=True)
             else:
-                unit_options = ["全部課次"] + sem_to_units.get(selected_sem, [])
-                selected_unit = st.selectbox("2️⃣ 選擇課次單元：", unit_options)
-                if selected_unit == "全部課次":
+                unit_options = ["全部單元"] + sem_to_units.get(selected_sem, [])
+                selected_unit = st.selectbox("2️⃣ 選擇單元/級別：", unit_options)
+                if selected_unit == "全部單元":
                     selected_unit_filter = selected_sem
                 else:
                     selected_unit_filter = f"{selected_sem} > {selected_unit}"
@@ -577,16 +569,16 @@ elif main_menu == "📖 字彙管理":
             with sub_col2:
                 st.write("") 
                 st.write("")
-                if st.button("🗑️ 刪除該課", type="secondary", use_container_width=True):
+                if st.button("🗑️ 刪除該單元", type="secondary", use_container_width=True):
                     if selected_unit_filter == "全部單字" or " > " not in selected_unit_filter:
-                        st.warning("⚠️ 請先在上方選單選擇到具體某一課，才能執行刪除該課！")
+                        st.warning("⚠️ 請先在上方選單選擇到具體某個單元，才能執行刪除！")
                     else:
                         df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
                         df_current = df_current[df_current['unit_tag'] != selected_unit_filter]
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
                         save_all_vocab_to_sheet(active_worksheet, df_current)
-                        st.success(f"🗑️ 已成功刪除「{selected_unit_filter}」整課單字！")
+                        st.success(f"🗑️ 已成功刪除「{selected_unit_filter}」整單元單字！")
                         st.rerun()
 
         st.markdown("---")
@@ -615,17 +607,17 @@ elif main_menu == "🎯 背誦單字":
         semesters, sem_to_units = get_hierarchical_units(df_vocab)
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            sel_sem_flash = st.selectbox("🎯 選擇學期/階段：", ["全部單字"] + semesters, key="flash_sem_select")
+            sel_sem_flash = st.selectbox("🎯 選擇學期/篇章：", ["全部單字"] + semesters, key="flash_sem_select")
         with col_f2:
             if sel_sem_flash == "全部單字":
-                sel_unit_flash = "全部單字"
-                st.selectbox("🎯 選擇課次單元：", ["全部課次"], disabled=True, key="flash_unit_disabled")
+                sel_unit_flash = "全部單元"
+                st.selectbox("🎯 選擇單元/級別：", ["全部單元"], disabled=True, key="flash_unit_disabled")
             else:
-                sel_unit_flash = st.selectbox("🎯 選擇課次單元：", ["全部課次"] + sem_to_units.get(sel_sem_flash, []), key="flash_unit_select")
+                sel_unit_flash = st.selectbox("🎯 選擇單元/級別：", ["全部單元"] + sem_to_units.get(sel_sem_flash, []), key="flash_unit_select")
 
         if sel_sem_flash == "全部單字":
             df_filtered_flash = df_vocab
-        elif sel_unit_flash == "全部課次":
+        elif sel_unit_flash == "全部單元":
             df_filtered_flash = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(sel_sem_flash)]
         else:
             df_filtered_flash = df_vocab[df_vocab['unit_tag'] == f"{sel_sem_flash} > {sel_unit_flash}"]
@@ -677,17 +669,17 @@ elif main_menu == "🎮 我是拼字王":
         semesters, sem_to_units = get_hierarchical_units(df_vocab)
         col_g1, col_g2 = st.columns(2)
         with col_g1:
-            sel_sem_game = st.selectbox("選擇學期/階段範圍：", ["全部單字"] + semesters, key="game_sem_select")
+            sel_sem_game = st.selectbox("選擇學期/篇章範圍：", ["全部單字"] + semesters, key="game_sem_select")
         with col_g2:
             if sel_sem_game == "全部單字":
-                sel_unit_game = "全部單字"
-                st.selectbox("選擇課次單元範圍：", ["全部課次"], disabled=True, key="game_unit_disabled")
+                sel_unit_game = "全部單元"
+                st.selectbox("選擇單元/級別範圍：", ["全部單元"], disabled=True, key="game_unit_disabled")
             else:
-                sel_unit_game = st.selectbox("選擇課次單元範圍：", ["全部課次"] + sem_to_units.get(sel_sem_game, []), key="game_unit_select")
+                sel_unit_game = st.selectbox("選擇單元/級別範圍：", ["全部單元"] + sem_to_units.get(sel_sem_game, []), key="game_unit_select")
 
         if sel_sem_game == "全部單字":
             df_filtered_game = df_vocab
-        elif sel_unit_game == "全部課次":
+        elif sel_unit_game == "全部單元":
             df_filtered_game = df_vocab[df_vocab['unit_tag'].astype(str).str.startswith(sel_sem_game)]
         else:
             df_filtered_game = df_vocab[df_vocab['unit_tag'] == f"{sel_sem_game} > {sel_unit_game}"]
