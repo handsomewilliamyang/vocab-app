@@ -69,6 +69,15 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
+    /* 徹底強制隱藏右下角所有 Streamlit 浮動工具列、標誌與開發者選單 */
+    #MainMenu, footer, [data-testid="stStatusWidget"], div[data-testid="stDecoration"], 
+    [data-testid="stToolbar"], div[class*="viewerBadge"], iframe[sandbox] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
@@ -161,6 +170,16 @@ def load_vocab_dataframe(_worksheet, cache_key):
             val = str(df_temp.at[idx, col])
             if val == "nan" or val.lower() == "none" or val.strip() == "":
                 df_temp.at[idx, col] = ""
+
+    # 自動校正 unit_tag，解決手動於試算表修改時漏打空白的問題
+    if 'unit_tag' in df_temp.columns:
+        def normalize_tag(tag):
+            t = str(tag).strip()
+            if '>' in t:
+                parts = t.split('>', 1)
+                return f"{parts[0].strip()} > {parts[1].strip()}"
+            return t
+        df_temp['unit_tag'] = df_temp['unit_tag'].apply(normalize_tag)
                 
     return df_temp
 
@@ -341,8 +360,9 @@ def get_hierarchical_units(df):
             ut_str = str(ut).strip()
             if not ut_str:
                 continue
-            if ' > ' in ut_str:
-                sem, un = ut_str.split(' > ', 1)
+            # 改為只要有 > 就直接切割，不受空白影響
+            if '>' in ut_str:
+                sem, un = ut_str.split('>', 1)
                 sem = sem.strip()
                 un = un.strip()
                 if sem not in semesters:
