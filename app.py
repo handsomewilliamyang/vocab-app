@@ -327,8 +327,11 @@ def generate_audio_bytes(text, tld='com'):
         return b""
 
 def parse_lesson_number(unit_str):
-    order_map = {'上': 1, '中': 2, '下': 3}
-    return order_map.get(unit_str, 99)
+    order_map = {'第一課': 1, '第二課': 2, '第三課': 3, '第四課': 4}
+    for k, v in order_map.items():
+        if k in unit_str:
+            return v
+    return 99
 
 def get_hierarchical_units(df):
     semesters = []
@@ -413,7 +416,7 @@ if main_menu == "✨ 新增單字":
         unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課"])
     else:
         semester = st.selectbox("選擇 TOEIC 主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
-        unit = st.selectbox("選擇階段：", ["上", "中", "下"])
+        unit = st.selectbox("選擇課次：", ["第一課", "第二課", "第三課", "第四課"])
         
     current_unit_tag = f"{semester} > {unit}"
     
@@ -532,10 +535,10 @@ elif main_menu == "📖 字彙管理":
         with col_sel2:
             if selected_sem == "全部單字":
                 selected_unit_filter = "全部單字"
-                st.selectbox("2️⃣ 選擇單元/級別：", ["全部單元"], disabled=True)
+                st.selectbox("2️⃣ 選擇單元/課次：", ["全部單元"], disabled=True)
             else:
                 unit_options = ["全部單元"] + sem_to_units.get(selected_sem, [])
-                selected_unit = st.selectbox("2️⃣ 選擇單元/級別：", unit_options)
+                selected_unit = st.selectbox("2️⃣ 選擇單元/課次：", unit_options)
                 if selected_unit == "全部單元":
                     selected_unit_filter = selected_sem
                 else:
@@ -611,9 +614,9 @@ elif main_menu == "🎯 背誦單字":
         with col_f2:
             if sel_sem_flash == "全部單字":
                 sel_unit_flash = "全部單元"
-                st.selectbox("🎯 選擇單元/級別：", ["全部單元"], disabled=True, key="flash_unit_disabled")
+                st.selectbox("🎯 選擇單元/課次：", ["全部單元"], disabled=True, key="flash_unit_disabled")
             else:
-                sel_unit_flash = st.selectbox("🎯 選擇單元/級別：", ["全部單元"] + sem_to_units.get(sel_sem_flash, []), key="flash_unit_select")
+                sel_unit_flash = st.selectbox("🎯 選擇單元/課次：", ["全部單元"] + sem_to_units.get(sel_sem_flash, []), key="flash_unit_select")
 
         if sel_sem_flash == "全部單字":
             df_filtered_flash = df_vocab
@@ -673,9 +676,9 @@ elif main_menu == "🎮 我是拼字王":
         with col_g2:
             if sel_sem_game == "全部單字":
                 sel_unit_game = "全部單元"
-                st.selectbox("選擇單元/級別範圍：", ["全部單元"], disabled=True, key="game_unit_disabled")
+                st.selectbox("選擇單元/課次範圍：", ["全部單元"], disabled=True, key="game_unit_disabled")
             else:
-                sel_unit_game = st.selectbox("選擇單元/級別範圍：", ["全部單元"] + sem_to_units.get(sel_sem_game, []), key="game_unit_select")
+                sel_unit_game = st.selectbox("選擇單元/課次範圍：", ["全部單元"] + sem_to_units.get(sel_sem_game, []), key="game_unit_select")
 
         if sel_sem_game == "全部單字":
             df_filtered_game = df_vocab
