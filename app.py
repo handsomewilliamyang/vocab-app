@@ -69,10 +69,14 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 隱藏右下角的 Streamlit 標誌與開發者選單浮水印 */
-    #MainMenu, footer, [data-testid="stStatusWidget"], div[data-testid="stDecoration"] {
+    /* 隱藏右下角的 Streamlit 浮動工具列、標誌與開發者選單 */
+    #MainMenu, footer, [data-testid="stStatusWidget"], div[data-testid="stDecoration"], 
+    [data-testid="stToolbar"], div.viewerBadge_container__1QSob, .viewerBadge_link__1S137, 
+    .styles_viewerBadge__1yG5_, div[class*="viewerBadge"] {
         display: none !important;
         visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
     }
 
     @media (max-width: 768px) {
@@ -768,7 +772,7 @@ elif main_menu == "🎮 我是拼字王":
                         if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
                             st.session_state.last_feedback = None
                             st.session_state.game_index += 1
-                            st.rerurn()
+                            st.rerun()
                     else:
                         with st.form(key=f"quiz_form_{st.session_state.game_index}"):
                             f_col1, f_col2 = st.columns([4, 1], gap="small")
