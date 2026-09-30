@@ -69,10 +69,9 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 隱藏右下角的 Streamlit 浮動工具列、標誌與開發者選單 */
+    /* 徹底強制隱藏右下角所有 Streamlit 浮動工具列、標誌與開發者選單 */
     #MainMenu, footer, [data-testid="stStatusWidget"], div[data-testid="stDecoration"], 
-    [data-testid="stToolbar"], div.viewerBadge_container__1QSob, .viewerBadge_link__1S137, 
-    .styles_viewerBadge__1yG5_, div[class*="viewerBadge"] {
+    [data-testid="stToolbar"], div[class*="viewerBadge"], iframe[sandbox] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
