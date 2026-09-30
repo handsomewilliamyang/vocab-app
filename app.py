@@ -69,15 +69,6 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 徹底強制隱藏右下角所有 Streamlit 浮動工具列、標誌與開發者選單 */
-    #MainMenu, footer, [data-testid="stStatusWidget"], div[data-testid="stDecoration"], 
-    [data-testid="stToolbar"], div[class*="viewerBadge"], iframe[sandbox] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-    }
-
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
