@@ -69,15 +69,6 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 徹底強制隱藏右下角所有 Streamlit 浮動工具列、標誌與開發者選單 (已移除誤殺喇叭的語法) */
-    #MainMenu, footer, [data-testid="stStatusWidget"], div[data-testid="stDecoration"], 
-    [data-testid="stToolbar"], div[class*="viewerBadge"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-    }
-
     @media (max-width: 768px) {
         [data-testid="stSidebar"] .stRadio label p { font-size: 16px !important; }
         [data-testid="stSidebar"] h5 { font-size: 15px !important; }
@@ -171,7 +162,6 @@ def load_vocab_dataframe(_worksheet, cache_key):
             if val == "nan" or val.lower() == "none" or val.strip() == "":
                 df_temp.at[idx, col] = ""
 
-    # 自動校正 unit_tag，解決手動於試算表修改時漏打空白的問題
     if 'unit_tag' in df_temp.columns:
         def normalize_tag(tag):
             t = str(tag).strip()
@@ -207,7 +197,7 @@ S2T_DICT = {
     "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
     "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
     "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
-    "默认": "预設", "句": "句", "词": "詞", "语法": "語法"
+    "默认": "預設", "句": "句", "词": "詞", "语法": "語法"
 }
 
 def simple_s2t_convert(text):
@@ -591,7 +581,7 @@ elif main_menu == "📖 字彙管理":
             with sub_col2:
                 st.write("") 
                 st.write("")
-                if st.button("🗑️ 刪除該單元", type="secondary", use_container_width=True):
+                if st.button("🗑️️ 刪除該單元", type="secondary", use_container_width=True):
                     if selected_unit_filter == "全部單字" or " > " not in selected_unit_filter:
                         st.warning("⚠️ 請先在上方選單選擇到具體某個單元，才能執行刪除！")
                     else:
