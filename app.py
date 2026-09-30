@@ -327,7 +327,7 @@ def generate_audio_bytes(text, tld='com'):
         return b""
 
 def parse_lesson_number(unit_str):
-    order_map = {'第一課': 1, '第二課': 2, '第三課': 3, '第四課': 4}
+    order_map = {'第一課': 1, '第二課': 2, '第三課': 3, '第四課': 4, '上': 1, '中': 2, '下': 3}
     for k, v in order_map.items():
         if k in unit_str:
             return v
