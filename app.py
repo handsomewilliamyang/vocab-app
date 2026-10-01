@@ -336,7 +336,7 @@ def generate_audio_bytes(text, tld='com'):
         return b""
 
 def parse_lesson_number(unit_str):
-    order_map = {'第一課': 1, '第二課': 2, '第三課': 3, '第四課': 4, '上': 1, '中': 2, '下': 3}
+    order_map = {'第一課': 1, '第二課': 2, '第三課': 3, '第四課': 4, '第五課': 5, '第六課': 6, '上': 1, '中': 2, '下': 3}
     for k, v in order_map.items():
         if k in unit_str:
             return v
@@ -446,7 +446,12 @@ if main_menu == "✨ 新增單字":
                 for data in records:
                     word = data.get('word')
                     pos = data.get('part_of_speech', '')
-                    match_mask = (df_current['word'].astype(str).str.strip().str.lower() == word.lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == pos.lower())
+                    # 💡 修正：除了單字和詞性，連「單元標籤」也要一致才算重複，避免學期間單字互搶！
+                    match_mask = (
+                        (df_current['word'].astype(str).str.strip().str.lower() == word.lower()) & 
+                        (df_current['part_of_speech'].astype(str).str.strip().str.lower() == pos.lower()) &
+                        (df_current['unit_tag'].astype(str).str.strip() == current_unit_tag)
+                    )
                     if not df_current.empty and match_mask.any():
                         idx = df_current.index[match_mask].tolist()[0]
                         df_current.at[idx, 'phonetic'] = data.get('phonetic', '')
@@ -454,7 +459,6 @@ if main_menu == "✨ 新增單字":
                         df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                         if single_sent: df_current.at[idx, 'basic_sentence'] = single_sent
                         if single_colloc: df_current.at[idx, 'collocations'] = single_colloc
-                        df_current.at[idx, 'unit_tag'] = current_unit_tag
                     else:
                         next_id = len(df_current) + 1
                         new_row = pd.DataFrame([{
@@ -501,7 +505,12 @@ if main_menu == "✨ 新增單字":
                     if records:
                         for data in records:
                             target_pos = data.get('part_of_speech', '')
-                            match_mask = (df_current['word'].astype(str).str.strip().str.lower() == data.get('word','').lower()) & (df_current['part_of_speech'].astype(str).str.strip().str.lower() == target_pos.lower())
+                            # 💡 修正：除了單字和詞性，連「單元標籤」也要一致才算重複，避免學期間單字互搶！
+                            match_mask = (
+                                (df_current['word'].astype(str).str.strip().str.lower() == data.get('word','').lower()) & 
+                                (df_current['part_of_speech'].astype(str).str.strip().str.lower() == target_pos.lower()) &
+                                (df_current['unit_tag'].astype(str).str.strip() == current_unit_tag)
+                            )
                             
                             if not df_current.empty and match_mask.any():
                                 idx = df_current.index[match_mask].tolist()[0]
@@ -510,7 +519,6 @@ if main_menu == "✨ 新增單字":
                                 df_current.at[idx, 'advanced_sentence'] = data.get('advanced_sentence', '')
                                 if data.get('basic_sentence'): df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence')
                                 if data.get('collocations'): df_current.at[idx, 'collocations'] = data.get('collocations')
-                                df_current.at[idx, 'unit_tag'] = current_unit_tag
                             else:
                                 next_id = len(df_current) + 1
                                 new_row = pd.DataFrame([{
@@ -572,16 +580,24 @@ elif main_menu == "📖 字彙管理":
                 if word_to_delete != "--請選擇要刪除的單字--":
                     if st.button(f"確認刪除：{word_to_delete}", type="primary", use_container_width=True):
                         df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
-                        df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
+                        
+                        # 💡 修正：精準刪除邏輯。如果是特定單元，只刪除該單元的該單字，避免誤刪其他學期的同名單字
+                        if selected_unit_filter == "全部單字":
+                            df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
+                        elif " > " not in selected_unit_filter:
+                            df_current = df_current[~((df_current['word'].astype(str).str.strip().str.lower() == word_to_delete.strip().lower()) & (df_current['unit_tag'].astype(str).str.startswith(selected_unit_filter)))]
+                        else:
+                            df_current = df_current[~((df_current['word'].astype(str).str.strip().str.lower() == word_to_delete.strip().lower()) & (df_current['unit_tag'] == selected_unit_filter))]
+                            
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
                         save_all_vocab_to_sheet(active_worksheet, df_current)
-                        st.success(f"已刪除：{word_to_delete}")
+                        st.success(f"已從該單元刪除：{word_to_delete}")
                         st.rerun()
             with sub_col2:
                 st.write("") 
                 st.write("")
-                if st.button("🗑️️ 刪除該單元", type="secondary", use_container_width=True):
+                if st.button("🗑️ 刪除該單元", type="secondary", use_container_width=True):
                     if selected_unit_filter == "全部單字" or " > " not in selected_unit_filter:
                         st.warning("⚠️ 請先在上方選單選擇到具體某個單元，才能執行刪除！")
                     else:
@@ -696,6 +712,7 @@ elif main_menu == "🎮 我是拼字王":
         else:
             df_filtered_game = df_vocab[df_vocab['unit_tag'] == f"{sel_sem_game} > {sel_unit_game}"]
         
+        # 💡 在拼字王模式中，確保就算一個單字出現在多個課次，也不會讓使用者一場遊戲重複考同一個字
         df_game_queue_source = df_filtered_game.drop_duplicates(subset=['word'])
 
         if not df_filtered_game.empty:
