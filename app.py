@@ -76,7 +76,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 🎯 先建立側邊欄選單
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
     ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
@@ -169,29 +168,4 @@ def load_vocab_dataframe(_worksheet, cache_key):
                 parts = t.split('>', 1)
                 return f"{parts[0].strip()} > {parts[1].strip()}"
             return t
-        df_temp['unit_tag'] = df_temp['unit_tag'].apply(normalize_tag)
-                
-    return df_temp
-
-try:
-    with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
-        gs_client = init_gsheets_client()
-        SHEET_URL = st.secrets["sheet_url"]
-        active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
-        df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
-except Exception as e:
-    st.error(f"⚠️ 連線或讀取 Google 試算表發生錯誤：{e}")
-    st.stop()
-
-total_words = len(df_vocab)
-col_m1, col_m2 = st.columns(2)
-col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
-
-clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
-col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-S2T_DICT = {
-    "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
-    "软件": "軟體", "硬件": "
+        df_temp
