@@ -193,4 +193,28 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
-    "软件":
+    "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
+    "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
+    "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
+    "默认": "預設", "句": "句", "词": "詞", "语法": "語法"
+}
+
+def simple_s2t_convert(text):
+    if not text: return text
+    for s, t in S2T_DICT.items():
+        text = text.replace(s, t)
+    return text
+
+def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", pasted_sent="", pasted_colloc=""):
+    w_clean = word.strip()
+    w_lower = w_clean.lower()
+    cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
+    records = []
+    
+    if pasted_pos:
+        pos_list = [p.strip() for p in re.split(r'[,/]', pasted_pos) if p.strip()]
+        for p in pos_list:
+            records.append({
+                "word": w_clean,
+                "phonetic": f"/{w_lower}/",
+                "part_of_speech": simple_s2t_convert(p),
