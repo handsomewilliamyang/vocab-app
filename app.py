@@ -168,4 +168,171 @@ def load_vocab_dataframe(_worksheet, cache_key):
                 parts = t.split('>', 1)
                 return f"{parts[0].strip()} > {parts[1].strip()}"
             return t
-        df_temp
+        df_temp['unit_tag'] = df_temp['unit_tag'].apply(normalize_tag)
+                
+    return df_temp
+
+try:
+    with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
+        gs_client = init_gsheets_client()
+        SHEET_URL = st.secrets["sheet_url"]
+        active_worksheet = get_active_worksheet(gs_client, SHEET_URL, current_sheet_name)
+        df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
+except Exception as e:
+    st.error(f"⚠️ 連線或讀取 Google 試算表發生錯誤：{e}")
+    st.stop()
+
+total_words = len(df_vocab)
+col_m1, col_m2 = st.columns(2)
+col_m1.metric(label="雲端總單字數", value=f"{total_words} 個")
+
+clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
+col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+S2T_DICT = {
+    "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路", 
+    "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片", 
+    "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠", 
+    "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組", 
+    "默认": "預設", "句": "句", "词": "詞", "语法": "語法"
+}
+
+def simple_s2t_convert(text):
+    if not text: return text
+    for s, t in S2T_DICT.items():
+        text = text.replace(s, t)
+    return text
+
+def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", pasted_sent="", pasted_colloc=""):
+    w_clean = word.strip()
+    w_lower = w_clean.lower()
+    cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
+    
+    records = []
+    
+    if pasted_pos:
+        pos_list = [p.strip() for p in re.split(r'[,/]', pasted_pos) if p.strip()]
+        for p in pos_list:
+            records.append({
+                "word": w_clean,
+                "phonetic": f"/{w_lower}/",
+                "part_of_speech": simple_s2t_convert(p),
+                "definition": cleaned_def,
+                "advanced_sentence": pasted_eng_def or f"An English term meaning {cleaned_def}.",
+                "basic_sentence": pasted_sent or f"Example sentence for {w_clean}.",
+                "collocations": pasted_colloc or f"{w_clean} collocation"
+            })
+        return records
+
+    matches = re.findall(r'(v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.|aux\.)', cleaned_def, flags=re.IGNORECASE)
+    if matches and len(matches) > 0:
+        pure_def = cleaned_def
+        for m in matches:
+            pure_def = pure_def.replace(m, "")
+        pure_def = pure_def.strip().strip(';').strip(',').strip('；').strip()
+        
+        for idx, m in enumerate(matches):
+            p_formatted = m.lower()
+            if not p_formatted.endswith('.'): p_formatted += '.'
+            
+            records.append({
+                "word": w_clean,
+                "phonetic": f"/{w_lower}/",
+                "part_of_speech": simple_s2t_convert(p_formatted),
+                "definition": simple_s2t_convert(pure_def),
+                "advanced_sentence": pasted_eng_def or f"An English term referring to {w_clean}.",
+                "basic_sentence": pasted_sent or f"Example sentence for {w_clean}.",
+                "collocations": pasted_colloc or f"{w_clean} related expression"
+            })
+        if records:
+            return records
+
+    fallback_pos = "phr." if " " in w_clean else "n."
+    records.append({
+        "word": w_clean,
+        "phonetic": f"/{w_lower}/",
+        "part_of_speech": fallback_pos,
+        "definition": cleaned_def,
+        "advanced_sentence": pasted_eng_def or f"A standard English expression referring to {w_clean}.",
+        "basic_sentence": pasted_sent or f"Example sentence for {w_clean}.",
+        "collocations": pasted_colloc or f"Common collocation with {w_clean}"
+    })
+    
+    return records
+
+def parse_raw_vocab_line_advanced(line):
+    line_clean = re.sub(r'^\d+[\.\s]*', '', line).strip()
+    if not line_clean:
+        return []
+
+    if '|' in line_clean:
+        parts = [p.strip() for p in line_clean.split('|')]
+        w = parts[0].strip()
+        d = parts[1].strip() if len(parts) > 1 else ""
+        pasted_p = parts[2].strip() if len(parts) > 2 else ""
+        pasted_eng = parts[3].strip() if len(parts) > 3 else ""
+        pasted_s = parts[4].strip() if len(parts) > 4 else ""
+        pasted_c = parts[5].strip() if len(parts) > 5 else ""
+        return parse_mixed_vocab_input(w, raw_def=d, pasted_pos=pasted_p, pasted_eng_def=pasted_eng, pasted_sent=pasted_s, pasted_colloc=pasted_c)
+
+    match_split = re.search(r'([\u4e00-\u9fa5]|v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.)', line_clean, re.IGNORECASE)
+    if not match_split:
+        return [{
+            "word": line_clean,
+            "phonetic": f"/{line_clean.lower()}/",
+            "part_of_speech": "n.",
+            "definition": "",
+            "advanced_sentence": f"An English term referring to {line_clean}.",
+            "basic_sentence": f"Example for {line_clean}.",
+            "collocations": f"Collocation for {line_clean}"
+        }]
+    
+    word_end_idx = match_split.start()
+    word = line_clean[:word_end_idx].strip()
+    rest = line_clean[word_end_idx:].strip()
+    
+    if not word:
+        parts = line_clean.split(maxsplit=1)
+        word = parts[0] if len(parts) > 0 else line_clean
+        rest = parts[1] if len(parts) > 1 else ""
+
+    return parse_mixed_vocab_input(word, raw_def=rest)
+
+def save_all_vocab_to_sheet(_worksheet, df):
+    try:
+        _worksheet.clear()
+        headers = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
+        rows = [headers]
+        for _, row in df.iterrows():
+            rows.append([
+                str(row.get('id', '')),
+                str(row.get('word', '')),
+                str(row.get('phonetic', '')),
+                str(row.get('part_of_speech', '')),
+                str(row.get('definition', '')),
+                str(row.get('advanced_sentence', '')),
+                str(row.get('basic_sentence', '')),
+                str(row.get('collocations', '')),
+                str(row.get('unit_tag', '') if pd.notna(row.get('unit_tag')) else ''),
+                str(row.get('srs_stage', 0))
+            ])
+        _worksheet.update(rows)
+        st.cache_data.clear()
+        return True, "成功"
+    except Exception as e:
+        return False, str(e)
+
+@st.cache_data(show_spinner=False)
+def generate_audio_bytes(text, tld='com'):
+    try:
+        tts = gTTS(text=text, lang='en', tld=tld)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except Exception:
+        return b""
+
+def parse_lesson_number(unit_str):
+    order_map = {'第一課': 1, '第二課': 2, '第三課': 3, '第四課': 4, '第五課': 5, '第六課': 6, '第七課': 7, '第八課': 8, '第九課': 9,
