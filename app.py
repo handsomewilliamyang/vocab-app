@@ -108,4 +108,20 @@ def simple_s2t_convert(text):
     for s, t in S2T_DICT.items(): text = text.replace(s, t)
     return text
 
-def parse_mixed
+def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="", pasted_sent="", pasted_colloc=""):
+    w_clean, w_lower = word.strip(), word.strip().lower()
+    cleaned_def = simple_s2t_convert(raw_def) if raw_def else ""
+    records = []
+    
+    if pasted_pos:
+        for p in [x.strip() for x in re.split(r'[,/]', pasted_pos) if x.strip()]:
+            records.append({"word": w_clean, "phonetic": f"/{w_lower}/", "part_of_speech": simple_s2t_convert(p), "definition": cleaned_def, "advanced_sentence": pasted_eng_def or f"An English term meaning {cleaned_def}.", "basic_sentence": pasted_sent or f"Example sentence for {w_clean}.", "collocations": pasted_colloc or f"{w_clean} collocation"})
+        return records
+
+    matches = re.findall(r'(v\.|n\.|adj\.|adv\.|prep\.|conj\.|pron\.|phr\.|aux\.)', cleaned_def, flags=re.IGNORECASE)
+    if matches:
+        pure_def = cleaned_def
+        for m in matches: pure_def = pure_def.replace(m, "")
+        pure_def = pure_def.strip().strip(';').strip(',').strip('；').strip()
+        for m in matches:
+            p_formatted = m.lower() + ('.'
