@@ -1,3 +1,4 @@
+import concurrent.futures
 import html
 import json
 import random
@@ -408,19 +409,37 @@ def lookup_dictionary(word):
         return None
 
 
-def _gemini_generate_json(prompt):
-    key = st.session_state.get("gemini_api_key", "")
-    if not key:
-        raise RuntimeError("尚未在 secrets 設定 gemini_api_key")
+AI_TIMEOUT_SEC = 45   # AI 最久等幾秒，超過就放棄（不會再無限卡住）
+
+
+class AITimeout(RuntimeError):
+    pass
+
+
+def _gemini_call(key, prompt):
     cfg = {"response_mime_type": "application/json", "temperature": 0.3}
     if HAS_GENAI_NEW:
         client = genai_new.Client(api_key=key)
         return client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=cfg).text
-    if HAS_GENAI_OLD:
-        genai_old.configure(api_key=key)
-        model = genai_old.GenerativeModel(GEMINI_MODEL, generation_config=cfg)
-        return model.generate_content(prompt).text
-    raise RuntimeError("沒有安裝 google-genai（或 google-generativeai）套件")
+    genai_old.configure(api_key=key)
+    model = genai_old.GenerativeModel(GEMINI_MODEL, generation_config=cfg)
+    return model.generate_content(prompt).text
+
+
+def _gemini_generate_json(prompt):
+    key = st.session_state.get("gemini_api_key", "")
+    if not key:
+        raise RuntimeError("尚未在 secrets 設定 gemini_api_key")
+    if not (HAS_GENAI_NEW or HAS_GENAI_OLD):
+        raise RuntimeError("沒有安裝 google-genai（或 google-generativeai）套件")
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(_gemini_call, key, prompt)
+    try:
+        return fut.result(timeout=AI_TIMEOUT_SEC)
+    except concurrent.futures.TimeoutError:
+        raise AITimeout(f"AI 超過 {AI_TIMEOUT_SEC} 秒沒有回應，已放棄（可稍後再試，或換模型）")
+    finally:
+        ex.shutdown(wait=False)
 
 
 def ai_fill(items, level):
@@ -446,6 +465,9 @@ def ai_fill(items, level):
             text = re.sub(r"^```(?:json)?|```$", "", text).strip()
             for obj in json.loads(text):
                 results[int(obj["i"])] = obj
+        except AITimeout as e:
+            first_err = first_err or str(e)
+            break                      # 逾時就不要再等下一批
         except Exception as e:
             first_err = first_err or str(e)
     return results, first_err
@@ -510,7 +532,7 @@ def enrich_records(records, level, enabled=True, progress=None):
                             "chinese": r.get("definition", ""), "need": need})
 
     if progress and pending:
-        progress(0.9, "字典查不到的部分，請 AI 補齊中…")
+        progress(0.9, f"字典查不到的部分，請 AI 補齊中…（單字少約 5～15 秒，最久等 {AI_TIMEOUT_SEC} 秒）")
     results, err = ai_fill(pending, level)
     stats["ai_error"] = err
 
