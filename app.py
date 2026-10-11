@@ -1,4 +1,5 @@
 import concurrent.futures
+import time
 import html
 import json
 import random
@@ -1187,3 +1188,24 @@ elif main_menu == "🎮 我是拼字王":
                                     st.session_state.wrong_answers.append(current_item)
                                     st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
                                 st.rerun()
+
+
+# =====================================================================
+# 🔧 連線測試（側邊欄）：字典或 AI 補不到資料時，用這個看真正的原因
+# =====================================================================
+with st.sidebar.expander("🔧 連線測試（補不到資料時用）"):
+    st.caption(f"目前 AI 模型：{GEMINI_MODEL}")
+    if st.button("測試字典與 AI", use_container_width=True, key="diag_btn"):
+        with st.spinner("測試中，AI 最久會等 45 秒…"):
+            t0 = time.time()
+            try:
+                r = requests.get(DICT_URL + "awful", timeout=10)
+                st.write(f"📖 字典：HTTP {r.status_code}（{time.time() - t0:.1f} 秒）")
+            except Exception as e:
+                st.write(f"📖 字典失敗（{time.time() - t0:.1f} 秒）：{e}")
+            t0 = time.time()
+            try:
+                out = _gemini_generate_json('只回傳 JSON：{"ok": true}')
+                st.write(f"🤖 AI 正常（{time.time() - t0:.1f} 秒）：{str(out)[:80]}")
+            except Exception as e:
+                st.write(f"🤖 AI 失敗（{time.time() - t0:.1f} 秒）：{e}")
