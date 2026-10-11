@@ -94,7 +94,7 @@ st.sidebar.markdown(
 )
 
 st.session_state.gemini_api_key = st.secrets.get("gemini_api_key", "")
-GEMINI_MODEL = st.secrets.get("gemini_model", "gemini-2.5-flash")   # 模型名稱改了可在 secrets 設 gemini_model
+GEMINI_MODEL = st.secrets.get("gemini_model", "gemini-3.8-flash")   # 模型名稱改了可在 secrets 設 gemini_model
 HAS_AI = bool(st.session_state.gemini_api_key) and (HAS_GENAI_NEW or HAS_GENAI_OLD)
 
 current_sheet_name = selected_level
