@@ -4,10 +4,8 @@ import html
 import json
 import random
 import re
-import urllib.parse
 
 import pandas as pd
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 import gspread
@@ -311,22 +309,19 @@ def parse_raw_vocab_line_advanced(line):
 
 
 # =====================================================================
-# 自動補齊：免費字典 → Gemini 備援
+# 自動補齊：全部交給 Gemini（免費字典太慢、常逾時，已不使用）
 # =====================================================================
-DICT_URL = "https://api.dictionaryapi.dev/api/v2/entries/en/"
-AI_BATCH_SIZE = 15
-
-POS_MAP = {
-    "noun": "n.", "verb": "v.", "adjective": "adj.", "adverb": "adv.",
-    "preposition": "prep.", "conjunction": "conj.", "pronoun": "pron.",
-    "interjection": "interj.", "determiner": "det.", "exclamation": "interj.",
-}
+AI_BATCH_SIZE = 10      # 一次請 AI 處理幾個單字
+AI_TIMEOUT_SEC = 90     # 全部 AI 請求最久共等幾秒
+AI_MAX_WORKERS = 4      # 同時送出幾批（單字多時比較快）
 
 LEVEL_HINT = {
     "國中部": "台灣國中生（CEFR A2 以下），英文釋義與例句請用最簡單的字彙與短句",
     "高中部": "台灣高中生（CEFR B1–B2），例句約 10–15 個字",
     "TOEIC": "TOEIC 考生，例句請用職場／商務情境",
 }
+
+VALID_POS = {"n.", "v.", "adj.", "adv.", "prep.", "conj.", "pron.", "interj.", "phr.", "aux."}
 
 # 上面 parse 函式塞的「假資料」，一律視為空白，才能被真資料取代
 _PLACEHOLDER_PATTERNS = [
@@ -364,55 +359,6 @@ def _norm_phonetic(p):
     return f"/{p}/" if p else ""
 
 
-def _pick_phonetic(entries):
-    fallback = ""
-    for e in entries:
-        for p in e.get("phonetics", []):
-            text = p.get("text") or ""
-            if not text:
-                continue
-            if "-us" in (p.get("audio") or ""):      # 優先美式
-                return _norm_phonetic(text)
-            fallback = fallback or text
-        fallback = fallback or (e.get("phonetic") or "")
-    return _norm_phonetic(fallback)
-
-
-def _parse_entries(entries):
-    meanings = {}   # 詞性 -> 第一個義項（例句才會跟釋義對得上）
-    for e in entries:
-        for m in e.get("meanings", []):
-            raw = (m.get("partOfSpeech") or "").lower()
-            pos = POS_MAP.get(raw, raw)
-            defs = m.get("definitions") or []
-            if pos and pos not in meanings and defs:
-                meanings[pos] = {
-                    "definition": (defs[0].get("definition") or "").strip(),
-                    "example": (defs[0].get("example") or "").strip(),
-                }
-    return {"phonetic": _pick_phonetic(entries), "meanings": meanings}
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def _fetch_dictionary_cached(word):
-    # 查不到(404)回傳 None 會被快取；網路錯誤會丟例外，不會被快取
-    r = requests.get(DICT_URL + urllib.parse.quote(word), timeout=8)
-    if r.status_code == 404:
-        return None
-    r.raise_for_status()
-    return _parse_entries(r.json())
-
-
-def lookup_dictionary(word):
-    try:
-        return _fetch_dictionary_cached(word)
-    except Exception:
-        return None
-
-
-AI_TIMEOUT_SEC = 45   # AI 最久等幾秒，超過就放棄（不會再無限卡住）
-
-
 class AITimeout(RuntimeError):
     pass
 
@@ -421,13 +367,23 @@ def _gemini_call(key, prompt):
     cfg = {"response_mime_type": "application/json", "temperature": 0.3}
     if HAS_GENAI_NEW:
         client = genai_new.Client(api_key=key)
-        return client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=cfg).text
+        try:
+            # 降低「思考」量，回應會快很多；模型若不支援這個參數就退回一般設定
+            return client.models.generate_content(
+                model=GEMINI_MODEL, contents=prompt,
+                config={**cfg, "thinking_config": {"thinking_level": "low"}}
+            ).text
+        except Exception as e:
+            if "thinking" not in str(e).lower():
+                raise
+            return client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=cfg).text
     genai_old.configure(api_key=key)
     model = genai_old.GenerativeModel(GEMINI_MODEL, generation_config=cfg)
     return model.generate_content(prompt).text
 
 
-def _gemini_generate_json(prompt):
+def _gemini_generate_json(prompt, timeout=AI_TIMEOUT_SEC):
+    """單次呼叫（連線測試用），有逾時保護。"""
     key = st.session_state.get("gemini_api_key", "")
     if not key:
         raise RuntimeError("尚未在 secrets 設定 gemini_api_key")
@@ -436,11 +392,31 @@ def _gemini_generate_json(prompt):
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     fut = ex.submit(_gemini_call, key, prompt)
     try:
-        return fut.result(timeout=AI_TIMEOUT_SEC)
+        return fut.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
-        raise AITimeout(f"AI 超過 {AI_TIMEOUT_SEC} 秒沒有回應，已放棄（可稍後再試，或換模型）")
+        raise AITimeout(f"AI 超過 {timeout} 秒沒有回應，已放棄")
     finally:
         ex.shutdown(wait=False)
+
+
+def _build_prompt(chunk, hint):
+    return f"""你是台灣的英語教材編輯。學習者：{hint}。
+下面是 JSON 陣列，每筆有 i、word、pos（詞性）、chinese（使用者提供的中文，可能為空）、need（需要你補的欄位）。
+請回傳 JSON 陣列，每筆包含 i，以及 need 裡列出的欄位（不要多給）：
+- phonetic：IPA 音標，用斜線包住，例如 /rɪˈzɪliənt/
+- pos：這個單字最常見的詞性縮寫，只能是 n. v. adj. adv. prep. conj. pron. interj. 其中之一
+- definition_zh：繁體中文（台灣用語），簡短，不含詞性縮寫
+- definition_en：一句話的英文釋義
+- example：一個英文例句，符合指定詞性與 chinese 的意思，句中要包含該單字（可變化詞形）
+- collocations：3 個常見搭配詞或片語（陣列），須包含該單字
+品質規定（很重要）：
+1. 例句必須自然、日常、母語者真的會說的句子；不要荒謬、誇張、過度戲劇化或硬湊的情境；字義必須符合 pos 與 chinese（chinese 為空時，用最常見的意思）；內容適合學生，不含暴力、政治、成人話題；長度與難度符合學習者。
+2. 搭配詞必須是母語者真實常用的，不要自己編造；沒把握時寧可只給 2 個。
+3. 音標沒把握就回傳空字串，不要亂猜。
+4. definition_en 要簡單易懂，且不要在釋義裡直接使用該單字本身。
+5. 沒把握的欄位寧可留空字串，也不要亂填。
+只輸出 JSON。
+資料：{json.dumps(chunk, ensure_ascii=False)}"""
 
 
 def ai_fill(items, level):
@@ -448,34 +424,39 @@ def ai_fill(items, level):
     results, first_err = {}, ""
     if not items:
         return results, first_err
+    key = st.session_state.get("gemini_api_key", "")
+    if not key:
+        return results, "尚未在 secrets 設定 gemini_api_key"
+    if not (HAS_GENAI_NEW or HAS_GENAI_OLD):
+        return results, "沒有安裝 google-genai（或 google-generativeai）套件"
+
     hint = LEVEL_HINT.get(level, "英語學習者")
-    for start in range(0, len(items), AI_BATCH_SIZE):
-        chunk = items[start:start + AI_BATCH_SIZE]
-        prompt = f"""你是台灣的英語教材編輯。學習者：{hint}。
-下面是 JSON 陣列，每筆有 i、word、pos（詞性）、chinese（使用者提供的中文，可能為空）、need（需要你補的欄位）。
-請回傳 JSON 陣列，每筆包含 i，以及 need 裡列出的欄位（不要多給）：
-- phonetic：IPA 音標，用斜線包住，例如 /rɪˈzɪliənt/
-- definition_zh：繁體中文（台灣用語），簡短，不含詞性縮寫
-- definition_en：一句話的英文釋義
-- example：一個英文例句，符合指定詞性與 chinese 的意思，句中要包含該單字（可變化詞形）
-- collocations：3 個常見搭配詞或片語（陣列），須包含該單字
-只輸出 JSON。
-資料：{json.dumps(chunk, ensure_ascii=False)}"""
+    chunks = [items[s:s + AI_BATCH_SIZE] for s in range(0, len(items), AI_BATCH_SIZE)]
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=min(AI_MAX_WORKERS, len(chunks)))
+    futures = [ex.submit(_gemini_call, key, _build_prompt(c, hint)) for c in chunks]
+    deadline = time.time() + AI_TIMEOUT_SEC
+    for fut in futures:
         try:
-            text = _gemini_generate_json(prompt).strip()
+            text = fut.result(timeout=max(1.0, deadline - time.time())).strip()
             text = re.sub(r"^```(?:json)?|```$", "", text).strip()
             for obj in json.loads(text):
                 results[int(obj["i"])] = obj
-        except AITimeout as e:
-            first_err = first_err or str(e)
-            break                      # 逾時就不要再等下一批
+        except concurrent.futures.TimeoutError:
+            first_err = first_err or f"AI 超過 {AI_TIMEOUT_SEC} 秒沒有回應，已放棄（可稍後再試，或換模型）"
         except Exception as e:
             first_err = first_err or str(e)
+    ex.shutdown(wait=False)
     return results, first_err
 
 
+AI_LABELS = {
+    "phonetic": "音標", "pos": "詞性", "definition_zh": "中文釋義",
+    "definition_en": "英文釋義", "example": "例句", "collocations": "搭配詞",
+}
+
 _FIELD_MAP = {
     "phonetic": "phonetic",
+    "pos": "part_of_speech",
     "definition_zh": "definition",
     "definition_en": "advanced_sentence",
     "example": "basic_sentence",
@@ -486,57 +467,39 @@ _FIELD_MAP = {
 def enrich_records(records, level, enabled=True, progress=None):
     """回傳 (records, stats)。使用者自己填的欄位絕不覆蓋，只補空白的。"""
     strip_placeholders(records)
-    stats = {"dict": 0, "ai": 0, "missing": 0, "ai_error": ""}
+    stats = {"ai": 0, "missing": 0, "ai_error": ""}
     if not enabled or not records:
         return records, stats
 
-    got_dict, got_ai, pending = set(), set(), []
-    n = len(records)
-
+    pending = []
     for i, r in enumerate(records):
-        if progress:
-            progress(0.85 * (i / n), f"查字典：{r.get('word', '')}")
         word = (r.get("word") or "").strip()
         is_phrase = " " in word
-        info = None if is_phrase else lookup_dictionary(word.lower())
-
-        if info:
-            meanings = info["meanings"]
-            # 只貼單字沒給釋義時，詞性是程式猜的 → 改用字典的第一個詞性
-            if r.get("part_of_speech") not in meanings and not r.get("definition") and meanings:
-                r["part_of_speech"] = next(iter(meanings))
-            if not r.get("phonetic") and info["phonetic"]:
-                r["phonetic"] = info["phonetic"]
-                got_dict.add(i)
-            m = meanings.get(r.get("part_of_speech"))
-            if m:
-                if not r.get("advanced_sentence") and m["definition"]:
-                    r["advanced_sentence"] = m["definition"]
-                    got_dict.add(i)
-                if not r.get("basic_sentence") and m["example"]:
-                    r["basic_sentence"] = m["example"]
-                    got_dict.add(i)
-
+        pos_now = (r.get("part_of_speech") or "").strip()
         need = []
         if not is_phrase and not r.get("phonetic"):
             need.append("phonetic")
         if not r.get("definition"):
             need.append("definition_zh")
+            # 只貼單字、沒給中文時，詞性是程式猜的（預設 n.）→ 請 AI 判斷
+            if not is_phrase and pos_now in ("", "n."):
+                need.append("pos")
         if not r.get("advanced_sentence"):
             need.append("definition_en")
         if not r.get("basic_sentence"):
             need.append("example")
-        if not r.get("collocations"):          # 免費字典沒有搭配詞，這項一定靠 AI
+        if not r.get("collocations"):
             need.append("collocations")
         if need:
-            pending.append({"i": i, "word": word, "pos": r.get("part_of_speech", ""),
+            pending.append({"i": i, "word": word, "pos": pos_now,
                             "chinese": r.get("definition", ""), "need": need})
 
     if progress and pending:
-        progress(0.9, f"字典查不到的部分，請 AI 補齊中…（單字少約 5～15 秒，最久等 {AI_TIMEOUT_SEC} 秒）")
+        progress(0.3, f"AI 補齊中…（單字少約 10～40 秒，最久等 {AI_TIMEOUT_SEC} 秒）")
     results, err = ai_fill(pending, level)
     stats["ai_error"] = err
 
+    got_ai = set()
     for it in pending:
         res = results.get(it["i"])
         if not res:
@@ -553,10 +516,16 @@ def enrich_records(records, level, enabled=True, progress=None):
                 val = _norm_phonetic(val)
             elif src == "definition_zh":
                 val = simple_s2t_convert(val)
+            elif src == "pos":
+                val = val.lower()
+                if not val.endswith("."):
+                    val += "."
+                if val not in VALID_POS:
+                    continue
             r[_FIELD_MAP[src]] = val
+            r.setdefault("_ai", []).append(AI_LABELS[src])
             got_ai.add(it["i"])
 
-    stats["dict"] = len(got_dict)
     stats["ai"] = len(got_ai)
     stats["missing"] = sum(
         1 for r in records
@@ -646,37 +615,111 @@ def merge_records(df_current, records, unit_tag):
     return df_current, new_rows, updated, count
 
 
-def import_records(records, unit_tag, auto_fill, clear_paste=False):
-    """補齊 → 合併 → 存檔 → 顯示結果（含 AI 失敗原因）"""
+PREVIEW_COLS = ["word", "part_of_speech", "definition", "phonetic",
+                "advanced_sentence", "basic_sentence", "collocations"]
+
+
+def import_records(records, unit_tag, auto_fill, clear_paste=False, raw_text=""):
+    """第一階段：解析 + AI 補齊 → 存成「待確認」→ 顯示預覽表格（此時還沒寫入雲端）"""
     bar = st.progress(0.0, text="準備中…")
     records, stats = enrich_records(
         records, selected_level, enabled=auto_fill,
         progress=lambda p, t: bar.progress(min(max(p, 0.0), 1.0), text=t)
     )
-    bar.progress(0.95, text="寫入雲端中…")
-    load_vocab_dataframe.clear()   # 寫入前重讀最新資料，避免蓋掉別處的修改
-    df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
-    was_empty = df_current.empty
-    df_current, new_rows, updated, count = merge_records(df_current, records, unit_tag)
-    ok, msg = persist_changes(active_worksheet, df_current, new_rows, updated, was_empty)
     bar.empty()
+    st.session_state.preview_token = st.session_state.get("preview_token", 0) + 1
+    st.session_state.pending_import = {
+        "records": records, "unit_tag": unit_tag, "sheet": current_sheet_name,
+        "auto_fill": auto_fill, "stats": stats, "clear_paste": clear_paste,
+        "raw_text": raw_text, "token": st.session_state.preview_token,
+    }
+    st.rerun()
+
+
+def commit_pending(edited_df, pending):
+    """第二階段：把你檢查、修改過的表格寫進雲端"""
+    rows = []
+    for _, row in edited_df.iterrows():
+        rec = {}
+        for c in PREVIEW_COLS:
+            v = row.get(c)
+            rec[c] = "" if pd.isna(v) else str(v).strip()
+        if not rec["word"] or rec["word"].lower() in ("nan", "none"):
+            continue
+        rows.append(rec)
+    if not rows:
+        st.warning("表格裡沒有可寫入的單字。")
+        return
+
+    with st.spinner("寫入雲端中…"):
+        load_vocab_dataframe.clear()   # 寫入前重讀最新資料，避免蓋掉別處的修改
+        df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+        was_empty = df_current.empty
+        df_current, new_rows, updated, count = merge_records(df_current, rows, pending["unit_tag"])
+        ok, msg = persist_changes(active_worksheet, df_current, new_rows, updated, was_empty)
     if not ok:
         st.error(f"寫入失敗：{msg}")
         st.stop()
 
-    flash = []
-    text = f"🎉 成功處理 {count} 個項目"
-    if auto_fill:
-        text += f"（字典補齊 {stats['dict']} 筆、AI 補齊 {stats['ai']} 筆）"
-    flash.append(("success", text))
-    if auto_fill and stats["ai_error"]:
-        flash.append(("warning", f"⚠️ AI 補齊失敗，已略過：{stats['ai_error']}"))
-    if auto_fill and stats["missing"]:
-        flash.append(("warning", f"有 {stats['missing']} 筆資料仍不完整（中文釋義／英文釋義／例句缺漏），可到「字彙管理」確認。"))
+    flash = [("success", f"🎉 成功寫入 {count} 個項目")]
+    incomplete = sum(1 for r in rows if not (r["definition"] and r["basic_sentence"]))
+    if incomplete:
+        flash.append(("warning", f"有 {incomplete} 筆缺少中文釋義或例句，可到「字彙管理」確認。"))
     st.session_state.flash = flash
-    if clear_paste:
+    if pending.get("clear_paste"):
         st.session_state.clear_paste = True
+    st.session_state.pop("pending_import", None)
     st.rerun()
+
+
+def render_preview():
+    pending = st.session_state.pending_import
+    stats = pending["stats"]
+    st.subheader("🔍 請先檢查內容，確認後才會寫入雲端")
+    st.markdown(f"📍 **目標：** `{pending['sheet']} ({pending['unit_tag']})`　共 **{len(pending['records'])}** 筆")
+    if pending["auto_fill"]:
+        if stats["ai"]:
+            st.info(f"🤖 AI 補了 {stats['ai']} 筆。「AI 補的欄位」那欄會標出哪些欄位是 AI 寫的，請特別檢查。")
+        if stats["ai_error"]:
+            st.warning(f"⚠️ AI 補齊失敗：{stats['ai_error']}")
+    st.caption("檢查重點：① 例句自然嗎？② 字義符合你的中文嗎？③ 難度適合學生嗎？　"
+               "直接點兩下格子就能修改；不要的整列，選取最左邊的框後按鍵盤 Delete 刪除。")
+
+    wrong_sheet = pending["sheet"] != current_sheet_name
+    if wrong_sheet:
+        st.warning(f"這批資料是要匯入「{pending['sheet']}」的，目前側邊欄選的是「{current_sheet_name}」。請切回該級別再確認，或按取消。")
+
+    df_prev = pd.DataFrame([
+        {"ai_fields": "、".join(r.get("_ai", [])), **{c: r.get(c, "") for c in PREVIEW_COLS}}
+        for r in pending["records"]
+    ])
+    edited = st.data_editor(
+        df_prev,
+        key=f"preview_editor_{pending['token']}",
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        disabled=["ai_fields"],
+        column_config={
+            "ai_fields": st.column_config.TextColumn("AI 補的欄位", width="small"),
+            "word": st.column_config.TextColumn("單字", width="small", required=True),
+            "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
+            "definition": st.column_config.TextColumn("中文釋義", width="medium"),
+            "phonetic": st.column_config.TextColumn("音標", width="small"),
+            "advanced_sentence": st.column_config.TextColumn("英文釋義", width="large"),
+            "basic_sentence": st.column_config.TextColumn("例句", width="large"),
+            "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
+        },
+    )
+
+    c1, c2 = st.columns(2)
+    if c1.button("✅ 確認寫入雲端", type="primary", use_container_width=True, disabled=wrong_sheet):
+        commit_pending(edited, pending)
+    if c2.button("❌ 取消，不寫入", use_container_width=True):
+        if pending.get("raw_text"):
+            st.session_state["paste_restore"] = pending["raw_text"]   # 把剛貼的內容還給你
+        st.session_state.pop("pending_import", None)
+        st.rerun()
 
 
 # =====================================================================
@@ -815,57 +858,62 @@ if main_menu == "✨ 新增單字":
     current_unit_tag = f"{semester} > {unit}"
     st.markdown("---")
 
-    auto_fill = st.checkbox("🤖 自動補齊音標／詞性／英文釋義／例句／搭配詞（先查免費字典，查不到再用 AI）", value=True)
-    if auto_fill and not HAS_AI:
-        st.caption("⚠️ 偵測不到可用的 Gemini 金鑰或套件：只會用免費字典補，搭配詞與中文釋義無法補。")
+    if st.session_state.get("pending_import"):
+        render_preview()
+    else:
+        auto_fill = st.checkbox("🤖 自動補齊音標／詞性／中文釋義／英文釋義／例句／搭配詞（交給 AI）", value=True)
+        if auto_fill and not HAS_AI:
+            st.caption("⚠️ 偵測不到可用的 Gemini 金鑰或套件，無法自動補齊，只會寫入你貼上的內容。")
 
-    # 匯入成功後清空貼上框（必須在 text_area 建立之前處理）
-    if st.session_state.pop("clear_paste", False):
-        st.session_state["paste_box"] = ""
+        # 匯入成功後清空貼上框、取消預覽後還原貼上內容（必須在 text_area 建立之前處理）
+        if st.session_state.pop("clear_paste", False):
+            st.session_state["paste_box"] = ""
+        if "paste_restore" in st.session_state:
+            st.session_state["paste_box"] = st.session_state.pop("paste_restore")
 
-    col_input1, col_input2 = st.columns(2, gap="large")
-    with col_input1:
-        st.subheader("📝 單筆快速建檔")
-        with st.form("single_add_form", clear_on_submit=True):
-            single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
-            single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
-            single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
-            single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
-            submitted_single = st.form_submit_button("🚀 瞬間寫入雲端", type="primary", use_container_width=True)
+        col_input1, col_input2 = st.columns(2, gap="large")
+        with col_input1:
+            st.subheader("📝 單筆快速建檔")
+            with st.form("single_add_form", clear_on_submit=True):
+                single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
+                single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
+                single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
+                single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
+                submitted_single = st.form_submit_button("🚀 補齊並預覽", type="primary", use_container_width=True)
 
-        if submitted_single:
-            if single_word.strip():
-                records = parse_mixed_vocab_input(single_word, raw_def=single_def, pasted_sent=single_sent, pasted_colloc=single_colloc)
-                import_records(records, current_unit_tag, auto_fill)
-            else:
-                st.warning("請先輸入英文單字")
-
-    with col_input2:
-        st.subheader("📋 智慧多格式快速貼上匯入")
-        st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
-
-        pasted_text = st.text_area("貼上完整單字清單", key="paste_box",
-                                   placeholder="source | 來源 | n. | A place... | Sentence | Collocation\n或只貼：resilient 有彈性的\n或只貼單字：resilient",
-                                   height=140, label_visibility="collapsed")
-
-        valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
-        total_preview_count = len(valid_lines)
-        if total_preview_count > 0:
-            st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
-        else:
-            st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
-
-        if st.button("📥 批次秒速匯入", use_container_width=True):
-            if valid_lines:
-                records = []
-                for line in valid_lines:
-                    records.extend(parse_raw_vocab_line_advanced(line))
-                if records:
-                    import_records(records, current_unit_tag, auto_fill, clear_paste=True)
+            if submitted_single:
+                if single_word.strip():
+                    records = parse_mixed_vocab_input(single_word, raw_def=single_def, pasted_sent=single_sent, pasted_colloc=single_colloc)
+                    import_records(records, current_unit_tag, auto_fill)
                 else:
-                    st.warning("沒有解析到任何單字，請檢查格式")
+                    st.warning("請先輸入英文單字")
+
+        with col_input2:
+            st.subheader("📋 智慧多格式快速貼上匯入")
+            st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
+
+            pasted_text = st.text_area("貼上完整單字清單", key="paste_box",
+                                       placeholder="source | 來源 | n. | A place... | Sentence | Collocation\n或只貼：resilient 有彈性的\n或只貼單字：resilient",
+                                       height=140, label_visibility="collapsed")
+
+            valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
+            total_preview_count = len(valid_lines)
+            if total_preview_count > 0:
+                st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
             else:
-                st.warning("請先貼上單字清單")
+                st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
+
+            if st.button("📥 補齊並預覽", use_container_width=True):
+                if valid_lines:
+                    records = []
+                    for line in valid_lines:
+                        records.extend(parse_raw_vocab_line_advanced(line))
+                    if records:
+                        import_records(records, current_unit_tag, auto_fill, clear_paste=True, raw_text=pasted_text)
+                    else:
+                        st.warning("沒有解析到任何單字，請檢查格式")
+                else:
+                    st.warning("請先貼上單字清單")
 
 
 # =====================================================================
@@ -1191,18 +1239,12 @@ elif main_menu == "🎮 我是拼字王":
 
 
 # =====================================================================
-# 🔧 連線測試（側邊欄）：字典或 AI 補不到資料時，用這個看真正的原因
+# 🔧 連線測試（側邊欄）：AI 補不到資料時，用這個看真正的原因
 # =====================================================================
 with st.sidebar.expander("🔧 連線測試（補不到資料時用）"):
     st.caption(f"目前 AI 模型：{GEMINI_MODEL}")
-    if st.button("測試字典與 AI", use_container_width=True, key="diag_btn"):
-        with st.spinner("測試中，AI 最久會等 45 秒…"):
-            t0 = time.time()
-            try:
-                r = requests.get(DICT_URL + "awful", timeout=10)
-                st.write(f"📖 字典：HTTP {r.status_code}（{time.time() - t0:.1f} 秒）")
-            except Exception as e:
-                st.write(f"📖 字典失敗（{time.time() - t0:.1f} 秒）：{e}")
+    if st.button("測試 AI", use_container_width=True, key="diag_btn"):
+        with st.spinner(f"測試中，最久會等 {AI_TIMEOUT_SEC} 秒…"):
             t0 = time.time()
             try:
                 out = _gemini_generate_json('只回傳 JSON：{"ok": true}')
