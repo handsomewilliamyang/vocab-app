@@ -7,9 +7,6 @@ import random
 import requests
 import re  
 import urllib.parse
-from gtts import gTTS
-import io
-import base64
 import streamlit.components.v1 as components
 import gspread
 from google.oauth2.service_account import Credentials
@@ -93,6 +90,9 @@ else:
 current_sheet_name = selected_level
 st.title("📚 我愛背單字")
 
+# 【存檔更動】欄位順序固定放這裡，存檔時共用
+HEADERS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
+
 @st.cache_resource(show_spinner=False)
 def init_gsheets_client():
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -109,10 +109,10 @@ def get_active_worksheet(_client, sheet_url, sheet_name):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_vocab_dataframe(_worksheet, cache_key):
-    try:
-        all_values = _worksheet.get_all_values()
-    except Exception:
-        all_values = []
+    # 【存檔更動】讀取失敗時不再假裝是「空表」。
+    # 原本失敗會變成空表並被快取，之後一存檔就可能把雲端資料蓋成空的。
+    # 現在讓錯誤直接往上丟，由下方 try/except 顯示錯誤並停止。
+    all_values = _worksheet.get_all_values()
         
     if len(all_values) > 1:
         headers = [str(h).strip().lower() for h in all_values[0]]
@@ -270,39 +270,47 @@ def parse_raw_vocab_line_advanced(line):
 
     return parse_mixed_vocab_input(word, raw_def=rest)
 
+# =====================================================================
+# 【存檔更動】開始
+# =====================================================================
 def save_all_vocab_to_sheet(_worksheet, df):
+    """整張覆寫（只有「修改舊資料」或「刪除」才會用到）。
+    順序改成：先把新內容寫進去，再清掉多出來的尾巴。
+    這樣就算中途出錯，雲端也不會變成一張空表。"""
     try:
-        _worksheet.clear()
-        headers = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
-        rows = [headers]
-        for _, row in df.iterrows():
-            rows.append([
-                str(row.get('id', '')),
-                str(row.get('word', '')),
-                str(row.get('phonetic', '')),
-                str(row.get('part_of_speech', '')),
-                str(row.get('definition', '')),
-                str(row.get('advanced_sentence', '')),
-                str(row.get('basic_sentence', '')),
-                str(row.get('collocations', '')),
-                str(row.get('unit_tag', '') if pd.notna(row.get('unit_tag')) else ''),
-                str(row.get('srs_stage', 0))
-            ])
-        _worksheet.update(rows)
-        st.cache_data.clear()
+        out = df.reindex(columns=HEADERS).fillna("").astype(str)
+        rows = [HEADERS] + out.values.tolist()
+        if len(rows) > _worksheet.row_count:
+            _worksheet.resize(rows=len(rows) + 200)
+        _worksheet.update(values=rows, range_name="A1", value_input_option="RAW")
+        _worksheet.batch_clear([f"A{len(rows) + 1}:J"])
+        load_vocab_dataframe.clear()   # 只清單字表快取，不再用 st.cache_data.clear() 全部清掉
         return True, "成功"
     except Exception as e:
         return False, str(e)
 
-@st.cache_data(show_spinner=False)
-def generate_audio_bytes(text, tld='com'):
+def get_next_id(df):
+    """取目前最大編號 + 1（原本用筆數 + 1，刪過資料後編號會重複）。"""
+    ids = pd.to_numeric(df['id'], errors='coerce').dropna()
+    return int(ids.max()) + 1 if not ids.empty else 1
+
+def persist_changes(_worksheet, df_after, new_rows, updated, was_empty):
+    """只有新增 → 只在表格最後面補幾列（快）；
+    有修改舊資料，或原本是空表（要補標題列）→ 整張覆寫。"""
+    if updated or was_empty:
+        return save_all_vocab_to_sheet(_worksheet, df_after)
+    if not new_rows:
+        return True, "沒有變更"
     try:
-        tts = gTTS(text=text, lang='en', tld=tld)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        return fp.getvalue()
-    except Exception:
-        return b""
+        values = [[str(r.get(h, '')) for h in HEADERS] for r in new_rows]
+        _worksheet.append_rows(values, value_input_option="RAW", table_range="A1")
+        load_vocab_dataframe.clear()
+        return True, "成功"
+    except Exception as e:
+        return False, str(e)
+# =====================================================================
+# 【存檔更動】結束
+# =====================================================================
 
 def parse_lesson_number(unit_str):
     order_map = {
@@ -339,54 +347,37 @@ def get_hierarchical_units(df):
         
     return sorted(semesters), semester_to_units
 
-def create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"):
+# =====================================================================
+# 【發音更動】改用瀏覽器內建語音：不用連網產生 mp3，點了馬上唸
+# =====================================================================
+def speech_html(text, justify="flex-start"):
+    t = json.dumps(text).replace("</", "<\\/")
     return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{
-                margin: 0; padding: 0; background-color: transparent;
-                display: flex; align-items: center; justify-content: {justify}; gap: 10px;
-                overflow: hidden; height: 100vh;
-            }}
-            button {{
-                background-color: rgba(255, 255, 255, 0.2) !important; 
-                border: 1px solid rgba(255, 255, 255, 0.5) !important; 
-                border-radius: 6px;
-                cursor: pointer; 
-                font-size: 15px; 
-                padding: 8px 16px;
-                outline: none; 
-                transition: all 0.2s ease-in-out;
-                color: #ffffff !important; 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                font-weight: 600;
-            }}
-            button:hover {{
-                border-color: #ff4b4b; 
-                color: #ff4b4b;
-                background-color: rgba(255, 255, 255, 0.3) !important;
-            }}
-            button:active {{
-                transform: scale(0.95);
-            }}
-            @media (prefers-color-scheme: light) {{
-                button {{ color: #333333 !important; border-color: rgba(0, 0, 0, 0.2) !important; }}
-                button:hover {{ color: #ff4b4b !important; border-color: #ff4b4b !important; }}
-            }}
-        </style>
-    </head>
-    <body>
-        <audio id="snd_us" src="data:audio/mp3;base64,{b64_us}"></audio>
-        <audio id="snd_uk" src="data:audio/mp3;base64,{b64_uk}"></audio>
-        <audio id="snd_au" src="data:audio/mp3;base64,{b64_au}"></audio>
-        <button onclick="document.getElementById('snd_us').play()">US 美式</button>
-        <button onclick="document.getElementById('snd_uk').play()">GB 英式</button>
-        <button onclick="document.getElementById('snd_au').play()">AU 澳洲</button>
-    </body>
-    </html>
-    """
+<style>
+  body {{ margin:0; display:flex; align-items:center; justify-content:{justify};
+         gap:10px; height:100vh; overflow:hidden; background:transparent; }}
+  button {{ background:rgba(255,255,255,.2); border:1px solid rgba(255,255,255,.5);
+           border-radius:6px; cursor:pointer; font-size:15px; padding:8px 16px;
+           color:#fff; font-weight:600; font-family:'Segoe UI',sans-serif; }}
+  button:hover {{ border-color:#ff4b4b; color:#ff4b4b; }}
+  button:active {{ transform:scale(.95); }}
+  @media (prefers-color-scheme: light) {{
+    button {{ color:#333; border-color:rgba(0,0,0,.2); }}
+  }}
+</style>
+<button onclick="say('en-US')">US 美式</button>
+<button onclick="say('en-GB')">GB 英式</button>
+<button onclick="say('en-AU')">AU 澳洲</button>
+<script>
+  const T = {t};
+  function say(lang) {{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(T);
+    u.lang = lang; u.rate = 0.9;
+    speechSynthesis.speak(u);
+  }}
+</script>
+"""
 
 if main_menu == "✨ 新增單字":
     if selected_level == "國中部":
@@ -412,7 +403,11 @@ if main_menu == "✨ 新增單字":
         if st.button("🚀 瞬間寫入雲端", type="primary", use_container_width=True):
             if single_word:
                 records = parse_mixed_vocab_input(single_word, raw_def=single_def, pasted_sent=single_sent, pasted_colloc=single_colloc)
+                load_vocab_dataframe.clear()   # 【存檔更動】寫入前重讀一次最新資料，避免蓋掉別處的修改
                 df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                was_empty = df_current.empty
+                new_rows_list = []
+                any_updated = False
                 
                 for data in records:
                     word = data.get('word')
@@ -432,10 +427,10 @@ if main_menu == "✨ 新增單字":
                             df_current.at[idx, 'basic_sentence'] = single_sent
                         if single_colloc: 
                             df_current.at[idx, 'collocations'] = single_colloc
+                        any_updated = True
                     else:
-                        next_id = len(df_current) + 1
-                        new_row = pd.DataFrame([{
-                            'id': next_id,
+                        new_row_dict = {
+                            'id': get_next_id(df_current),
                             'word': word,
                             'phonetic': data.get('phonetic', ''),
                             'part_of_speech': pos,
@@ -445,10 +440,14 @@ if main_menu == "✨ 新增單字":
                             'collocations': single_colloc,
                             'unit_tag': current_unit_tag,
                             'srs_stage': 0
-                        }])
-                        df_current = pd.concat([df_current, new_row], ignore_index=True)
+                        }
+                        new_rows_list.append(new_row_dict)
+                        df_current = pd.concat([df_current, pd.DataFrame([new_row_dict])], ignore_index=True)
                     
-                save_all_vocab_to_sheet(active_worksheet, df_current)
+                ok, msg = persist_changes(active_worksheet, df_current, new_rows_list, any_updated, was_empty)
+                if not ok:
+                    st.error(f"寫入失敗：{msg}")
+                    st.stop()
                 st.success(f"🎉 成功新增：{single_word}")
                 st.rerun()
 
@@ -470,7 +469,11 @@ if main_menu == "✨ 新增單字":
         if st.button("📥 批次秒速匯入", use_container_width=True):
             if pasted_text:
                 lines = [l for l in pasted_text.strip().split('\n') if l.strip()]
+                load_vocab_dataframe.clear()   # 【存檔更動】寫入前重讀一次最新資料
                 df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                was_empty = df_current.empty
+                new_rows_list = []
+                any_updated = False
                 count = 0
                 
                 for line in lines:
@@ -494,10 +497,10 @@ if main_menu == "✨ 新增單字":
                                     df_current.at[idx, 'basic_sentence'] = data.get('basic_sentence')
                                 if data.get('collocations'): 
                                     df_current.at[idx, 'collocations'] = data.get('collocations')
+                                any_updated = True
                             else:
-                                next_id = len(df_current) + 1
-                                new_row = pd.DataFrame([{
-                                    'id': next_id,
+                                new_row_dict = {
+                                    'id': get_next_id(df_current),
                                     'word': data.get('word', ''),
                                     'phonetic': data.get('phonetic', ''),
                                     'part_of_speech': target_pos,
@@ -507,10 +510,14 @@ if main_menu == "✨ 新增單字":
                                     'collocations': data.get('collocations', ''),
                                     'unit_tag': current_unit_tag,
                                     'srs_stage': 0
-                                }])
-                                df_current = pd.concat([df_current, new_row], ignore_index=True)
+                                }
+                                new_rows_list.append(new_row_dict)
+                                df_current = pd.concat([df_current, pd.DataFrame([new_row_dict])], ignore_index=True)
                             count += 1
-                save_all_vocab_to_sheet(active_worksheet, df_current)
+                ok, msg = persist_changes(active_worksheet, df_current, new_rows_list, any_updated, was_empty)
+                if not ok:
+                    st.error(f"寫入失敗：{msg}")
+                    st.stop()
                 status_box.success(f"🎊 成功秒速匯入 {count} 個項目！")
                 st.rerun()
 
@@ -553,6 +560,7 @@ elif main_menu == "📖 字彙管理":
                 word_to_delete = st.selectbox("🗑️ 快速刪除單字：", ["--請選擇要刪除的單字--"] + filtered_df['word'].tolist() if not filtered_df.empty else ["--請選擇要刪除的單字--"])
                 if word_to_delete != "--請選擇要刪除的單字--":
                     if st.button(f"確認刪除：{word_to_delete}", type="primary", use_container_width=True):
+                        load_vocab_dataframe.clear()   # 【存檔更動】刪除前先重讀最新資料
                         df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
                         if selected_unit_filter == "全部單字":
                             df_current = df_current[df_current['word'].astype(str).str.strip().str.lower() != word_to_delete.strip().lower()]
@@ -563,7 +571,10 @@ elif main_menu == "📖 字彙管理":
                             
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
-                        save_all_vocab_to_sheet(active_worksheet, df_current)
+                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                        if not ok:
+                            st.error(f"刪除失敗：{msg}")
+                            st.stop()
                         st.success(f"已從該單元刪除：{word_to_delete}")
                         st.rerun()
             with sub_col2:
@@ -573,11 +584,15 @@ elif main_menu == "📖 字彙管理":
                     if selected_unit_filter == "全部單字" or " > " not in selected_unit_filter:
                         st.warning("⚠️ 請先在上方選單選擇到具體某個單元，才能執行刪除！")
                     else:
+                        load_vocab_dataframe.clear()   # 【存檔更動】刪除前先重讀最新資料
                         df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
                         df_current = df_current[df_current['unit_tag'] != selected_unit_filter]
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
-                        save_all_vocab_to_sheet(active_worksheet, df_current)
+                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                        if not ok:
+                            st.error(f"刪除失敗：{msg}")
+                            st.stop()
                         st.success(f"🗑️ 已成功刪除「{selected_unit_filter}」整單元單字！")
                         st.rerun()
 
@@ -629,17 +644,10 @@ elif main_menu == "🎯 背誦單字":
             row = df_filtered_flash.iloc[st.session_state.flashcard_index]
             
             with st.container(border=True):
-                audio_us = generate_audio_bytes(row['word'], 'com')
-                audio_uk = generate_audio_bytes(row['word'], 'co.uk')
-                audio_au = generate_audio_bytes(row['word'], 'com.au')
-                b64_us = base64.b64encode(audio_us).decode() if audio_us else ""
-                b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
-                b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
-                
                 st.markdown(f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{row['word']}</h1>", unsafe_allow_html=True)
                 
-                if b64_us and b64_uk and b64_au:
-                    components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="center"), height=50)
+                # 【發音更動】
+                components.html(speech_html(row['word'], justify="center"), height=50)
                 
                 st.markdown(f"<p style='text-align: center; color: gray; margin-top: 5px;'>{row.get('phonetic','')} | {row.get('part_of_speech','')}</p>", unsafe_allow_html=True)
                 
@@ -723,33 +731,19 @@ elif main_menu == "🎮 我是拼字王":
                         st.markdown(f"<div style='text-align: right; color: gray; font-size: 15px; font-weight: bold;'>剩餘題數：{remaining_count}</div>", unsafe_allow_html=True)
 
                     if "標準模式" in game_mode:
-                        audio_us = generate_audio_bytes(target_word, 'com')
-                        audio_uk = generate_audio_bytes(target_word, 'co.uk')
-                        audio_au = generate_audio_bytes(target_word, 'com.au')
-                        b64_us = base64.b64encode(audio_us).decode() if audio_us else ""
-                        b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
-                        b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
-                        
+                        # 【發音更動】
                         r_col1, r_col2 = st.columns([2, 3])
                         with r_col1:
                             st.markdown(f"<h3 style='margin: 0; padding-top: 5px;'>中文：{target_def}</h3>", unsafe_allow_html=True)
                         with r_col2:
-                            if b64_us:
-                                components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
+                            components.html(speech_html(target_word), height=45)
                                 
                         st.markdown(f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
                     else:
-                        audio_us = generate_audio_bytes(target_adv_def, 'com')
-                        audio_uk = generate_audio_bytes(target_adv_def, 'co.uk')
-                        audio_au = generate_audio_bytes(target_adv_def, 'co.uk')
-                        b64_us = base64.b64encode(audio_us).decode() if audio_us else ""
-                        b64_uk = base64.b64encode(audio_uk).decode() if audio_uk else ""
-                        b64_au = base64.b64encode(audio_au).decode() if audio_au else ""
-                        
+                        # 【發音更動】
                         st.markdown(f"<h3 style='margin-bottom: 5px;'>🔊 英文解釋聽力提示：</h3>", unsafe_allow_html=True)
                         st.markdown(f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{target_adv_def}</p>", unsafe_allow_html=True)
-                        if b64_us:
-                            components.html(create_multi_audio_buttons(b64_us, b64_uk, b64_au, justify="flex-start"), height=45)
+                        components.html(speech_html(target_adv_def), height=45)
                         st.markdown(f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> `{hint_masked}`</div>", unsafe_allow_html=True)
 
                     if st.session_state.get("last_feedback"):
