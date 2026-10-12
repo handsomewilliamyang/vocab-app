@@ -286,14 +286,31 @@ def _finish_df(df_temp):
 def load_vocab_dataframe(_worksheet, cache_key):
     # 讀取失敗時讓錯誤直接往上丟（由下方 try/except 顯示並停止），
     # 不可以變成「空表」，否則之後存檔會把雲端資料蓋掉。
-    all_values = _worksheet.get_all_values()
-    header_ok = (len(all_values) > 0 and
-                 [str(h).strip().lower() for h in all_values[0]][:len(HEADERS)] == HEADERS)
-    df_temp = _rows_to_df(all_values, LIGHT_COLS + ['advanced_sentence'])
-    del all_values
-    # 只留一個「有沒有英文釋義」的旗標（進階模式要用來篩題目），文字本身不留
-    df_temp['_has_adv'] = df_temp['advanced_sentence'].str.strip() != ''
-    df_temp = df_temp.drop(columns=['advanced_sentence'])
+    # 快速路徑：標題列是標準順序時，只向雲端要「常用欄位」（A~E、F 只看有沒有、I~J），
+    # 例句／搭配詞（G、H）連下載都省掉，載入更快、暫時佔用的記憶體也更少。
+    res = _worksheet.batch_get(["A1:J1", "A2:E", "F2:F", "I2:J"])
+    hdr = [str(h).strip().lower() for h in (res[0][0] if res[0] else [])]
+    header_ok = hdr[:len(HEADERS)] == HEADERS
+    n = max(len(res[1]), len(res[2]), len(res[3]))
+    if header_ok and n > 0:
+        def col(rows, i):
+            return [(r[i] if i < len(r) else "") for r in rows] + [""] * (n - len(rows))
+        data = {c: col(res[1], i) for i, c in enumerate(HEADERS[:5])}
+        data['unit_tag'] = col(res[3], 0)
+        data['srs_stage'] = col(res[3], 1)
+        df_temp = pd.DataFrame(data, columns=LIGHT_COLS)
+        df_temp['_has_adv'] = pd.Series(col(res[2], 0), dtype=object).str.strip().ne('').to_numpy()
+        del res
+    else:                                   # 空表或標題列順序不標準：用完整讀法
+        del res
+        all_values = _worksheet.get_all_values()
+        header_ok = (len(all_values) > 0 and
+                     [str(h).strip().lower() for h in all_values[0]][:len(HEADERS)] == HEADERS)
+        df_temp = _rows_to_df(all_values, LIGHT_COLS + ['advanced_sentence'])
+        del all_values
+        # 只留一個「有沒有英文釋義」的旗標（進階模式要用來篩題目），文字本身不留
+        df_temp['_has_adv'] = df_temp['advanced_sentence'].str.strip() != ''
+        df_temp = df_temp.drop(columns=['advanced_sentence'])
     df_temp = _finish_df(df_temp)
     df_temp.attrs["header_ok"] = bool(header_ok)
     return df_temp
