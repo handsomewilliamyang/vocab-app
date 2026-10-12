@@ -8,7 +8,23 @@ import gspread
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+import inspect
 from google.oauth2.service_account import Credentials
+
+
+def _wide(fn):
+    """新版 Streamlit 改用 width="stretch"，舊版用 use_container_width=True；自動挑對的。"""
+    try:
+        if "width" in inspect.signature(fn).parameters:
+            return {"width": "stretch"}
+    except (TypeError, ValueError):
+        pass
+    return {"use_container_width": True}
+
+
+W_BTN = _wide(st.button)
+W_FORM = _wide(st.form_submit_button)
+W_EDIT = _wide(st.data_editor)
 
 st.set_page_config(
     page_title="我愛背單字",
@@ -513,7 +529,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
     try:
         out = df.reindex(columns=HEADERS).fillna("").astype(str)
         rows = [HEADERS] + out.values.tolist()
-        if len(rows) > _worksheet.row_count:
+        if len(rows) + 1 > _worksheet.row_count:      # 多留一列，清尾巴的範圍才不會超出表格
             _worksheet.resize(rows=len(rows) + 200)
         _worksheet.update(values=rows, range_name="A1", value_input_option="RAW")
         _worksheet.batch_clear([f"A{len(rows) + 1}:J"])
@@ -547,7 +563,10 @@ def persist_changes(_worksheet, df_after, new_rows, updated, was_empty):
         return True, "沒有變更"
     try:
         values = [[str(r.get(h, '')) for h in HEADERS] for r in new_rows]
-        _worksheet.append_rows(values, value_input_option="RAW", table_range="A1")
+        try:
+            _worksheet.append_rows(values, value_input_option="RAW", insert_data_option="INSERT_ROWS", table_range="A1")
+        except TypeError:      # 舊版 gspread 沒有這個參數
+            _worksheet.append_rows(values, value_input_option="RAW", table_range="A1")
         drop_caches()
         return True, "成功"
     except Exception as e:
@@ -623,7 +642,7 @@ def clean_rows(df):
         for c in EDIT_COLS:
             v = row.get(c)
             rec[c] = "" if pd.isna(v) else str(v).strip()
-        if rec["word"] and rec["word"].lower() not in ("nan", "none"):
+        if rec["word"]:
             rows.append(rec)
     return rows
 
@@ -910,7 +929,7 @@ def render_batch_preview():
         key=f"batch_preview_{pb['token']}",
         num_rows="dynamic",
         hide_index=True,
-        use_container_width=True,
+        **W_EDIT,
         disabled=["status"],
         column_config={
             "status": st.column_config.TextColumn("狀態", width="small"),
@@ -924,7 +943,7 @@ def render_batch_preview():
     )
 
     c1, c2 = st.columns(2)
-    if c1.button("✅ 確認寫入雲端", type="primary", use_container_width=True, disabled=wrong_sheet):
+    if c1.button("✅ 確認寫入雲端", type="primary", **W_BTN, disabled=wrong_sheet):
         rows = clean_rows(edited)
         if not rows:
             st.warning("表格裡沒有可寫入的單字。")
@@ -942,7 +961,7 @@ def render_batch_preview():
             st.session_state["clear_paste"] = True
             st.session_state.pop("pending_batch", None)
             st.rerun()
-    if c2.button("❌ 取消，不寫入", use_container_width=True):
+    if c2.button("❌ 取消，不寫入", **W_BTN):
         st.session_state["paste_restore"] = pb["raw_text"]   # 把剛貼的內容還給你
         st.session_state.pop("pending_batch", None)
         st.rerun()
@@ -989,7 +1008,7 @@ if main_menu == "✨ 新增單字":
                 single_eng = st.text_input("英文釋義（選填）：", placeholder="例如：able to recover quickly")
                 single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
                 single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
-                submitted_single = st.form_submit_button("🚀 瞬間寫入雲端", type="primary", use_container_width=True)
+                submitted_single = st.form_submit_button("🚀 瞬間寫入雲端", type="primary", **W_FORM)
 
             if submitted_single:
                 if single_word.strip():
@@ -1034,7 +1053,7 @@ if main_menu == "✨ 新增單字":
             else:
                 st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
 
-            if st.button("📥 解析並預覽", use_container_width=True):
+            if st.button("📥 解析並預覽", **W_BTN):
                 if valid_lines:
                     records_all = []
                     for line in valid_lines:
@@ -1091,7 +1110,7 @@ elif main_menu == "📖 字彙管理":
                     del_map[f"{_w}　{_p}　(#{_id})"] = str(_id)
                 word_to_delete = st.selectbox("🗑️ 快速刪除單字：", [placeholder_opt] + list(del_map.keys()))
                 if word_to_delete != placeholder_opt:
-                    if st.button("確認刪除這一筆", type="primary", use_container_width=True):
+                    if st.button("確認刪除這一筆", type="primary", **W_BTN):
                         rid = del_map[word_to_delete]
                         drop_caches()
                         df_current = load_vocab_full(active_worksheet)
@@ -1109,7 +1128,7 @@ elif main_menu == "📖 字彙管理":
                 st.write("")
                 ctr = st.session_state.get("del_ctr", 0)
                 confirm_unit_del = st.checkbox("確認", key=f"confirm_del_unit_{ctr}", help="勾選後才能刪除整個單元")
-                if st.button("🗑️ 刪除該單元", type="secondary", use_container_width=True):
+                if st.button("🗑️ 刪除該單元", type="secondary", **W_BTN):
                     if selected_sem == ALL_SEM or selected_unit == ALL_UNIT:
                         st.warning("⚠️ 請先在上方選單選擇到具體某個單元，才能執行刪除！")
                     elif not confirm_unit_del:
@@ -1145,7 +1164,7 @@ elif main_menu == "📖 字彙管理":
                 key=edit_key,
                 num_rows="fixed",
                 hide_index=True,
-                use_container_width=True,
+                **W_EDIT,
                 disabled=["id"],
                 column_config={
                     "id": st.column_config.TextColumn("編號", width="small"),
@@ -1287,21 +1306,21 @@ elif main_menu == "🎯 背誦單字":
                     if row.get('collocations'):
                         st.markdown(f"<p style='font-size: 17px;'>🔗 搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
                 else:
-                    if st.button("👀 顯示答案", use_container_width=True):
+                    if st.button("👀 顯示答案", **W_BTN):
                         st.session_state.flash_revealed = True
                         st.rerun()
 
             b1, b2, b3, b4 = st.columns(4)
-            if b1.button("⬅️ 上一個", use_container_width=True):
+            if b1.button("⬅️ 上一個", **W_BTN):
                 flash_move(-1)
                 st.rerun()
-            if b2.button("❌ 不記得", use_container_width=True):
+            if b2.button("❌ 不記得", **W_BTN):
                 flash_mark(0)
                 st.rerun()
-            if b3.button("✅ 記得", use_container_width=True):
+            if b3.button("✅ 記得", **W_BTN):
                 flash_mark(min(stage + 1, 5))
                 st.rerun()
-            if b4.button("➡️ 下一個", use_container_width=True):
+            if b4.button("➡️ 下一個", **W_BTN):
                 flash_move(1)
                 st.rerun()
             st.caption("「不記得」熟練度歸零；「記得」+1（最高 5）。出題順序選「不熟的優先」時，熟練度低的會先出現。")
@@ -1309,7 +1328,7 @@ elif main_menu == "🎯 背誦單字":
             if pend_n:
                 sy1, sy2 = st.columns([3, 1])
                 sy1.caption(f"☁️ 有 {pend_n} 筆熟練度還沒同步到雲端（累積 {SRS_FLUSH_EVERY} 筆或離開此頁時會自動同步）")
-                if sy2.button("💾 立即同步", use_container_width=True):
+                if sy2.button("💾 立即同步", **W_BTN):
                     with st.spinner("同步中…"):
                         if flush_srs():
                             st.session_state["_flash"] = "☁️ 熟練度已同步到雲端"
@@ -1397,7 +1416,7 @@ elif main_menu == "🎮 我是拼字王":
                     st.markdown("**答錯的單字：**")
                     for w in wrong:
                         st.markdown(f"- `{w['word']}`　{w.get('definition', '')}")
-                    if st.button("🔁 只重考答錯的題目", type="primary", use_container_width=True):
+                    if st.button("🔁 只重考答錯的題目", type="primary", **W_BTN):
                         retry = list(wrong)
                         random.shuffle(retry)
                         st.session_state.game_queue = retry
@@ -1406,7 +1425,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.session_state.is_finished = False
                         st.session_state.last_feedback = None
                         st.rerun()
-                if st.button("🔄 重新挑戰本範圍", use_container_width=True):
+                if st.button("🔄 重新挑戰本範圍", **W_BTN):
                     st.session_state.game_key = None
                     st.rerun()
             else:
@@ -1454,7 +1473,7 @@ elif main_menu == "🎮 我是拼字王":
                             st.success(fb["msg"])
                         else:
                             st.error(fb["msg"])
-                        if st.button("➡️ 點擊進入下一題", type="primary", use_container_width=True):
+                        if st.button("➡️ 點擊進入下一題", type="primary", **W_BTN):
                             st.session_state.last_feedback = None
                             st.session_state.game_index += 1
                             st.rerun()
@@ -1468,7 +1487,7 @@ elif main_menu == "🎮 我是拼字王":
                                     label_visibility="collapsed"
                                 )
                             with f_col2:
-                                submitted = st.form_submit_button("🚀 送出", type="primary", use_container_width=True)
+                                submitted = st.form_submit_button("🚀 送出", type="primary", **W_FORM)
 
                             if submitted:
                                 if norm_answer(user_ans) == norm_answer(target_word):
