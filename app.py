@@ -205,26 +205,38 @@ def get_active_worksheet(_client, sheet_url, sheet_name):
         return spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=10)
 
 
-# 用 cache_resource：所有操作共用同一份資料、不會每次點擊都整份複製（比 cache_data 快、省記憶體）。
-# 因此「不可以直接修改 df_vocab」；要寫入前一律先 .copy()（程式已經是這樣做）。
-@st.cache_resource(ttl=300, show_spinner=False)
-def load_vocab_dataframe(_worksheet, cache_key):
-    # 讀取失敗時讓錯誤直接往上丟（由下方 try/except 顯示並停止），
-    # 不可以變成「空表」，否則之後存檔會把雲端資料蓋掉。
-    all_values = _worksheet.get_all_values()
+# ---------------------------------------------------------------------
+# 讀取資料（第四步：只留常用欄位，長文字延後到需要時才讀）
+#   常用欄位 LIGHT_COLS 一直放在記憶體；例句、搭配詞、英文釋義這類較長的文字不放進共用快取，
+#   只有「真的要顯示」的那幾筆（總表當頁、背誦翻開答案、進階模式出題）才向雲端讀，用完就丟。
+#   要寫入雲端之前，一律另外讀一份完整的表（load_vocab_full），不經過快取，所以不會漏掉長文字。
+# ---------------------------------------------------------------------
+LIGHT_COLS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'unit_tag', 'srs_stage']
+LONG_COLS = ['advanced_sentence', 'basic_sentence', 'collocations']
+LONG_LETTER = {c: chr(65 + HEADERS.index(c)) for c in LONG_COLS}     # 長文字欄在試算表的欄位字母
+ID_LETTER, WORD_LETTER = chr(65 + HEADERS.index('id')), chr(65 + HEADERS.index('word'))
 
+
+def _rows_to_df(all_values, columns):
+    """只把 columns 指定的欄位轉成 DataFrame（其他欄位根本不建立，省記憶體）。"""
     if len(all_values) > 1:
         headers = [str(h).strip().lower() for h in all_values[0]]
-        df_temp = pd.DataFrame(all_values[1:], columns=headers[:len(all_values[0])])
-    else:
-        df_temp = pd.DataFrame(columns=HEADERS)
+        pos = {}
+        for i, h in enumerate(headers):
+            pos.setdefault(h, i)                      # 欄名重複時只取第一個
+        body = all_values[1:]
+        data = {}
+        for c in columns:
+            i = pos.get(c)
+            data[c] = ([(r[i] if i < len(r) else "") for r in body]
+                       if i is not None else [""] * len(body))
+        return pd.DataFrame(data, columns=list(columns))
+    return pd.DataFrame(columns=list(columns))
 
-    for col in HEADERS:
-        if col not in df_temp.columns:
-            df_temp[col] = ""
 
-    df_temp = df_temp.fillna("")   # 試算表讀出來本來就是字串，不需要再整表轉型一次
-    df_temp = df_temp.replace({"nan": "", "None": "", "none": ""})
+def _finish_df(df_temp):
+    # 注意：不再把 "none"/"nan" 當成空值。它們是真正的英文單字，以前會被當成空白而消失，
+    # 而且之後一刪除就會被整張覆寫洗掉。從試算表讀出來的本來就都是字串，不需要轉型。
     df_temp = df_temp[df_temp['word'].str.strip() != ''].reset_index(drop=True)
 
     def normalize_tag(tag):
@@ -251,6 +263,91 @@ def load_vocab_dataframe(_worksheet, cache_key):
     df_temp.attrs["unique_words"] = int(df_temp['word'].str.strip().str.lower().nunique()) if not df_temp.empty else 0
     return df_temp
 
+
+# 用 cache_resource：所有操作共用同一份資料、不會每次點擊都整份複製（比 cache_data 快、省記憶體）。
+# 因此「不可以直接修改 df_vocab」；要寫入前一律用 load_vocab_full 另外讀一份。
+@st.cache_resource(ttl=300, show_spinner=False)
+def load_vocab_dataframe(_worksheet, cache_key):
+    # 讀取失敗時讓錯誤直接往上丟（由下方 try/except 顯示並停止），
+    # 不可以變成「空表」，否則之後存檔會把雲端資料蓋掉。
+    all_values = _worksheet.get_all_values()
+    header_ok = (len(all_values) > 0 and
+                 [str(h).strip().lower() for h in all_values[0]][:len(HEADERS)] == HEADERS)
+    df_temp = _rows_to_df(all_values, LIGHT_COLS + ['advanced_sentence'])
+    del all_values
+    # 只留一個「有沒有英文釋義」的旗標（進階模式要用來篩題目），文字本身不留
+    df_temp['_has_adv'] = df_temp['advanced_sentence'].str.strip() != ''
+    df_temp = df_temp.drop(columns=['advanced_sentence'])
+    df_temp = _finish_df(df_temp)
+    df_temp.attrs["header_ok"] = bool(header_ok)
+    return df_temp
+
+
+def load_vocab_full(_worksheet):
+    """完整的表（含例句、搭配詞）：寫入雲端前用，每次都重新從雲端讀、不放進快取。"""
+    return _finish_df(_rows_to_df(_worksheet.get_all_values(), HEADERS))
+
+
+def drop_caches():
+    """資料有變動後呼叫：清掉常用欄位的快取，以及暫存的例句／搭配詞。"""
+    load_vocab_dataframe.clear()
+    st.session_state.pop("_long_cache", None)
+
+
+def fetch_long_text(ws, wanted):
+    """wanted = {編號字串: 單字}。只向雲端讀這些編號的 英文釋義／例句／搭配詞。
+    回傳 (結果 {編號: {欄位: 文字}}, 錯誤訊息)。單字對不上（資料已被改動）的編號不會出現在結果裡。"""
+    if not wanted:
+        return {}, ""
+    try:
+        if not df_vocab.attrs.get("header_ok", False):          # 標題列順序不標準：退回讀整張表
+            full = load_vocab_full(ws)
+            out = {}
+            for i in range(len(full)):
+                rid = str(full.at[i, 'id']).strip()
+                if (rid in wanted and rid not in out
+                        and str(full.at[i, 'word']).strip().lower() == wanted[rid].strip().lower()):
+                    out[rid] = {c: str(full.at[i, c]) for c in LONG_COLS}
+            return out, ""
+        ranges = [f"{ID_LETTER}2:{ID_LETTER}", f"{WORD_LETTER}2:{WORD_LETTER}"] + \
+                 [f"{LONG_LETTER[c]}2:{LONG_LETTER[c]}" for c in LONG_COLS]
+        res = ws.batch_get(ranges)                               # 一次 API 呼叫，只讀這 5 欄
+        ids_col = [str(r[0]).strip() if r else "" for r in res[0]]
+        words_col = [str(r[0]).strip().lower() if r else "" for r in res[1]]
+        long_cols = [[(r[0] if r else "") for r in vc] for vc in res[2:]]
+        out = {}
+        for i, rid in enumerate(ids_col):
+            if rid in wanted and rid not in out and i < len(words_col) \
+                    and words_col[i] == wanted[rid].strip().lower():
+                out[rid] = {c: (vals[i] if i < len(vals) else "") for c, vals in zip(LONG_COLS, long_cols)}
+        return out, ""
+    except Exception as e:
+        return {}, str(e)
+
+
+def get_page_long_text(orig):
+    """總表當頁的長文字。暫存在 session，只留「目前這一頁」（換頁就換掉，不會越累積越多）。"""
+    wanted = {str(i): w for i, w in zip(orig['id'], orig['word'])}
+    key = (current_sheet_name, tuple(sorted(wanted)))
+    cache = st.session_state.get("_long_cache")
+    if cache and cache["key"] == key:
+        return cache["data"], ""
+    data, err = fetch_long_text(active_worksheet, wanted)
+    if not err and len(data) < len(wanted):
+        err = "有幾筆資料在雲端已被改動或刪除，請重新整理網頁後再試。"
+    if not err:
+        st.session_state["_long_cache"] = {"key": key, "data": data}
+    return data, err
+
+
+def ensure_flash_long(queue):
+    """背誦：第一次需要顯示答案時，才把這個範圍的例句／搭配詞讀進來。"""
+    data, err = fetch_long_text(active_worksheet, {str(d["id"]): d["word"] for d in queue})
+    if err:
+        st.warning(f"例句／搭配詞暫時讀不到（{err}），先只顯示中文釋義。")
+    for d in queue:
+        d.update(data.get(str(d["id"]), {}))
+    st.session_state.flash_long = True      # 失敗也先標記，避免每次點擊都重試、被 Google 限速
 
 try:
     with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
@@ -422,7 +519,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
         _worksheet.batch_clear([f"A{len(rows) + 1}:J"])
         st.session_state["srs_local"] = {}
         st.session_state[f"_hdr_ok_{_worksheet.title}"] = True
-        load_vocab_dataframe.clear()
+        drop_caches()
         return True, "成功"
     except Exception as e:
         return False, str(e)
@@ -451,7 +548,7 @@ def persist_changes(_worksheet, df_after, new_rows, updated, was_empty):
     try:
         values = [[str(r.get(h, '')) for h in HEADERS] for r in new_rows]
         _worksheet.append_rows(values, value_input_option="RAW", table_range="A1")
-        load_vocab_dataframe.clear()
+        drop_caches()
         return True, "成功"
     except Exception as e:
         return False, str(e)
@@ -726,7 +823,7 @@ def save_row_edits(changes, orig):
             applied += 1
         if data:
             active_worksheet.batch_update(data, value_input_option="RAW")
-        load_vocab_dataframe.clear()
+        drop_caches()
         return True, applied, skipped, ""
     except Exception as e:
         return False, 0, 0, str(e)
@@ -734,8 +831,8 @@ def save_row_edits(changes, orig):
 
 def save_row_edits_full(changes):
     """備援：整張覆寫（雲端欄位順序和程式不同時才會用到）。"""
-    load_vocab_dataframe.clear()
-    df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+    drop_caches()
+    df_current = load_vocab_full(active_worksheet)
     applied, skipped = 0, 0
     for rid, vals in changes.items():
         m = df_current['id'].astype(str) == rid
@@ -757,8 +854,7 @@ def _num(v):
     return 0 if pd.isna(x) else x
 
 
-FLASH_COLS = ["id", "word", "part_of_speech", "definition", "advanced_sentence",
-              "basic_sentence", "collocations", "srs_stage"]
+FLASH_COLS = ["id", "word", "part_of_speech", "definition", "srs_stage"]   # 長文字在顯示答案時才讀
 
 
 def build_flash_queue(df, order_mode):
@@ -834,8 +930,8 @@ def render_batch_preview():
             st.warning("表格裡沒有可寫入的單字。")
         else:
             with st.spinner("寫入雲端中…"):
-                load_vocab_dataframe.clear()   # 寫入前重讀最新資料，避免蓋掉別處的修改
-                df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                drop_caches()   # 寫入前重讀最新資料，避免蓋掉別處的修改
+                df_current = load_vocab_full(active_worksheet)
                 was_empty = df_current.empty
                 df_current, new_rows, updated, stats = merge_records(df_current, rows, pb["unit_tag"])
                 ok, msg = persist_changes(active_worksheet, df_current, new_rows, updated, was_empty)
@@ -902,8 +998,8 @@ if main_menu == "✨ 新增單字":
                         pasted_sent=single_sent, pasted_colloc=single_colloc
                     )
                     # 寫入前重讀一次最新資料，避免蓋掉別處的修改
-                    load_vocab_dataframe.clear()
-                    df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                    drop_caches()
+                    df_current = load_vocab_full(active_worksheet)
                     was_empty = df_current.empty
 
                     df_current, new_rows_list, any_updated, stats = merge_records(df_current, records, current_unit_tag)
@@ -997,8 +1093,8 @@ elif main_menu == "📖 字彙管理":
                 if word_to_delete != placeholder_opt:
                     if st.button("確認刪除這一筆", type="primary", use_container_width=True):
                         rid = del_map[word_to_delete]
-                        load_vocab_dataframe.clear()
-                        df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                        drop_caches()
+                        df_current = load_vocab_full(active_worksheet)
                         df_current = df_current[df_current['id'].astype(str) != rid].copy()
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
@@ -1020,8 +1116,8 @@ elif main_menu == "📖 字彙管理":
                         st.warning("⚠️ 請先勾選「確認」。")
                     else:
                         target_tag = f"{selected_sem} > {selected_unit}"
-                        load_vocab_dataframe.clear()
-                        df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                        drop_caches()
+                        df_current = load_vocab_full(active_worksheet)
                         df_current = df_current[df_current['unit_tag'] != target_tag].copy()
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
@@ -1035,7 +1131,14 @@ elif main_menu == "📖 字彙管理":
 
         st.markdown("---")
         with st.expander("📋 單字總表（可直接點兩下修改，改完按「儲存修改」）", expanded=True):
-            orig = page_df[['id'] + EDIT_COLS].reset_index(drop=True)
+            orig = page_df[['id', 'word', 'part_of_speech', 'definition']].reset_index(drop=True)
+            _longs, _lerr = get_page_long_text(orig)
+            if _lerr:
+                st.error(f"讀取例句、搭配詞失敗，為了避免存檔時把它們清空，這一頁暫時不能編輯：{_lerr}")
+                st.stop()
+            for _c in LONG_COLS:
+                orig[_c] = [_longs[str(i)][_c] for i in orig['id']]
+            orig = orig[['id'] + EDIT_COLS]
             edit_key = f"vocab_editor_{selected_level}_{st.session_state.get('edit_ver', 0)}_{hash(tuple(orig['id']))}"
             edited = st.data_editor(
                 orig,
@@ -1079,7 +1182,11 @@ elif main_menu == "📖 字彙管理":
                     st.rerun()
 
         if st.button("📦 產生備份檔（CSV）"):
-            backup = df_vocab[HEADERS].copy()
+            try:
+                backup = load_vocab_full(active_worksheet)[HEADERS].copy()
+            except Exception as e:
+                st.error(f"備份失敗：{e}")
+                st.stop()
             for (sheet, rid), stg in st.session_state.get("srs_local", {}).items():
                 if sheet == current_sheet_name:       # 還沒同步到雲端的熟練度也一起備份
                     backup.loc[backup['id'].astype(str) == rid, 'srs_stage'] = str(stg)
@@ -1129,6 +1236,7 @@ elif main_menu == "🎯 背誦單字":
                 st.session_state.flash_queue = build_flash_queue(df_filtered_flash, order_mode)
                 st.session_state.flashcard_index = 0
                 st.session_state.flash_revealed = False
+                st.session_state.flash_long = False
 
             queue = st.session_state.flash_queue
             total_count = len(queue)
@@ -1136,6 +1244,9 @@ elif main_menu == "🎯 背誦單字":
             row = queue[st.session_state.flashcard_index]
             stage = row["_stage"]
             show_answer = (not hide_answer) or st.session_state.get("flash_revealed", False)
+            if show_answer and not st.session_state.get("flash_long"):
+                with st.spinner("載入例句與搭配詞…"):
+                    ensure_flash_long(queue)
             mastered = sum(1 for r in queue if r["_stage"] >= 4)
 
             def flash_move(step):
@@ -1237,7 +1348,7 @@ elif main_menu == "🎮 我是拼字王":
             df_filtered_game = scoped(df_vocab, sel_sem_game, sel_unit_game)
             if is_advanced:
                 # 進階模式要唸英文釋義，沒有英文釋義的單字不出題
-                df_filtered_game = df_filtered_game[df_filtered_game['advanced_sentence'].str.strip() != '']
+                df_filtered_game = df_filtered_game[df_filtered_game['_has_adv']]
             df_game_queue_source = df_filtered_game.drop_duplicates(subset=['word'])
             st.session_state.game_key = game_key
             st.session_state.game_empty = bool(df_game_queue_source.empty)
@@ -1252,9 +1363,19 @@ elif main_menu == "🎮 我是拼字王":
                 for w, p, d in zip(df_filtered_game['word'], df_filtered_game['part_of_speech'], df_filtered_game['definition']):
                     if d.strip():
                         defs_by_word.setdefault(w, []).append(f"{p} {d}".strip())
-                items = df_game_queue_source[['word', 'definition', 'advanced_sentence']].sample(frac=1).to_dict('records')
+                items = df_game_queue_source[['id', 'word', 'definition']].sample(frac=1).to_dict('records')
                 for it in items:
                     it['definition'] = "；".join(defs_by_word.get(it['word'], []))
+                if is_advanced:       # 英文釋義只有進階模式用得到，這時才向雲端讀
+                    longs, lerr = fetch_long_text(active_worksheet, {str(it['id']): it['word'] for it in items})
+                    if lerr:
+                        st.session_state.game_key = None      # 讓下次重新嘗試
+                        st.error(f"讀取英文釋義失敗：{lerr}")
+                        st.stop()
+                    for it in items:
+                        it['advanced_sentence'] = longs.get(str(it['id']), {}).get('advanced_sentence', '')
+                    items = [it for it in items if it['advanced_sentence'].strip()]
+                    st.session_state.game_empty = not items
                 st.session_state.game_queue = items
 
         if st.session_state.get("game_empty"):
