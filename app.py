@@ -338,7 +338,7 @@ def save_all_vocab_to_sheet(_worksheet, df):
         _worksheet.update(values=rows, range_name="A1", value_input_option="RAW")
         _worksheet.batch_clear([f"A{len(rows) + 1}:J"])
         st.session_state["srs_local"] = {}
-        st.session_state.pop(f"_cols_{current_sheet_name}", None)
+        st.session_state[f"_hdr_ok_{_worksheet.title}"] = True
         load_vocab_dataframe.clear()
         return True, "成功"
     except Exception as e:
@@ -354,11 +354,14 @@ def get_next_id(df):
 def persist_changes(_worksheet, df_after, new_rows, updated, was_empty):
     """只有新增 → 只在表格最後面補幾列（快）；
     有修改舊資料、原本是空表、或雲端標題列順序和程式不同 → 整張覆寫。"""
-    try:
-        header = [str(h).strip().lower() for h in _worksheet.row_values(1)]
-    except Exception:
-        header = []
-    if updated or was_empty or header[:len(HEADERS)] != HEADERS:
+    hkey = f"_hdr_ok_{_worksheet.title}"
+    if hkey not in st.session_state:
+        try:
+            header = [str(h).strip().lower() for h in _worksheet.row_values(1)]
+            st.session_state[hkey] = header[:len(HEADERS)] == HEADERS
+        except Exception:
+            st.session_state[hkey] = False
+    if updated or was_empty or not st.session_state[hkey]:
         return save_all_vocab_to_sheet(_worksheet, df_after)
     if not new_rows:
         return True, "沒有變更"
@@ -556,36 +559,111 @@ def parse_stage(v):
         return 0
 
 
-def sheet_cols():
-    """依試算表實際的標題列找出 id / word / srs_stage 在第幾欄（每個級別只查一次）。"""
-    key = f"_cols_{current_sheet_name}"
-    if key not in st.session_state:
-        hdr = [str(h).strip().lower() for h in active_worksheet.row_values(1)]
-        st.session_state[key] = {n: hdr.index(n) + 1 for n in ("id", "word", "srs_stage")}
-    return st.session_state[key]
+SRS_FLUSH_EVERY = 8   # 累積幾筆熟練度就同步一次到雲端
 
 
-def save_srs_stage(row, new_stage):
-    """只更新試算表的一個儲存格；寫入前先確認該列的 id 與單字沒變，避免寫錯列。"""
+def _a1(row, col):
+    letters = ""
+    while col > 0:
+        col, rem = divmod(col - 1, 26)
+        letters = chr(65 + rem) + letters
+    return f"{letters}{row}"
+
+
+def queue_srs_stage(row, new_stage):
+    """按「記得／不記得」只先記在本機（瞬間完成），之後再批次寫入雲端。"""
     rid = str(row.get("id", "")).strip()
     word = str(row.get("word", "")).strip().lower()
-    try:
-        cols = sheet_cols()
-        ids = active_worksheet.col_values(cols["id"])
-        if rid not in ids:
-            load_vocab_dataframe.clear()
-            return False
-        rn = ids.index(rid) + 1
-        cell = active_worksheet.cell(rn, cols["word"]).value or ""
-        if cell.strip().lower() != word:
-            load_vocab_dataframe.clear()
-            return False
-        active_worksheet.update_cell(rn, cols["srs_stage"], new_stage)
-        st.session_state.setdefault("srs_local", {})[(current_sheet_name, rid)] = new_stage
-        row["_stage"] = new_stage
+    st.session_state.setdefault("srs_pending", {})[(current_sheet_name, rid)] = (word, new_stage)
+    st.session_state.setdefault("srs_local", {})[(current_sheet_name, rid)] = new_stage
+    row["_stage"] = new_stage
+
+
+def flush_srs():
+    """把累積的熟練度一次寫進雲端：不管幾筆，都只用 4 次 API 呼叫（讀標題、讀編號欄、讀單字欄、一次批次寫入）。
+    寫入前會確認編號對應的單字沒變，避免寫錯列。成功回傳 True。"""
+    pend = st.session_state.get("srs_pending", {})
+    if not pend:
         return True
-    except Exception:
-        return False
+    by_sheet = {}
+    for (sheet, rid), (word, stage) in pend.items():
+        by_sheet.setdefault(sheet, {})[rid] = (word, stage)
+    all_ok = True
+    for sheet, items in by_sheet.items():
+        try:
+            ws = get_active_worksheet(gs_client, st.secrets["sheet_url"], sheet)
+            hdr = [str(h).strip().lower() for h in ws.row_values(1)]
+            c_id, c_word, c_srs = hdr.index("id") + 1, hdr.index("word") + 1, hdr.index("srs_stage") + 1
+            ids = ws.col_values(c_id)
+            words = ws.col_values(c_word)
+            row_of = {}
+            for i, v in enumerate(ids):
+                row_of.setdefault(str(v).strip(), i + 1)
+            data = []
+            for rid, (word, stage) in items.items():
+                rn = row_of.get(rid)
+                if rn and rn <= len(words) and str(words[rn - 1]).strip().lower() == word:
+                    data.append({"range": _a1(rn, c_srs), "values": [[stage]]})
+            if data:
+                ws.batch_update(data, value_input_option="RAW")
+            for rid in items:          # 寫成功，或確定對不上（資料已變動）→ 都從待寫清單移除
+                pend.pop((sheet, rid), None)
+        except Exception:
+            all_ok = False             # 失敗就留著，下次再試
+    return all_ok
+
+
+def save_row_edits(changes, orig):
+    """只更新有修改的那幾列（一次 batch_update），不重寫整張表。
+    回傳 (成功與否, 套用幾筆, 略過幾筆, 錯誤訊息)；成功與否為 None 表示雲端欄位順序不同，要改用整張覆寫。"""
+    try:
+        hdr = [str(h).strip().lower() for h in active_worksheet.row_values(1)]
+        if hdr[:len(HEADERS)] != HEADERS:
+            return None, 0, 0, ""
+        ids = active_worksheet.col_values(1)
+        words = active_worksheet.col_values(2)
+        row_of = {}
+        for i, v in enumerate(ids):
+            row_of.setdefault(str(v).strip(), i + 1)
+        orig_word = dict(zip(orig['id'].astype(str), orig['word']))
+        data, applied, skipped = [], 0, 0
+        for rid, vals in changes.items():
+            rn = row_of.get(rid)
+            if (not vals['word'] or not rn or rn > len(words)
+                    or str(words[rn - 1]).strip().lower() != str(orig_word.get(rid, '')).strip().lower()):
+                skipped += 1       # 單字空白，或雲端那一列已經不是原本那個字
+                continue
+            data.append({"range": f"B{rn}", "values": [[vals['word']]]})
+            data.append({"range": f"D{rn}:H{rn}", "values": [[
+                vals['part_of_speech'], simple_s2t_convert(vals['definition']),
+                vals['advanced_sentence'], vals['basic_sentence'], vals['collocations']]]})
+            applied += 1
+        if data:
+            active_worksheet.batch_update(data, value_input_option="RAW")
+        load_vocab_dataframe.clear()
+        return True, applied, skipped, ""
+    except Exception as e:
+        return False, 0, 0, str(e)
+
+
+def save_row_edits_full(changes):
+    """備援：整張覆寫（雲端欄位順序和程式不同時才會用到）。"""
+    load_vocab_dataframe.clear()
+    df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+    applied, skipped = 0, 0
+    for rid, vals in changes.items():
+        m = df_current['id'].astype(str) == rid
+        if not vals['word'] or not m.any():
+            skipped += 1
+            continue
+        for c in EDIT_COLS:
+            df_current.loc[m, c] = simple_s2t_convert(vals[c]) if c == 'definition' else vals[c]
+        applied += 1
+    if applied:
+        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+        if not ok:
+            return False, 0, 0, msg
+    return True, applied, skipped, ""
 
 
 def _num(v):
@@ -683,6 +761,12 @@ def render_batch_preview():
         st.session_state.pop("pending_batch", None)
         st.rerun()
 
+
+# 離開「背誦單字」頁、或切換級別時，把累積的熟練度一次同步到雲端
+_pend = st.session_state.get("srs_pending", {})
+if _pend and (main_menu != "🎯 背誦單字" or any(k[0] != current_sheet_name for k in _pend)):
+    if not flush_srs():
+        st.session_state["_warn"] = "⚠️ 熟練度同步失敗（網路或 Google 限速），回到「背誦單字」頁按「立即同步」再試一次。"
 
 # =====================================================================
 # ✨ 新增單字
@@ -882,25 +966,14 @@ elif main_menu == "📖 字彙管理":
                 if not changes:
                     st.info("沒有偵測到任何修改。")
                 else:
-                    load_vocab_dataframe.clear()
-                    df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
-                    applied, skipped = 0, 0
-                    for rid, vals in changes.items():
-                        if not vals['word']:
-                            skipped += 1      # 單字不能改成空白
-                            continue
-                        m = df_current['id'].astype(str) == rid
-                        if not m.any():
-                            skipped += 1
-                            continue
-                        for c in EDIT_COLS:
-                            df_current.loc[m, c] = simple_s2t_convert(vals[c]) if c == 'definition' else vals[c]
-                        applied += 1
-                    if applied:
-                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
-                        if not ok:
-                            st.error(f"儲存失敗：{msg}")
-                            st.stop()
+                    with st.spinner("儲存中…"):
+                        res = save_row_edits(changes, orig)
+                        if res[0] is None:     # 雲端欄位順序和程式不同 → 退回整張覆寫
+                            res = save_row_edits_full(changes)
+                    ok, applied, skipped, msg = res
+                    if not ok:
+                        st.error(f"儲存失敗：{msg}")
+                        st.stop()
                     st.session_state["edit_ver"] = st.session_state.get("edit_ver", 0) + 1
                     note = f"💾 已儲存 {applied} 筆修改"
                     if skipped:
@@ -968,8 +1041,11 @@ elif main_menu == "🎯 背誦單字":
                 st.session_state.flash_revealed = False
 
             def flash_mark(new_stage):
-                if not save_srs_stage(row, new_stage):
-                    st.session_state["_warn"] = "⚠️ 熟練度沒有存進雲端（可能網路問題，或試算表內容已變動），請重新整理頁面後再試。"
+                queue_srs_stage(row, new_stage)       # 瞬間完成，不用等雲端
+                if len(st.session_state.get("srs_pending", {})) >= SRS_FLUSH_EVERY:
+                    with st.spinner("同步熟練度到雲端…"):
+                        if not flush_srs():
+                            st.session_state["_warn"] = "⚠️ 熟練度同步失敗（網路或 Google 限速），會自動重試，請先不要關閉頁面。"
                 flash_move(1)
 
             st.caption(f"已熟練（⭐ 4 以上）：{mastered} / {total_count}")
@@ -978,19 +1054,15 @@ elif main_menu == "🎯 背誦單字":
                     f"<div style='text-align:right; color:gray; font-size:14px;'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'⭐' * stage}{'☆' * (5 - stage)}</div>",
                     unsafe_allow_html=True
                 )
+                pos_disp = str(row.get('part_of_speech', '')).strip().rstrip('.')
+                pos_html = (f" <span style='font-size: 28px; color: gray; font-weight: 400;'>({esc(pos_disp)})</span>"
+                            if pos_disp else "")
                 st.markdown(
-                    f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{esc(row['word'])}</h1>",
+                    f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{esc(row['word'])}{pos_html}</h1>",
                     unsafe_allow_html=True
                 )
 
                 components.html(speech_html(row['word'], justify="center"), height=50)
-
-                pos_line = str(row.get('part_of_speech', '')).strip()
-                if pos_line:
-                    st.markdown(
-                        f"<p style='text-align: center; color: gray; margin-top: 5px;'>{esc(pos_line)}</p>",
-                        unsafe_allow_html=True
-                    )
 
                 st.markdown("---")
                 if show_answer:
@@ -1020,6 +1092,17 @@ elif main_menu == "🎯 背誦單字":
                 flash_move(1)
                 st.rerun()
             st.caption("「不記得」熟練度歸零；「記得」+1（最高 5）。出題順序選「不熟的優先」時，熟練度低的會先出現。")
+            pend_n = len(st.session_state.get("srs_pending", {}))
+            if pend_n:
+                sy1, sy2 = st.columns([3, 1])
+                sy1.caption(f"☁️ 有 {pend_n} 筆熟練度還沒同步到雲端（累積 {SRS_FLUSH_EVERY} 筆或離開此頁時會自動同步）")
+                if sy2.button("💾 立即同步", use_container_width=True):
+                    with st.spinner("同步中…"):
+                        if flush_srs():
+                            st.session_state["_flash"] = "☁️ 熟練度已同步到雲端"
+                        else:
+                            st.session_state["_warn"] = "⚠️ 同步失敗，請稍後再試。"
+                    st.rerun()
 
 # =====================================================================
 # 🎮 我是拼字王
