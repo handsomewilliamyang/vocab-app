@@ -164,7 +164,20 @@ def load_vocab_dataframe(_worksheet, cache_key):
             return f"{parts[0].strip()} > {parts[1].strip()}"
         return t
 
-    df_temp['unit_tag'] = df_temp['unit_tag'].apply(normalize_tag)
+    # 只對「不重複的標籤」整理，再對應回每一列（比逐列處理快很多）
+    norm_map = {u: normalize_tag(u) for u in df_temp['unit_tag'].unique()}
+    df_temp['unit_tag'] = df_temp['unit_tag'].map(norm_map)
+    sem_map, unit_map = {}, {}
+    for u in set(norm_map.values()):
+        if '>' in u:
+            a, b = u.split('>', 1)
+            sem_map[u], unit_map[u] = a.strip(), b.strip()
+        else:
+            sem_map[u], unit_map[u] = "", ""
+    # 用 category 型態存：省記憶體，篩選時只是整數比對，不必每次對全部列做字串比對
+    df_temp['_sem'] = df_temp['unit_tag'].map(sem_map).astype('category')
+    df_temp['_unit'] = df_temp['unit_tag'].map(unit_map).astype('category')
+    df_temp.attrs["unit_tags"] = tuple(sem_map.keys())
     df_temp.attrs["unique_words"] = int(df_temp['word'].str.strip().str.lower().nunique()) if not df_temp.empty else 0
     return df_temp
 
@@ -471,7 +484,7 @@ def get_hierarchical_units(df):
     semesters = []
     semester_to_units = {}
     if 'unit_tag' in df.columns:
-        for ut in df['unit_tag'].dropna().unique():
+        for ut in (df.attrs.get("unit_tags") or df['unit_tag'].dropna().unique()):
             ut_str = str(ut).strip()
             if not ut_str or '>' not in ut_str:
                 continue
@@ -491,13 +504,16 @@ def get_hierarchical_units(df):
 
 
 def scope_mask(df, sem, unit):
-    """依「學期/篇章、單元」回傳要包含哪些列。"""
+    """依「學期/篇章、單元」回傳要包含哪些列（用載入時預先算好的 _sem/_unit 欄位）。"""
     if sem == ALL_SEM:
         return pd.Series(True, index=df.index)
-    tags = df['unit_tag'].astype(str)
-    if unit == ALL_UNIT:
-        return tags.str.startswith(f"{sem} >")
-    return tags == f"{sem} > {unit}"
+    m = df['_sem'] == sem
+    return m if unit == ALL_UNIT else (m & (df['_unit'] == unit))
+
+
+def scoped(df, sem, unit):
+    """全部單字時直接用原表（不複製）；其他才篩選。"""
+    return df if sem == ALL_SEM else df[scope_mask(df, sem, unit)]
 
 
 # ---------------------------------------------------------------------
@@ -882,7 +898,7 @@ elif main_menu == "📖 字彙管理":
             else:
                 selected_unit = st.selectbox("2️⃣ 選擇單元/課次：", [ALL_UNIT] + sem_to_units.get(selected_sem, []))
 
-        filtered_df = df_vocab[scope_mask(df_vocab, selected_sem, selected_unit)]
+        filtered_df = scoped(df_vocab, selected_sem, selected_unit)
 
         col_f1, col_f2 = st.columns(2, gap="medium")
         with col_f1:
@@ -1032,7 +1048,7 @@ elif main_menu == "🎯 背誦單字":
         with col_o2:
             hide_answer = st.checkbox("🙈 先隱藏答案（自己想完再點「顯示答案」）", key="flash_hide")
 
-        df_filtered_flash = df_vocab[scope_mask(df_vocab, sel_sem_flash, sel_unit_flash)]
+        df_filtered_flash = scoped(df_vocab, sel_sem_flash, sel_unit_flash)
 
         if df_filtered_flash.empty:
             st.info("📭 這個範圍沒有單字。")
@@ -1145,20 +1161,23 @@ elif main_menu == "🎮 我是拼字王":
                                              [ALL_UNIT] + sem_to_units.get(sel_sem_game, []),
                                              key=f"game_unit_select_{selected_level}")
 
-        df_filtered_game = df_vocab[scope_mask(df_vocab, sel_sem_game, sel_unit_game)]
-        if is_advanced:
-            # 進階模式要唸英文釋義，沒有英文釋義的單字不出題
-            df_filtered_game = df_filtered_game[df_filtered_game['advanced_sentence'].str.strip() != '']
-        df_game_queue_source = df_filtered_game.drop_duplicates(subset=['word'])
-
-        if df_game_queue_source.empty:
+        # 級別、模式、範圍、資料筆數任何一個變動，才重新篩選與出題（答題過程中的每次操作都不再重算）
+        game_key = f"{selected_level}|{game_mode}|{sel_sem_game}|{sel_unit_game}|{len(df_vocab)}"
+        if st.session_state.get("game_key") != game_key:
+            df_filtered_game = scoped(df_vocab, sel_sem_game, sel_unit_game)
             if is_advanced:
-                st.info("📭 這個範圍內的單字都還沒有「英文釋義」，進階模式沒有題目可出。請改用標準模式，或先補上英文釋義。")
-            else:
-                st.info("📭 這個範圍沒有單字。")
-        else:
-            def build_queue():
-                """出題清單：同一個單字有多個詞性時，把各詞性的中文釋義合併顯示。"""
+                # 進階模式要唸英文釋義，沒有英文釋義的單字不出題
+                df_filtered_game = df_filtered_game[df_filtered_game['advanced_sentence'].str.strip() != '']
+            df_game_queue_source = df_filtered_game.drop_duplicates(subset=['word'])
+            st.session_state.game_key = game_key
+            st.session_state.game_empty = bool(df_game_queue_source.empty)
+            st.session_state.game_queue = []
+            st.session_state.game_index = 0
+            st.session_state.wrong_answers = []
+            st.session_state.is_finished = False
+            st.session_state.last_feedback = None
+            if not df_game_queue_source.empty:
+                # 同一個單字有多個詞性時，把各詞性的中文釋義合併顯示（只掃一次）
                 defs_by_word = {}
                 for w, p, d in zip(df_filtered_game['word'], df_filtered_game['part_of_speech'], df_filtered_game['definition']):
                     if d.strip():
@@ -1166,18 +1185,14 @@ elif main_menu == "🎮 我是拼字王":
                 items = df_game_queue_source[['word', 'definition', 'advanced_sentence']].sample(frac=1).to_dict('records')
                 for it in items:
                     it['definition'] = "；".join(defs_by_word.get(it['word'], []))
-                return items
+                st.session_state.game_queue = items
 
-            # 級別、模式、範圍任何一個變動，就重新出題（避免用到上一個級別的舊題目）
-            game_key = f"{selected_level}|{game_mode}|{sel_sem_game}|{sel_unit_game}"
-            if st.session_state.get("game_key") != game_key:
-                st.session_state.game_key = game_key
-                st.session_state.game_queue = build_queue()
-                st.session_state.game_index = 0
-                st.session_state.wrong_answers = []
-                st.session_state.is_finished = False
-                st.session_state.last_feedback = None
-
+        if st.session_state.get("game_empty"):
+            if is_advanced:
+                st.info("📭 這個範圍內的單字都還沒有「英文釋義」，進階模式沒有題目可出。請改用標準模式，或先補上英文釋義。")
+            else:
+                st.info("📭 這個範圍沒有單字。")
+        else:
             if st.session_state.game_index >= len(st.session_state.game_queue):
                 st.session_state.is_finished = True
 
