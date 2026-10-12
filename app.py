@@ -95,6 +95,8 @@ st.title("📚 我愛背單字")
 # 儲存後的提示訊息（因為存完會 rerun，訊息要先存起來，重跑後才顯示）
 if st.session_state.get("_flash"):
     st.success(st.session_state.pop("_flash"))
+if st.session_state.get("_warn"):
+    st.warning(st.session_state.pop("_warn"))
 
 ALL_SEM = "全部單字"
 ALL_UNIT = "全部單元"
@@ -104,7 +106,7 @@ HEADERS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition',
            'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
 
 # 可編輯的欄位（預覽表、總表共用）
-EDIT_COLS = ['word', 'part_of_speech', 'definition', 'phonetic',
+EDIT_COLS = ['word', 'part_of_speech', 'definition',
              'advanced_sentence', 'basic_sentence', 'collocations']
 
 # 學期/篇章的顯示順序
@@ -171,10 +173,15 @@ except Exception as e:
     st.error(f"⚠️ 連線或讀取 Google 試算表發生錯誤：{e}")
     st.stop()
 
+# 套用本機已存的熟練度（背誦時按「記得」不用每次重讀整張表）
+for (_sheet, _rid), _stg in st.session_state.get("srs_local", {}).items():
+    if _sheet == current_sheet_name:
+        df_vocab.loc[df_vocab['id'].astype(str) == _rid, 'srs_stage'] = str(_stg)
+
 unique_words = df_vocab['word'].str.strip().str.lower().nunique() if not df_vocab.empty else 0
 col_m1, col_m2 = st.columns(2)
-col_m1.metric(label="雲端單字數", value=f"{unique_words} 個",
-              help=f"共 {len(df_vocab)} 筆資料（一個單字有多個詞性時會算多筆）")
+col_m1.metric(label="雲端單字量", value=f"{unique_words} 個單字／{len(df_vocab)} 筆",
+              help="「筆」= 資料列數；同一個單字有多個詞性、或出現在不同單元時，會算多筆。")
 clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
 col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
 st.markdown("<br>", unsafe_allow_html=True)
@@ -330,6 +337,8 @@ def save_all_vocab_to_sheet(_worksheet, df):
             _worksheet.resize(rows=len(rows) + 200)
         _worksheet.update(values=rows, range_name="A1", value_input_option="RAW")
         _worksheet.batch_clear([f"A{len(rows) + 1}:J"])
+        st.session_state["srs_local"] = {}
+        st.session_state.pop(f"_cols_{current_sheet_name}", None)
         load_vocab_dataframe.clear()
         return True, "成功"
     except Exception as e:
@@ -385,7 +394,7 @@ def merge_records(df_current, records, unit_tag):
         if mask is not None and mask.any():
             idx = df_current.index[mask][0]
             changed = False
-            for col in ['phonetic', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations']:
+            for col in ['definition', 'advanced_sentence', 'basic_sentence', 'collocations']:
                 v = str(data.get(col, '') or '').strip()
                 if v and str(df_current.at[idx, col]) != v:
                     df_current.at[idx, col] = v
@@ -399,7 +408,7 @@ def merge_records(df_current, records, unit_tag):
             new_row = {
                 'id': get_next_id(df_current),
                 'word': word,
-                'phonetic': data.get('phonetic', ''),
+                'phonetic': '',
                 'part_of_speech': pos,
                 'definition': data.get('definition', ''),
                 'advanced_sentence': data.get('advanced_sentence', ''),
@@ -538,6 +547,68 @@ def norm_answer(s):
 
 
 # ---------------------------------------------------------------------
+# 熟練度（srs_stage 0~5）
+# ---------------------------------------------------------------------
+def parse_stage(v):
+    try:
+        return max(0, min(5, int(float(str(v).strip()))))
+    except Exception:
+        return 0
+
+
+def sheet_cols():
+    """依試算表實際的標題列找出 id / word / srs_stage 在第幾欄（每個級別只查一次）。"""
+    key = f"_cols_{current_sheet_name}"
+    if key not in st.session_state:
+        hdr = [str(h).strip().lower() for h in active_worksheet.row_values(1)]
+        st.session_state[key] = {n: hdr.index(n) + 1 for n in ("id", "word", "srs_stage")}
+    return st.session_state[key]
+
+
+def save_srs_stage(row, new_stage):
+    """只更新試算表的一個儲存格；寫入前先確認該列的 id 與單字沒變，避免寫錯列。"""
+    rid = str(row.get("id", "")).strip()
+    word = str(row.get("word", "")).strip().lower()
+    try:
+        cols = sheet_cols()
+        ids = active_worksheet.col_values(cols["id"])
+        if rid not in ids:
+            load_vocab_dataframe.clear()
+            return False
+        rn = ids.index(rid) + 1
+        cell = active_worksheet.cell(rn, cols["word"]).value or ""
+        if cell.strip().lower() != word:
+            load_vocab_dataframe.clear()
+            return False
+        active_worksheet.update_cell(rn, cols["srs_stage"], new_stage)
+        st.session_state.setdefault("srs_local", {})[(current_sheet_name, rid)] = new_stage
+        row["_stage"] = new_stage
+        return True
+    except Exception:
+        return False
+
+
+def _num(v):
+    x = pd.to_numeric(v, errors="coerce")
+    return 0 if pd.isna(x) else x
+
+
+def build_flash_queue(df, order_mode):
+    items = []
+    for _, r in df.iterrows():
+        d = r.to_dict()
+        d["_stage"] = parse_stage(d.get("srs_stage"))
+        items.append(d)
+    if order_mode == "依編號順序":
+        items.sort(key=lambda d: _num(d.get("id")))
+    else:
+        random.shuffle(items)
+        if order_mode == "不熟的優先":
+            items.sort(key=lambda d: d["_stage"])   # 穩定排序：同熟練度內維持隨機
+    return items
+
+
+# ---------------------------------------------------------------------
 # 批次匯入：先預覽、確認後才寫入
 # ---------------------------------------------------------------------
 def start_batch_preview(records, unit_tag, raw_text):
@@ -582,7 +653,6 @@ def render_batch_preview():
             "word": st.column_config.TextColumn("單字", width="small", required=True),
             "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
             "definition": st.column_config.TextColumn("中文釋義", width="medium"),
-            "phonetic": st.column_config.TextColumn("音標", width="small"),
             "advanced_sentence": st.column_config.TextColumn("英文釋義", width="large"),
             "basic_sentence": st.column_config.TextColumn("例句", width="large"),
             "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
@@ -796,7 +866,6 @@ elif main_menu == "📖 字彙管理":
                 column_config={
                     "id": st.column_config.TextColumn("編號", width="small"),
                     "word": st.column_config.TextColumn("單字", width="medium"),
-                    "phonetic": st.column_config.TextColumn("音標", width="small"),
                     "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
                     "definition": st.column_config.TextColumn("中文釋義", width="medium"),
                     "advanced_sentence": st.column_config.TextColumn("英文釋義", width="large"),
@@ -839,6 +908,13 @@ elif main_menu == "📖 字彙管理":
                     st.session_state["_flash"] = note
                     st.rerun()
 
+        st.download_button(
+            "⬇️ 下載備份（CSV，包含全部欄位）",
+            data=df_vocab[HEADERS].to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"vocab_{selected_level}.csv",
+            mime="text/csv",
+        )
+
 # =====================================================================
 # 🎯 背誦單字
 # =====================================================================
@@ -861,16 +937,47 @@ elif main_menu == "🎯 背誦單字":
                                               [ALL_UNIT] + sem_to_units.get(sel_sem_flash, []),
                                               key=f"flash_unit_select_{selected_level}")
 
+        col_o1, col_o2 = st.columns(2)
+        with col_o1:
+            order_mode = st.radio("出題順序：", ["不熟的優先", "隨機", "依編號順序"], horizontal=True, key="flash_order")
+        with col_o2:
+            hide_answer = st.checkbox("🙈 先隱藏答案（自己想完再點「顯示答案」）", key="flash_hide")
+
         df_filtered_flash = df_vocab[scope_mask(df_vocab, sel_sem_flash, sel_unit_flash)]
 
-        if not df_filtered_flash.empty:
-            if "flashcard_index" not in st.session_state:
+        if df_filtered_flash.empty:
+            st.info("📭 這個範圍沒有單字。")
+        else:
+            sig = f"{selected_level}|{sel_sem_flash}|{sel_unit_flash}|{order_mode}|{len(df_filtered_flash)}"
+            if st.session_state.get("flash_sig") != sig:
+                st.session_state.flash_sig = sig
+                st.session_state.flash_queue = build_flash_queue(df_filtered_flash, order_mode)
                 st.session_state.flashcard_index = 0
-            total_count = len(df_filtered_flash)
-            st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
-            row = df_filtered_flash.iloc[st.session_state.flashcard_index]
+                st.session_state.flash_revealed = False
 
+            queue = st.session_state.flash_queue
+            total_count = len(queue)
+            st.session_state.flashcard_index = st.session_state.flashcard_index % total_count
+            row = queue[st.session_state.flashcard_index]
+            stage = row["_stage"]
+            show_answer = (not hide_answer) or st.session_state.get("flash_revealed", False)
+            mastered = sum(1 for r in queue if r["_stage"] >= 4)
+
+            def flash_move(step):
+                st.session_state.flashcard_index = (st.session_state.flashcard_index + step) % total_count
+                st.session_state.flash_revealed = False
+
+            def flash_mark(new_stage):
+                if not save_srs_stage(row, new_stage):
+                    st.session_state["_warn"] = "⚠️ 熟練度沒有存進雲端（可能網路問題，或試算表內容已變動），請重新整理頁面後再試。"
+                flash_move(1)
+
+            st.caption(f"已熟練（⭐ 4 以上）：{mastered} / {total_count}")
             with st.container(border=True):
+                st.markdown(
+                    f"<div style='text-align:right; color:gray; font-size:14px;'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'⭐' * stage}{'☆' * (5 - stage)}</div>",
+                    unsafe_allow_html=True
+                )
                 st.markdown(
                     f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{esc(row['word'])}</h1>",
                     unsafe_allow_html=True
@@ -878,32 +985,41 @@ elif main_menu == "🎯 背誦單字":
 
                 components.html(speech_html(row['word'], justify="center"), height=50)
 
-                info_line = " | ".join([x for x in [str(row.get('phonetic', '')).strip(),
-                                                    str(row.get('part_of_speech', '')).strip()] if x])
-                if info_line:
+                pos_line = str(row.get('part_of_speech', '')).strip()
+                if pos_line:
                     st.markdown(
-                        f"<p style='text-align: center; color: gray; margin-top: 5px;'>{esc(info_line)}</p>",
+                        f"<p style='text-align: center; color: gray; margin-top: 5px;'>{esc(pos_line)}</p>",
                         unsafe_allow_html=True
                     )
 
                 st.markdown("---")
-                st.markdown(f"<h4>中文釋義：{esc(row['definition'])}</h4>", unsafe_allow_html=True)
-                if row.get('advanced_sentence'):
-                    st.markdown(f"<p style='font-size: 19px;'>📖 英文釋義：{esc(row.get('advanced_sentence'))}</p>", unsafe_allow_html=True)
-                if row.get('basic_sentence'):
-                    st.markdown(f"<p style='font-style: italic; font-size: 19px;'>💬 例句：{esc(row.get('basic_sentence'))}</p>", unsafe_allow_html=True)
-                if row.get('collocations'):
-                    st.markdown(f"<p style='font-size: 17px;'>🔗 搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
+                if show_answer:
+                    st.markdown(f"<h4>中文釋義：{esc(row['definition'])}</h4>", unsafe_allow_html=True)
+                    if row.get('advanced_sentence'):
+                        st.markdown(f"<p style='font-size: 19px;'>📖 英文釋義：{esc(row.get('advanced_sentence'))}</p>", unsafe_allow_html=True)
+                    if row.get('basic_sentence'):
+                        st.markdown(f"<p style='font-style: italic; font-size: 19px;'>💬 例句：{esc(row.get('basic_sentence'))}</p>", unsafe_allow_html=True)
+                    if row.get('collocations'):
+                        st.markdown(f"<p style='font-size: 17px;'>🔗 搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
+                else:
+                    if st.button("👀 顯示答案", use_container_width=True):
+                        st.session_state.flash_revealed = True
+                        st.rerun()
 
-            c1, c2 = st.columns(2)
-            if c1.button("⬅️ 上一個", use_container_width=True):
-                st.session_state.flashcard_index = (st.session_state.flashcard_index - 1) % total_count
+            b1, b2, b3, b4 = st.columns(4)
+            if b1.button("⬅️ 上一個", use_container_width=True):
+                flash_move(-1)
                 st.rerun()
-            if c2.button("➡️ 下一個", use_container_width=True):
-                st.session_state.flashcard_index = (st.session_state.flashcard_index + 1) % total_count
+            if b2.button("❌ 不記得", use_container_width=True):
+                flash_mark(0)
                 st.rerun()
-        else:
-            st.info("📭 這個範圍沒有單字。")
+            if b3.button("✅ 記得", use_container_width=True):
+                flash_mark(min(stage + 1, 5))
+                st.rerun()
+            if b4.button("➡️ 下一個", use_container_width=True):
+                flash_move(1)
+                st.rerun()
+            st.caption("「不記得」熟練度歸零；「記得」+1（最高 5）。出題順序選「不熟的優先」時，熟練度低的會先出現。")
 
 # =====================================================================
 # 🎮 我是拼字王
