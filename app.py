@@ -222,19 +222,24 @@ def get_active_worksheet(_client, sheet_url, sheet_name):
 
 
 # ---------------------------------------------------------------------
-# 讀取資料（第四步：只留常用欄位，長文字延後到需要時才讀）
+# 讀取資料（只留常用欄位，長文字延後到需要時才讀）
 #   常用欄位 LIGHT_COLS 一直放在記憶體；例句、搭配詞、英文釋義這類較長的文字不放進共用快取，
 #   只有「真的要顯示」的那幾筆（總表當頁、背誦翻開答案、進階模式出題）才向雲端讀，用完就丟。
+#   讀的時候用「列號」：載入時順便記下每一筆在試算表的第幾列（_row），之後只讀那幾列，
+#   不再整欄下載。列號對不上（資料被改動過）時，會自動退回用編號整欄搜尋，結果不會錯。
 #   要寫入雲端之前，一律另外讀一份完整的表（load_vocab_full），不經過快取，所以不會漏掉長文字。
 # ---------------------------------------------------------------------
 LIGHT_COLS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'unit_tag', 'srs_stage']
 LONG_COLS = ['advanced_sentence', 'basic_sentence', 'collocations']
 LONG_LETTER = {c: chr(65 + HEADERS.index(c)) for c in LONG_COLS}     # 長文字欄在試算表的欄位字母
 ID_LETTER, WORD_LETTER = chr(65 + HEADERS.index('id')), chr(65 + HEADERS.index('word'))
+LONG_IDX = [HEADERS.index(c) for c in LONG_COLS]                      # 長文字欄在 A~H 範圍裡的位置
+ROW_FETCH_MAX_RANGES = 25     # 一次最多讀幾段列範圍；超過就改整欄讀取（避免請求網址太長）
 
 
-def _rows_to_df(all_values, columns):
-    """只把 columns 指定的欄位轉成 DataFrame（其他欄位根本不建立，省記憶體）。"""
+def _rows_to_df(all_values, columns, with_row=False):
+    """只把 columns 指定的欄位轉成 DataFrame（其他欄位根本不建立，省記憶體）。
+    with_row=True 時多一欄 _row = 該筆在試算表的列號（標題列是第 1 列，資料從第 2 列開始）。"""
     if len(all_values) > 1:
         headers = [str(h).strip().lower() for h in all_values[0]]
         pos = {}
@@ -246,8 +251,11 @@ def _rows_to_df(all_values, columns):
             i = pos.get(c)
             data[c] = ([(r[i] if i < len(r) else "") for r in body]
                        if i is not None else [""] * len(body))
-        return pd.DataFrame(data, columns=list(columns))
-    return pd.DataFrame(columns=list(columns))
+        df = pd.DataFrame(data, columns=list(columns))
+        if with_row:
+            df['_row'] = range(2, len(body) + 2)
+        return df
+    return pd.DataFrame(columns=list(columns) + (['_row'] if with_row else []))
 
 
 def _finish_df(df_temp):
@@ -300,13 +308,14 @@ def load_vocab_dataframe(_worksheet, cache_key):
         data['srs_stage'] = col(res[3], 1)
         df_temp = pd.DataFrame(data, columns=LIGHT_COLS)
         df_temp['_has_adv'] = pd.Series(col(res[2], 0), dtype=object).str.strip().ne('').to_numpy()
+        df_temp['_row'] = range(2, n + 2)       # 這幾個範圍都從第 2 列開始，所以第 i 筆就是第 i+2 列
         del res
     else:                                   # 空表或標題列順序不標準：用完整讀法
         del res
         all_values = _worksheet.get_all_values()
         header_ok = (len(all_values) > 0 and
                      [str(h).strip().lower() for h in all_values[0]][:len(HEADERS)] == HEADERS)
-        df_temp = _rows_to_df(all_values, LIGHT_COLS + ['advanced_sentence'])
+        df_temp = _rows_to_df(all_values, LIGHT_COLS + ['advanced_sentence'], with_row=True)
         del all_values
         # 只留一個「有沒有英文釋義」的旗標（進階模式要用來篩題目），文字本身不留
         df_temp['_has_adv'] = df_temp['advanced_sentence'].str.strip() != ''
@@ -327,32 +336,66 @@ def drop_caches():
     st.session_state.pop("_long_cache", None)
 
 
+def _row_groups(rows, gap=3):
+    """把列號合併成幾段連續（或幾乎連續）的範圍，例如 [5,6,7,9,40] → [[5,9],[40,40]]。"""
+    groups = []
+    for r in sorted(set(int(x) for x in rows)):
+        if groups and r - groups[-1][1] <= gap + 1:
+            groups[-1][1] = r
+        else:
+            groups.append([r, r])
+    return groups
+
+
+def _fetch_by_columns(ws, wanted):
+    """備援：整欄讀取，用編號搜尋（列號對不上、或標題列順序不標準時才會用到）。
+    wanted = {編號: (單字, 列號)}"""
+    if not df_vocab.attrs.get("header_ok", False):          # 標題列順序不標準：退回讀整張表
+        full = load_vocab_full(ws)
+        out = {}
+        for i in range(len(full)):
+            rid = str(full.at[i, 'id']).strip()
+            if (rid in wanted and rid not in out
+                    and str(full.at[i, 'word']).strip().lower() == wanted[rid][0].strip().lower()):
+                out[rid] = {c: str(full.at[i, c]) for c in LONG_COLS}
+        return out
+    ranges = [f"{ID_LETTER}2:{ID_LETTER}", f"{WORD_LETTER}2:{WORD_LETTER}"] + \
+             [f"{LONG_LETTER[c]}2:{LONG_LETTER[c]}" for c in LONG_COLS]
+    res = ws.batch_get(ranges)                               # 一次 API 呼叫，只讀這 5 欄
+    ids_col = [str(r[0]).strip() if r else "" for r in res[0]]
+    words_col = [str(r[0]).strip().lower() if r else "" for r in res[1]]
+    long_cols = [[(r[0] if r else "") for r in vc] for vc in res[2:]]
+    out = {}
+    for i, rid in enumerate(ids_col):
+        if rid in wanted and rid not in out and i < len(words_col) \
+                and words_col[i] == wanted[rid][0].strip().lower():
+            out[rid] = {c: (vals[i] if i < len(vals) else "") for c, vals in zip(LONG_COLS, long_cols)}
+    return out
+
+
 def fetch_long_text(ws, wanted):
-    """wanted = {編號字串: 單字}。只向雲端讀這些編號的 英文釋義／例句／搭配詞。
+    """wanted = {編號字串: (單字, 試算表列號)}。只向雲端讀這幾列的 英文釋義／例句／搭配詞。
     回傳 (結果 {編號: {欄位: 文字}}, 錯誤訊息)。單字對不上（資料已被改動）的編號不會出現在結果裡。"""
     if not wanted:
         return {}, ""
     try:
-        if not df_vocab.attrs.get("header_ok", False):          # 標題列順序不標準：退回讀整張表
-            full = load_vocab_full(ws)
-            out = {}
-            for i in range(len(full)):
-                rid = str(full.at[i, 'id']).strip()
-                if (rid in wanted and rid not in out
-                        and str(full.at[i, 'word']).strip().lower() == wanted[rid].strip().lower()):
-                    out[rid] = {c: str(full.at[i, c]) for c in LONG_COLS}
-            return out, ""
-        ranges = [f"{ID_LETTER}2:{ID_LETTER}", f"{WORD_LETTER}2:{WORD_LETTER}"] + \
-                 [f"{LONG_LETTER[c]}2:{LONG_LETTER[c]}" for c in LONG_COLS]
-        res = ws.batch_get(ranges)                               # 一次 API 呼叫，只讀這 5 欄
-        ids_col = [str(r[0]).strip() if r else "" for r in res[0]]
-        words_col = [str(r[0]).strip().lower() if r else "" for r in res[1]]
-        long_cols = [[(r[0] if r else "") for r in vc] for vc in res[2:]]
         out = {}
-        for i, rid in enumerate(ids_col):
-            if rid in wanted and rid not in out and i < len(words_col) \
-                    and words_col[i] == wanted[rid].strip().lower():
-                out[rid] = {c: (vals[i] if i < len(vals) else "") for c, vals in zip(LONG_COLS, long_cols)}
+        if df_vocab.attrs.get("header_ok", False):
+            groups = _row_groups([r for _, r in wanted.values()])
+            if 0 < len(groups) <= ROW_FETCH_MAX_RANGES:
+                res = ws.batch_get([f"A{a}:H{b}" for a, b in groups])   # 一次 API 呼叫，只讀需要的那幾列
+                for block in res:
+                    for cells in block:
+                        if len(cells) < 2:
+                            continue
+                        rid = str(cells[0]).strip()
+                        if (rid in wanted and rid not in out
+                                and str(cells[1]).strip().lower() == wanted[rid][0].strip().lower()):
+                            out[rid] = {c: (cells[i] if i < len(cells) else "")
+                                        for c, i in zip(LONG_COLS, LONG_IDX)}
+        missing = {rid: v for rid, v in wanted.items() if rid not in out}
+        if missing:      # 列號對不上（資料被改動過）或這次不適合用列號 → 退回整欄搜尋
+            out.update(_fetch_by_columns(ws, missing))
         return out, ""
     except Exception as e:
         return {}, str(e)
@@ -360,7 +403,7 @@ def fetch_long_text(ws, wanted):
 
 def get_page_long_text(orig):
     """總表當頁的長文字。暫存在 session，只留「目前這一頁」（換頁就換掉，不會越累積越多）。"""
-    wanted = {str(i): w for i, w in zip(orig['id'], orig['word'])}
+    wanted = {str(i): (w, int(r)) for i, w, r in zip(orig['id'], orig['word'], orig['_row'])}
     key = (current_sheet_name, tuple(sorted(wanted)))
     cache = st.session_state.get("_long_cache")
     if cache and cache["key"] == key:
@@ -375,7 +418,7 @@ def get_page_long_text(orig):
 
 def ensure_flash_long(queue):
     """背誦：第一次需要顯示答案時，才把這個範圍的例句／搭配詞讀進來。"""
-    data, err = fetch_long_text(active_worksheet, {str(d["id"]): d["word"] for d in queue})
+    data, err = fetch_long_text(active_worksheet, {str(d["id"]): (d["word"], int(d["_row"])) for d in queue})
     if err:
         st.warning(f"例句／搭配詞暫時讀不到（{err}），先只顯示中文釋義。")
     for d in queue:
@@ -890,7 +933,7 @@ def _num(v):
     return 0 if pd.isna(x) else x
 
 
-FLASH_COLS = ["id", "word", "part_of_speech", "definition", "srs_stage"]   # 長文字在顯示答案時才讀
+FLASH_COLS = ["id", "word", "part_of_speech", "definition", "srs_stage", "_row"]   # 長文字在顯示答案時才讀
 
 
 def build_flash_queue(df, order_mode):
@@ -1167,7 +1210,7 @@ elif main_menu == "📖 字彙管理":
 
         st.markdown("---")
         with st.expander("📋 單字總表（可直接點兩下修改，改完按「儲存修改」）", expanded=True):
-            orig = page_df[['id', 'word', 'part_of_speech', 'definition']].reset_index(drop=True)
+            orig = page_df[['id', 'word', 'part_of_speech', 'definition', '_row']].reset_index(drop=True)
             _longs, _lerr = get_page_long_text(orig)
             if _lerr:
                 st.error(f"讀取例句、搭配詞失敗，為了避免存檔時把它們清空，這一頁暫時不能編輯：{_lerr}")
@@ -1388,11 +1431,11 @@ elif main_menu == "🎮 我是拼字王":
                 for w, p, d in zip(df_filtered_game['word'], df_filtered_game['part_of_speech'], df_filtered_game['definition']):
                     if d.strip():
                         defs_by_word.setdefault(w, []).append(f"{p} {d}".strip())
-                items = df_game_queue_source[['id', 'word', 'definition']].sample(frac=1).to_dict('records')
+                items = df_game_queue_source[['id', 'word', 'definition', '_row']].sample(frac=1).to_dict('records')
                 for it in items:
                     it['definition'] = "；".join(defs_by_word.get(it['word'], []))
                 if is_advanced:       # 英文釋義只有進階模式用得到，這時才向雲端讀
-                    longs, lerr = fetch_long_text(active_worksheet, {str(it['id']): it['word'] for it in items})
+                    longs, lerr = fetch_long_text(active_worksheet, {str(it['id']): (it['word'], int(it['_row'])) for it in items})
                     if lerr:
                         st.session_state.game_key = None      # 讓下次重新嘗試
                         st.error(f"讀取英文釋義失敗：{lerr}")
