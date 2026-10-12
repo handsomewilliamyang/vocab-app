@@ -761,7 +761,7 @@ def parse_stage(v):
         return 0
 
 
-SRS_FLUSH_EVERY = 8   # 累積幾筆熟練度就同步一次到雲端
+SRS_FLUSH_EVERY = 5   # 累積幾筆熟練度就在背景自動同步一次到雲端（不會跳提示）
 
 
 def _a1(row, col):
@@ -971,7 +971,7 @@ def render_batch_preview():
 _pend = st.session_state.get("srs_pending", {})
 if _pend and (main_menu != "🎯 背誦單字" or any(k[0] != current_sheet_name for k in _pend)):
     if not flush_srs():
-        st.session_state["_warn"] = "⚠️ 熟練度同步失敗（網路或 Google 限速），回到「背誦單字」頁按「立即同步」再試一次。"
+        st.session_state["_warn"] = "⚠️ 熟練度同步失敗（網路或 Google 限速），資料還留在本機，回到「背誦單字」頁繼續作答時會自動重試。"
 
 # =====================================================================
 # ✨ 新增單字
@@ -1274,10 +1274,10 @@ elif main_menu == "🎯 背誦單字":
 
             def flash_mark(new_stage):
                 queue_srs_stage(row, new_stage)       # 瞬間完成，不用等雲端
-                if len(st.session_state.get("srs_pending", {})) >= SRS_FLUSH_EVERY:
-                    with st.spinner("同步熟練度到雲端…"):
-                        if not flush_srs():
-                            st.session_state["_warn"] = "⚠️ 熟練度同步失敗（網路或 Google 限速），會自動重試，請先不要關閉頁面。"
+                # 自動同步（靜默）：累積夠多筆、或剛做完最後一張就寫入；失敗的留著，下次自動重試
+                if (len(st.session_state.get("srs_pending", {})) >= SRS_FLUSH_EVERY
+                        or st.session_state.flashcard_index == total_count - 1):
+                    flush_srs()
                 flash_move(1)
 
             st.caption(f"已熟練（⭐ 4 以上）：{mastered} / {total_count}")
@@ -1324,17 +1324,6 @@ elif main_menu == "🎯 背誦單字":
                 flash_move(1)
                 st.rerun()
             st.caption("「不記得」熟練度歸零；「記得」+1（最高 5）。出題順序選「不熟的優先」時，熟練度低的會先出現。")
-            pend_n = len(st.session_state.get("srs_pending", {}))
-            if pend_n:
-                sy1, sy2 = st.columns([3, 1])
-                sy1.caption(f"☁️ 有 {pend_n} 筆熟練度還沒同步到雲端（累積 {SRS_FLUSH_EVERY} 筆或離開此頁時會自動同步）")
-                if sy2.button("💾 立即同步", **W_BTN):
-                    with st.spinner("同步中…"):
-                        if flush_srs():
-                            st.session_state["_flash"] = "☁️ 熟練度已同步到雲端"
-                        else:
-                            st.session_state["_warn"] = "⚠️ 同步失敗，請稍後再試。"
-                    st.rerun()
 
 # =====================================================================
 # 🎮 我是拼字王
