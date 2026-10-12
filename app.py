@@ -49,8 +49,71 @@ st.markdown("""
         font-size: 17px !important;
         font-weight: 600;
     }
+    .vsp-wrap { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+    .vsp-btn {
+        background: transparent; color: inherit;
+        border: 1px solid rgba(128, 128, 128, 0.5); border-radius: 6px;
+        padding: 6px 14px; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .vsp-btn:hover { border-color: #ff4b4b; color: #ff4b4b; }
+    .vsp-btn:active { transform: scale(0.95); }
     </style>
 """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------
+# 🔊 輕量發音：按鈕只是一小段 HTML，不再每換一張卡／每答一題就新建一個 iframe。
+# 只放一個「內容固定不變」的隱形 iframe，負責在瀏覽器裡安裝一次「點按鈕 → 唸出來」。
+# 若按了沒聲音，到側邊欄勾選「發音按鈕相容模式」就會退回舊做法。
+# ---------------------------------------------------------------------
+SPEECH_INIT_HTML = """
+<script>
+(function () {
+  var p = window.parent;
+  if (!p || p.__vspInit) return;
+  try {
+    p.__vspInit = true;
+    var s = p.document.createElement('script');
+    s.textContent = '(' + function () {
+      document.addEventListener('click', function (e) {
+        var b = e.target && e.target.closest ? e.target.closest('.vsp-btn') : null;
+        if (!b) return;
+        var t = b.getAttribute('data-t');
+        if (!t) return;
+        speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(t);
+        u.lang = b.getAttribute('data-l') || 'en-US';
+        u.rate = 0.9;
+        speechSynthesis.speak(u);
+      }, true);
+    }.toString() + ')();';
+    p.document.head.appendChild(s);
+  } catch (err) {
+    p.__vspInit = false;
+  }
+})();
+</script>
+"""
+
+
+def speech_init():
+    if not st.session_state.get("compat_speech"):
+        components.html(SPEECH_INIT_HTML, height=0)
+
+
+def speech_buttons(text, justify="center", height=45):
+    if st.session_state.get("compat_speech"):
+        components.html(speech_html(text, justify), height=height)   # 相容模式：舊做法
+        return
+    t = html.escape(str(text), quote=True)
+    st.markdown(
+        f'<div class="vsp-wrap" style="justify-content:{justify}">'
+        f'<button type="button" class="vsp-btn" data-t="{t}" data-l="en-US">US 美式</button>'
+        f'<button type="button" class="vsp-btn" data-t="{t}" data-l="en-GB">GB 英式</button>'
+        f'<button type="button" class="vsp-btn" data-t="{t}" data-l="en-AU">AU 澳洲</button>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
 
 # ---------------------------------------------------------------------
 # 🔒 密碼保護（選用）：在 secrets 加一行  app_password = "你的密碼"  就會啟用；
@@ -84,10 +147,17 @@ selected_level = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
+st.sidebar.checkbox(
+    "🔊 發音按鈕相容模式", key="compat_speech",
+    help="平常不用勾選。如果按發音按鈕沒有聲音，再勾選這個。"
+)
 st.sidebar.markdown(
     "<p style='text-align: center; color: gray; font-size: 13px; margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
 )
+if main_menu in ("🎯 背誦單字", "🎮 我是拼字王"):
+    with st.sidebar:
+        speech_init()
 
 current_sheet_name = selected_level
 st.title("📚 我愛背單字")
@@ -1094,7 +1164,7 @@ elif main_menu == "🎯 背誦單字":
                     unsafe_allow_html=True
                 )
 
-                components.html(speech_html(row['word'], justify="center"), height=50)
+                speech_buttons(row['word'], "center", 50)
 
                 st.markdown("---")
                 if show_answer:
@@ -1242,7 +1312,7 @@ elif main_menu == "🎮 我是拼字王":
                         with r_col1:
                             st.markdown(f"<h3 style='margin: 0; padding-top: 5px;'>中文：{esc(target_def)}</h3>", unsafe_allow_html=True)
                         with r_col2:
-                            components.html(speech_html(target_word), height=45)
+                            speech_buttons(target_word, "flex-start", 45)
                     else:
                         # 把釋義裡的答案遮起來（顯示成 ____，唸出來變成 blank），避免直接洩漏答案
                         st.markdown("<h3 style='margin-bottom: 5px;'>🔊 英文解釋聽力提示：</h3>", unsafe_allow_html=True)
@@ -1250,7 +1320,7 @@ elif main_menu == "🎮 我是拼字王":
                             f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{esc(mask_word(target_adv_def, target_word))}</p>",
                             unsafe_allow_html=True
                         )
-                        components.html(speech_html(mask_word(target_adv_def, target_word, repl="blank")), height=45)
+                        speech_buttons(mask_word(target_adv_def, target_word, repl="blank"), "flex-start", 45)
 
                     st.markdown(
                         f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> <code>{esc(hint_masked)}</code></div>",
@@ -1286,3 +1356,5 @@ elif main_menu == "🎮 我是拼字王":
                                     st.session_state.wrong_answers.append(current_item)
                                     st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
                                 st.rerun()
+
+# ===== 檔案結束（看到這一行代表程式碼完整）=====
