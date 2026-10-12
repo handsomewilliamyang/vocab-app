@@ -109,6 +109,8 @@ HEADERS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition',
 EDIT_COLS = ['word', 'part_of_speech', 'definition',
              'advanced_sentence', 'basic_sentence', 'collocations']
 
+PAGE_SIZE = 100   # 字彙管理總表每頁筆數（避免一次把上千列塞進瀏覽器）
+
 # 學期/篇章的顯示順序
 SEM_ORDER = [
     "國一上", "國一下", "國二上", "國二下", "國三上", "國三下",
@@ -133,7 +135,9 @@ def get_active_worksheet(_client, sheet_url, sheet_name):
         return spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=10)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+# 用 cache_resource：所有操作共用同一份資料、不會每次點擊都整份複製（比 cache_data 快、省記憶體）。
+# 因此「不可以直接修改 df_vocab」；要寫入前一律先 .copy()（程式已經是這樣做）。
+@st.cache_resource(ttl=300, show_spinner=False)
 def load_vocab_dataframe(_worksheet, cache_key):
     # 讀取失敗時讓錯誤直接往上丟（由下方 try/except 顯示並停止），
     # 不可以變成「空表」，否則之後存檔會把雲端資料蓋掉。
@@ -149,7 +153,7 @@ def load_vocab_dataframe(_worksheet, cache_key):
         if col not in df_temp.columns:
             df_temp[col] = ""
 
-    df_temp = df_temp.fillna("").astype(str)
+    df_temp = df_temp.fillna("")   # 試算表讀出來本來就是字串，不需要再整表轉型一次
     df_temp = df_temp.replace({"nan": "", "None": "", "none": ""})
     df_temp = df_temp[df_temp['word'].str.strip() != ''].reset_index(drop=True)
 
@@ -161,6 +165,7 @@ def load_vocab_dataframe(_worksheet, cache_key):
         return t
 
     df_temp['unit_tag'] = df_temp['unit_tag'].apply(normalize_tag)
+    df_temp.attrs["unique_words"] = int(df_temp['word'].str.strip().str.lower().nunique()) if not df_temp.empty else 0
     return df_temp
 
 
@@ -173,12 +178,7 @@ except Exception as e:
     st.error(f"⚠️ 連線或讀取 Google 試算表發生錯誤：{e}")
     st.stop()
 
-# 套用本機已存的熟練度（背誦時按「記得」不用每次重讀整張表）
-for (_sheet, _rid), _stg in st.session_state.get("srs_local", {}).items():
-    if _sheet == current_sheet_name:
-        df_vocab.loc[df_vocab['id'].astype(str) == _rid, 'srs_stage'] = str(_stg)
-
-unique_words = df_vocab['word'].str.strip().str.lower().nunique() if not df_vocab.empty else 0
+unique_words = df_vocab.attrs.get("unique_words", 0)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端單字量", value=f"{unique_words} 個單字／{len(df_vocab)} 筆",
               help="「筆」= 資料列數；同一個單字有多個詞性、或出現在不同單元時，會算多筆。")
@@ -671,12 +671,16 @@ def _num(v):
     return 0 if pd.isna(x) else x
 
 
+FLASH_COLS = ["id", "word", "part_of_speech", "definition", "advanced_sentence",
+              "basic_sentence", "collocations", "srs_stage"]
+
+
 def build_flash_queue(df, order_mode):
-    items = []
-    for _, r in df.iterrows():
-        d = r.to_dict()
-        d["_stage"] = parse_stage(d.get("srs_stage"))
-        items.append(d)
+    local = st.session_state.get("srs_local", {})     # 本機還沒同步到雲端的熟練度優先
+    items = df[FLASH_COLS].to_dict("records")
+    for d in items:
+        d["_stage"] = parse_stage(local.get((current_sheet_name, str(d["id"])), d.pop("srs_stage")))
+        d.pop("srs_stage", None)
     if order_mode == "依編號順序":
         items.sort(key=lambda d: _num(d.get("id")))
     else:
@@ -888,14 +892,21 @@ elif main_menu == "📖 字彙管理":
                     filtered_df['word'].str.contains(search_query, case=False, na=False, regex=False) |
                     filtered_df['definition'].str.contains(search_query, case=False, na=False, regex=False)
                 ]
+            n_pages = max(1, -(-len(filtered_df) // PAGE_SIZE))
+            page_no = st.number_input(
+                f"頁碼（每頁 {PAGE_SIZE} 筆，目前範圍共 {len(filtered_df)} 筆）",
+                min_value=1, max_value=n_pages, value=1, step=1,
+                key=f"page_{selected_level}_{selected_sem}_{selected_unit}_{search_query}"
+            )
+            page_df = filtered_df.iloc[(page_no - 1) * PAGE_SIZE: page_no * PAGE_SIZE]
         with col_f2:
             sub_col1, sub_col2 = st.columns([3, 1], gap="small")
             with sub_col1:
                 # 以「那一筆」為單位刪除（同一個字不同詞性不會一起被刪）
                 placeholder_opt = "--請選擇要刪除的單字--"
                 del_map = {}
-                for _, r in filtered_df.iterrows():
-                    del_map[f"{r['word']}　{r['part_of_speech']}　(#{r['id']})"] = str(r['id'])
+                for _id, _w, _p in zip(page_df['id'], page_df['word'], page_df['part_of_speech']):
+                    del_map[f"{_w}　{_p}　(#{_id})"] = str(_id)
                 word_to_delete = st.selectbox("🗑️ 快速刪除單字：", [placeholder_opt] + list(del_map.keys()))
                 if word_to_delete != placeholder_opt:
                     if st.button("確認刪除這一筆", type="primary", use_container_width=True):
@@ -938,7 +949,7 @@ elif main_menu == "📖 字彙管理":
 
         st.markdown("---")
         with st.expander("📋 單字總表（可直接點兩下修改，改完按「儲存修改」）", expanded=True):
-            orig = filtered_df[['id'] + EDIT_COLS].reset_index(drop=True)
+            orig = page_df[['id'] + EDIT_COLS].reset_index(drop=True)
             edit_key = f"vocab_editor_{selected_level}_{st.session_state.get('edit_ver', 0)}_{hash(tuple(orig['id']))}"
             edited = st.data_editor(
                 orig,
@@ -981,12 +992,17 @@ elif main_menu == "📖 字彙管理":
                     st.session_state["_flash"] = note
                     st.rerun()
 
-        st.download_button(
-            "⬇️ 下載備份（CSV，包含全部欄位）",
-            data=df_vocab[HEADERS].to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"vocab_{selected_level}.csv",
-            mime="text/csv",
-        )
+        if st.button("📦 產生備份檔（CSV）"):
+            backup = df_vocab[HEADERS].copy()
+            for (sheet, rid), stg in st.session_state.get("srs_local", {}).items():
+                if sheet == current_sheet_name:       # 還沒同步到雲端的熟練度也一起備份
+                    backup.loc[backup['id'].astype(str) == rid, 'srs_stage'] = str(stg)
+            st.download_button(
+                "⬇️ 點此下載",
+                data=backup.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"vocab_{selected_level}.csv",
+                mime="text/csv",
+            )
 
 # =====================================================================
 # 🎯 背誦單字
@@ -1143,11 +1159,13 @@ elif main_menu == "🎮 我是拼字王":
         else:
             def build_queue():
                 """出題清單：同一個單字有多個詞性時，把各詞性的中文釋義合併顯示。"""
-                items = df_game_queue_source.sample(frac=1).to_dict('records')
+                defs_by_word = {}
+                for w, p, d in zip(df_filtered_game['word'], df_filtered_game['part_of_speech'], df_filtered_game['definition']):
+                    if d.strip():
+                        defs_by_word.setdefault(w, []).append(f"{p} {d}".strip())
+                items = df_game_queue_source[['word', 'definition', 'advanced_sentence']].sample(frac=1).to_dict('records')
                 for it in items:
-                    same = df_filtered_game[df_filtered_game['word'] == it['word']]
-                    defs = [f"{p} {d}".strip() for p, d in zip(same['part_of_speech'], same['definition']) if d.strip()]
-                    it['definition'] = "；".join(defs)
+                    it['definition'] = "；".join(defs_by_word.get(it['word'], []))
                 return items
 
             # 級別、模式、範圍任何一個變動，就重新出題（避免用到上一個級別的舊題目）
