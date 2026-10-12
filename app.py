@@ -1,5 +1,7 @@
+import hmac
 import html
 import json
+import random
 import re
 
 import gspread
@@ -50,6 +52,22 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------
+# 🔒 密碼保護（選用）：在 secrets 加一行  app_password = "你的密碼"  就會啟用；
+# 沒設定就不會要求密碼。
+# ---------------------------------------------------------------------
+APP_PASSWORD = str(st.secrets.get("app_password", ""))
+if APP_PASSWORD and not st.session_state.get("_authed"):
+    st.title("🔒 我愛背單字")
+    pw = st.text_input("請輸入密碼：", type="password")
+    if pw:
+        if hmac.compare_digest(pw.encode(), APP_PASSWORD.encode()):
+            st.session_state["_authed"] = True
+            st.rerun()
+        else:
+            st.error("密碼錯誤")
+    st.stop()
+
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
     ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
@@ -84,6 +102,10 @@ ALL_UNIT = "全部單元"
 # 欄位順序固定放這裡，存檔時共用
 HEADERS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition',
            'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
+
+# 可編輯的欄位（預覽表、總表共用）
+EDIT_COLS = ['word', 'part_of_speech', 'definition', 'phonetic',
+             'advanced_sentence', 'basic_sentence', 'collocations']
 
 # 學期/篇章的顯示順序
 SEM_ORDER = [
@@ -149,20 +171,22 @@ except Exception as e:
     st.error(f"⚠️ 連線或讀取 Google 試算表發生錯誤：{e}")
     st.stop()
 
+unique_words = df_vocab['word'].str.strip().str.lower().nunique() if not df_vocab.empty else 0
 col_m1, col_m2 = st.columns(2)
-col_m1.metric(label="雲端總單字數", value=f"{len(df_vocab)} 個")
+col_m1.metric(label="雲端單字數", value=f"{unique_words} 個",
+              help=f"共 {len(df_vocab)} 筆資料（一個單字有多個詞性時會算多筆）")
 clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
 col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
-# 簡體 → 繁體（簡易版）
+# 簡體 → 繁體（簡易版）。已拿掉「文件、项目」：它們繁簡同形，會誤改正常的繁體字。
 # ---------------------------------------------------------------------
 S2T_DICT = {
     "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路",
     "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片",
-    "音频": "音訊", "文件": "檔案", "打印": "列印", "鼠标": "滑鼠",
-    "键盘": "鍵盤", "屏幕": "螢幕", "项目": "專案", "组": "組",
+    "音频": "音訊", "打印": "列印", "鼠标": "滑鼠",
+    "键盘": "鍵盤", "屏幕": "螢幕", "组": "組",
     "默认": "預設", "词": "詞", "语法": "語法"
 }
 
@@ -243,7 +267,8 @@ SPLIT_RE = re.compile(r'[\u4e00-\u9fa5]|(?<![A-Za-z])(?:v|n|adj|adv|prep|conj|pr
 
 
 def parse_raw_vocab_line_advanced(line):
-    line_clean = re.sub(r'^\d+[\.\s]*', '', line).strip()
+    # 只去掉「1. 」「2) 」「3、」「4 」這種行首編號；像 3D 這種單字不會被吃掉
+    line_clean = re.sub(r'^\d+[\.\)、\s]+', '', line).strip()
     if not line_clean:
         return []
 
@@ -261,7 +286,7 @@ def parse_raw_vocab_line_advanced(line):
 
     match_split = SPLIT_RE.search(line_clean)
     if not match_split:
-        return [make_record(line_clean, "n.", "")]
+        return [make_record(line_clean, "phr." if " " in line_clean else "n.", "")]
 
     word_end_idx = match_split.start()
     word = line_clean[:word_end_idx].strip()
@@ -273,6 +298,23 @@ def parse_raw_vocab_line_advanced(line):
         rest = parts[1] if len(parts) > 1 else ""
 
     return parse_mixed_vocab_input(word, raw_def=rest)
+
+
+def ai_prompt_text(level):
+    """給你複製到任何 AI 的固定提示詞；輸出格式剛好是下方批次貼上可以直接吃的格式。"""
+    return f"""請幫我整理英文單字，對象是台灣的「{level}」學生。我會在最後貼上單字清單，請每個單字輸出一行，格式固定為（用 | 分隔；不要加編號、不要加表格、不要加任何說明文字）：
+單字 | 中文釋義 | 詞性 | 英文釋義 | 例句 | 搭配詞
+
+規則：
+1. 中文用繁體中文（台灣用語），釋義簡短。
+2. 詞性用縮寫：n. v. adj. adv. prep. conj. pron. phr.；一個單字有多個常見詞性時，每個詞性各寫一行。
+3. 英文釋義用簡單英文寫一句話，不要在釋義裡直接使用該單字。
+4. 例句要自然、日常、母語者真的會說；字義必須符合該行的中文與詞性；難度適合「{level}」學生；不要荒謬、誇張或硬湊的句子。
+5. 搭配詞給 2～3 個母語者真實常用的，用 / 分隔；沒把握就少給，不要編造。
+6. 不確定的欄位請留空，不要亂填。
+
+單字清單：
+（把單字貼在這裡）"""
 
 
 # ---------------------------------------------------------------------
@@ -321,10 +363,11 @@ def persist_changes(_worksheet, df_after, new_rows, updated, was_empty):
 
 
 def merge_records(df_current, records, unit_tag):
-    """把解析好的資料併入 df_current：同單字+同詞性+同單元 → 更新（只更新有填的欄位）；否則新增。"""
+    """把解析好的資料併入 df_current：同單字+同詞性+同單元 → 更新（只更新有填的欄位）；否則新增。
+    回傳 (df, 新增的列, 是否有更新舊資料, stats)；stats = 新增/更新/重複略過 各幾筆。"""
     new_rows = []
     updated = False
-    count = 0
+    stats = {"new": 0, "updated": 0, "same": 0}
     for data in records:
         word = str(data.get('word', '')).strip()
         pos = str(data.get('part_of_speech', '')).strip()
@@ -341,11 +384,17 @@ def merge_records(df_current, records, unit_tag):
 
         if mask is not None and mask.any():
             idx = df_current.index[mask][0]
+            changed = False
             for col in ['phonetic', 'definition', 'advanced_sentence', 'basic_sentence', 'collocations']:
                 v = str(data.get(col, '') or '').strip()
                 if v and str(df_current.at[idx, col]) != v:
                     df_current.at[idx, col] = v
-                    updated = True
+                    changed = True
+            if changed:
+                updated = True
+                stats["updated"] += 1
+            else:
+                stats["same"] += 1
         else:
             new_row = {
                 'id': get_next_id(df_current),
@@ -361,8 +410,30 @@ def merge_records(df_current, records, unit_tag):
             }
             new_rows.append(new_row)
             df_current = pd.concat([df_current, pd.DataFrame([new_row])], ignore_index=True)
-        count += 1
-    return df_current, new_rows, updated, count
+            stats["new"] += 1
+    return df_current, new_rows, updated, stats
+
+
+def result_text(stats):
+    parts = [f"新增 {stats['new']} 筆"]
+    if stats["updated"]:
+        parts.append(f"更新 {stats['updated']} 筆")
+    if stats["same"]:
+        parts.append(f"重複略過 {stats['same']} 筆")
+    return "、".join(parts)
+
+
+def clean_rows(df):
+    """把表格（可能含 NaN）整理成乾淨的 dict 清單，空白單字的列直接丟掉。"""
+    rows = []
+    for _, row in df.iterrows():
+        rec = {}
+        for c in EDIT_COLS:
+            v = row.get(c)
+            rec[c] = "" if pd.isna(v) else str(v).strip()
+        if rec["word"] and rec["word"].lower() not in ("nan", "none"):
+            rows.append(rec)
+    return rows
 
 
 # ---------------------------------------------------------------------
@@ -455,86 +526,185 @@ def esc(x):
     return html.escape(str(x))
 
 
+def mask_word(text, word, repl="____"):
+    """把釋義裡出現的答案單字（含 -ing、-ed 等變化）遮起來，避免進階模式直接洩漏答案。"""
+    if not text or not word:
+        return text
+    return re.sub(r'\b' + re.escape(word.strip()) + r'\w*', repl, text, flags=re.IGNORECASE)
+
+
+def norm_answer(s):
+    return " ".join(str(s).lower().split())
+
+
+# ---------------------------------------------------------------------
+# 批次匯入：先預覽、確認後才寫入
+# ---------------------------------------------------------------------
+def start_batch_preview(records, unit_tag, raw_text):
+    existing = set(zip(
+        df_vocab['word'].str.strip().str.lower(),
+        df_vocab['part_of_speech'].str.strip().str.lower(),
+        df_vocab['unit_tag']
+    ))
+    rows = []
+    for r in records:
+        key = (r["word"].strip().lower(), r["part_of_speech"].strip().lower(), unit_tag)
+        status = "✏️ 已存在（會更新）" if key in existing else "🆕 新增"
+        rows.append({"status": status, **{c: r.get(c, "") for c in EDIT_COLS}})
+    st.session_state["preview_token"] = st.session_state.get("preview_token", 0) + 1
+    st.session_state["pending_batch"] = {
+        "rows": rows, "unit_tag": unit_tag, "sheet": current_sheet_name,
+        "raw_text": raw_text, "token": st.session_state["preview_token"],
+    }
+    st.rerun()
+
+
+def render_batch_preview():
+    pb = st.session_state["pending_batch"]
+    st.subheader("🔍 請先檢查，確認後才會寫入雲端")
+    st.markdown(f"📍 **目標：** `{pb['sheet']} ({pb['unit_tag']})`　共 **{len(pb['rows'])}** 筆")
+    st.caption("檢查重點：單字和中文有沒有切對位置？詞性對嗎？例句自然嗎？　"
+               "點兩下格子可以直接修改；不要的整列，選取最左邊的框後按 Delete 刪除。「狀態」只是初步判斷。")
+
+    wrong_sheet = pb["sheet"] != current_sheet_name
+    if wrong_sheet:
+        st.warning(f"這批資料是要匯入「{pb['sheet']}」的，目前側邊欄選的是「{current_sheet_name}」。請切回該級別再確認，或按取消。")
+
+    edited = st.data_editor(
+        pd.DataFrame(pb["rows"]),
+        key=f"batch_preview_{pb['token']}",
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        disabled=["status"],
+        column_config={
+            "status": st.column_config.TextColumn("狀態", width="small"),
+            "word": st.column_config.TextColumn("單字", width="small", required=True),
+            "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
+            "definition": st.column_config.TextColumn("中文釋義", width="medium"),
+            "phonetic": st.column_config.TextColumn("音標", width="small"),
+            "advanced_sentence": st.column_config.TextColumn("英文釋義", width="large"),
+            "basic_sentence": st.column_config.TextColumn("例句", width="large"),
+            "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
+        },
+    )
+
+    c1, c2 = st.columns(2)
+    if c1.button("✅ 確認寫入雲端", type="primary", use_container_width=True, disabled=wrong_sheet):
+        rows = clean_rows(edited)
+        if not rows:
+            st.warning("表格裡沒有可寫入的單字。")
+        else:
+            with st.spinner("寫入雲端中…"):
+                load_vocab_dataframe.clear()   # 寫入前重讀最新資料，避免蓋掉別處的修改
+                df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                was_empty = df_current.empty
+                df_current, new_rows, updated, stats = merge_records(df_current, rows, pb["unit_tag"])
+                ok, msg = persist_changes(active_worksheet, df_current, new_rows, updated, was_empty)
+            if not ok:
+                st.error(f"寫入失敗：{msg}")
+                st.stop()
+            st.session_state["_flash"] = f"🎊 匯入完成：{result_text(stats)}"
+            st.session_state["clear_paste"] = True
+            st.session_state.pop("pending_batch", None)
+            st.rerun()
+    if c2.button("❌ 取消，不寫入", use_container_width=True):
+        st.session_state["paste_restore"] = pb["raw_text"]   # 把剛貼的內容還給你
+        st.session_state.pop("pending_batch", None)
+        st.rerun()
+
+
 # =====================================================================
 # ✨ 新增單字
 # =====================================================================
 if main_menu == "✨ 新增單字":
-    if selected_level == "國中部":
-        semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
-        unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"])
-    elif selected_level == "高中部":
-        semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
-        unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"])
+    if st.session_state.get("pending_batch"):
+        render_batch_preview()
     else:
-        semester = st.selectbox("選擇 TOEIC 主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
-        unit = st.selectbox("選擇課次：", ["第一課", "第二課", "第三課", "第四課"])
-
-    current_unit_tag = f"{semester} > {unit}"
-    st.markdown("---")
-
-    col_input1, col_input2 = st.columns(2, gap="large")
-    with col_input1:
-        st.subheader("📝 單筆快速建檔")
-        single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
-        single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
-        single_eng = st.text_input("英文釋義（選填）：", placeholder="例如：able to recover quickly")
-        single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
-        single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
-        if st.button("🚀 瞬間寫入雲端", type="primary", use_container_width=True):
-            if single_word.strip():
-                records = parse_mixed_vocab_input(
-                    single_word, raw_def=single_def, pasted_eng_def=single_eng,
-                    pasted_sent=single_sent, pasted_colloc=single_colloc
-                )
-                # 寫入前重讀一次最新資料，避免蓋掉別處的修改
-                load_vocab_dataframe.clear()
-                df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
-                was_empty = df_current.empty
-
-                df_current, new_rows_list, any_updated, _ = merge_records(df_current, records, current_unit_tag)
-
-                ok, msg = persist_changes(active_worksheet, df_current, new_rows_list, any_updated, was_empty)
-                if not ok:
-                    st.error(f"寫入失敗：{msg}")
-                    st.stop()
-                st.session_state["_flash"] = f"🎉 成功新增：{single_word.strip()}"
-                st.rerun()
-
-    with col_input2:
-        st.subheader("📋 智慧多格式快速貼上匯入")
-        st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
-
-        pasted_text = st.text_area(
-            "貼上完整單字清單",
-            placeholder="source | 來源 | n. | A place... | Sentence | Collocation",
-            height=140, label_visibility="collapsed"
-        )
-
-        valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
-        total_preview_count = len(valid_lines)
-        if total_preview_count > 0:
-            st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
+        if selected_level == "國中部":
+            semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+            unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"])
+        elif selected_level == "高中部":
+            semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+            unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"])
         else:
-            st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
+            semester = st.selectbox("選擇 TOEIC 主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
+            unit = st.selectbox("選擇課次：", ["第一課", "第二課", "第三課", "第四課"])
 
-        if st.button("📥 批次秒速匯入", use_container_width=True):
-            if valid_lines:
-                records_all = []
-                for line in valid_lines:
-                    records_all.extend(parse_raw_vocab_line_advanced(line))
+        current_unit_tag = f"{semester} > {unit}"
+        st.markdown("---")
 
-                load_vocab_dataframe.clear()
-                df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
-                was_empty = df_current.empty
+        # 匯入成功後清空貼上框、取消預覽後還原貼上內容（必須在 text_area 建立之前處理）
+        if st.session_state.pop("clear_paste", False):
+            st.session_state["paste_box"] = ""
+        if "paste_restore" in st.session_state:
+            st.session_state["paste_box"] = st.session_state.pop("paste_restore")
 
-                df_current, new_rows_list, any_updated, count = merge_records(df_current, records_all, current_unit_tag)
+        col_input1, col_input2 = st.columns(2, gap="large")
+        with col_input1:
+            st.subheader("📝 單筆快速建檔")
+            with st.form("single_add_form", clear_on_submit=True):
+                single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
+                single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
+                single_eng = st.text_input("英文釋義（選填）：", placeholder="例如：able to recover quickly")
+                single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
+                single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
+                submitted_single = st.form_submit_button("🚀 瞬間寫入雲端", type="primary", use_container_width=True)
 
-                ok, msg = persist_changes(active_worksheet, df_current, new_rows_list, any_updated, was_empty)
-                if not ok:
-                    st.error(f"寫入失敗：{msg}")
-                    st.stop()
-                st.session_state["_flash"] = f"🎊 成功秒速匯入 {count} 個項目！"
-                st.rerun()
+            if submitted_single:
+                if single_word.strip():
+                    records = parse_mixed_vocab_input(
+                        single_word, raw_def=single_def, pasted_eng_def=single_eng,
+                        pasted_sent=single_sent, pasted_colloc=single_colloc
+                    )
+                    # 寫入前重讀一次最新資料，避免蓋掉別處的修改
+                    load_vocab_dataframe.clear()
+                    df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                    was_empty = df_current.empty
+
+                    df_current, new_rows_list, any_updated, stats = merge_records(df_current, records, current_unit_tag)
+
+                    ok, msg = persist_changes(active_worksheet, df_current, new_rows_list, any_updated, was_empty)
+                    if not ok:
+                        st.error(f"寫入失敗：{msg}")
+                        st.stop()
+                    st.session_state["_flash"] = f"🎉 {single_word.strip()}：{result_text(stats)}"
+                    st.rerun()
+                else:
+                    st.warning("請先輸入英文單字")
+
+        with col_input2:
+            st.subheader("📋 智慧多格式快速貼上匯入")
+            st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
+
+            with st.expander("🤖 懶得整理？複製這段給 AI，再把結果貼到下面"):
+                st.caption("點程式碼框右上角的複製鈕 → 貼給任何 AI → 把單字清單貼在最後 → 把 AI 的回答整段貼回下面的框。")
+                st.code(ai_prompt_text(selected_level), language=None)
+
+            pasted_text = st.text_area(
+                "貼上完整單字清單", key="paste_box",
+                placeholder="source | 來源 | n. | A place... | Sentence | Collocation\n或：resilient 有彈性的\n或只貼單字：resilient",
+                height=140, label_visibility="collapsed"
+            )
+
+            valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
+            total_preview_count = len(valid_lines)
+            if total_preview_count > 0:
+                st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
+            else:
+                st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
+
+            if st.button("📥 解析並預覽", use_container_width=True):
+                if valid_lines:
+                    records_all = []
+                    for line in valid_lines:
+                        records_all.extend(parse_raw_vocab_line_advanced(line))
+                    if records_all:
+                        start_batch_preview(records_all, current_unit_tag, pasted_text)
+                    else:
+                        st.warning("沒有解析到任何單字，請檢查格式")
+                else:
+                    st.warning("請先貼上單字清單")
 
 # =====================================================================
 # 📖 字彙管理
@@ -567,29 +737,31 @@ elif main_menu == "📖 字彙管理":
         with col_f2:
             sub_col1, sub_col2 = st.columns([3, 1], gap="small")
             with sub_col1:
+                # 以「那一筆」為單位刪除（同一個字不同詞性不會一起被刪）
                 placeholder_opt = "--請選擇要刪除的單字--"
-                delete_options = [placeholder_opt] + list(dict.fromkeys(filtered_df['word'].tolist()))
-                word_to_delete = st.selectbox("🗑️ 快速刪除單字：", delete_options)
+                del_map = {}
+                for _, r in filtered_df.iterrows():
+                    del_map[f"{r['word']}　{r['part_of_speech']}　(#{r['id']})"] = str(r['id'])
+                word_to_delete = st.selectbox("🗑️ 快速刪除單字：", [placeholder_opt] + list(del_map.keys()))
                 if word_to_delete != placeholder_opt:
-                    if st.button(f"確認刪除：{word_to_delete}", type="primary", use_container_width=True):
+                    if st.button("確認刪除這一筆", type="primary", use_container_width=True):
+                        rid = del_map[word_to_delete]
                         load_vocab_dataframe.clear()
                         df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
-                        same_word = df_current['word'].astype(str).str.strip().str.lower() == word_to_delete.strip().lower()
-                        in_scope = scope_mask(df_current, selected_sem, selected_unit)
-                        df_current = df_current[~(same_word & in_scope)].copy()
-
+                        df_current = df_current[df_current['id'].astype(str) != rid].copy()
                         if not df_current.empty:
                             df_current['id'] = range(1, len(df_current) + 1)
                         ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
                         if not ok:
                             st.error(f"刪除失敗：{msg}")
                             st.stop()
-                        st.session_state["_flash"] = f"已刪除：{word_to_delete}"
+                        st.session_state["_flash"] = f"已刪除：{word_to_delete.split('　')[0]}"
                         st.rerun()
             with sub_col2:
                 st.write("")
                 st.write("")
-                confirm_unit_del = st.checkbox("確認", key="confirm_del_unit", help="勾選後才能刪除整個單元")
+                ctr = st.session_state.get("del_ctr", 0)
+                confirm_unit_del = st.checkbox("確認", key=f"confirm_del_unit_{ctr}", help="勾選後才能刪除整個單元")
                 if st.button("🗑️ 刪除該單元", type="secondary", use_container_width=True):
                     if selected_sem == ALL_SEM or selected_unit == ALL_UNIT:
                         st.warning("⚠️ 請先在上方選單選擇到具體某個單元，才能執行刪除！")
@@ -606,20 +778,23 @@ elif main_menu == "📖 字彙管理":
                         if not ok:
                             st.error(f"刪除失敗：{msg}")
                             st.stop()
+                        st.session_state["del_ctr"] = ctr + 1   # 換一個新的勾選框，確認狀態才會重置
                         st.session_state["_flash"] = f"🗑️ 已成功刪除「{target_tag}」整單元單字！"
                         st.rerun()
 
         st.markdown("---")
-        with st.expander("📋 單字總表", expanded=True):
-            show_df = filtered_df[['id', 'word', 'phonetic', 'part_of_speech', 'definition',
-                                   'advanced_sentence', 'basic_sentence', 'collocations']].copy()
-            show_df['id'] = pd.to_numeric(show_df['id'], errors='coerce')
-            st.dataframe(
-                show_df,
-                use_container_width=False,
+        with st.expander("📋 單字總表（可直接點兩下修改，改完按「儲存修改」）", expanded=True):
+            orig = filtered_df[['id'] + EDIT_COLS].reset_index(drop=True)
+            edit_key = f"vocab_editor_{selected_level}_{st.session_state.get('edit_ver', 0)}_{hash(tuple(orig['id']))}"
+            edited = st.data_editor(
+                orig,
+                key=edit_key,
+                num_rows="fixed",
                 hide_index=True,
+                use_container_width=True,
+                disabled=["id"],
                 column_config={
-                    "id": st.column_config.NumberColumn("編號", width="small"),
+                    "id": st.column_config.TextColumn("編號", width="small"),
                     "word": st.column_config.TextColumn("單字", width="medium"),
                     "phonetic": st.column_config.TextColumn("音標", width="small"),
                     "part_of_speech": st.column_config.TextColumn("詞性", width="small"),
@@ -629,6 +804,40 @@ elif main_menu == "📖 字彙管理":
                     "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
                 }
             )
+            if st.button("💾 儲存修改", type="primary"):
+                changes = {}
+                for i in range(len(orig)):
+                    new_vals = {c: ("" if pd.isna(edited.at[i, c]) else str(edited.at[i, c]).strip()) for c in EDIT_COLS}
+                    if any(str(orig.at[i, c]) != new_vals[c] for c in EDIT_COLS):
+                        changes[str(orig.at[i, 'id'])] = new_vals
+                if not changes:
+                    st.info("沒有偵測到任何修改。")
+                else:
+                    load_vocab_dataframe.clear()
+                    df_current = load_vocab_dataframe(active_worksheet, current_sheet_name).copy()
+                    applied, skipped = 0, 0
+                    for rid, vals in changes.items():
+                        if not vals['word']:
+                            skipped += 1      # 單字不能改成空白
+                            continue
+                        m = df_current['id'].astype(str) == rid
+                        if not m.any():
+                            skipped += 1
+                            continue
+                        for c in EDIT_COLS:
+                            df_current.loc[m, c] = simple_s2t_convert(vals[c]) if c == 'definition' else vals[c]
+                        applied += 1
+                    if applied:
+                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                        if not ok:
+                            st.error(f"儲存失敗：{msg}")
+                            st.stop()
+                    st.session_state["edit_ver"] = st.session_state.get("edit_ver", 0) + 1
+                    note = f"💾 已儲存 {applied} 筆修改"
+                    if skipped:
+                        note += f"（{skipped} 筆因單字空白或資料已變動而略過）"
+                    st.session_state["_flash"] = note
+                    st.rerun()
 
 # =====================================================================
 # 🎯 背誦單字
@@ -733,11 +942,20 @@ elif main_menu == "🎮 我是拼字王":
             else:
                 st.info("📭 這個範圍沒有單字。")
         else:
+            def build_queue():
+                """出題清單：同一個單字有多個詞性時，把各詞性的中文釋義合併顯示。"""
+                items = df_game_queue_source.sample(frac=1).to_dict('records')
+                for it in items:
+                    same = df_filtered_game[df_filtered_game['word'] == it['word']]
+                    defs = [f"{p} {d}".strip() for p, d in zip(same['part_of_speech'], same['definition']) if d.strip()]
+                    it['definition'] = "；".join(defs)
+                return items
+
             # 級別、模式、範圍任何一個變動，就重新出題（避免用到上一個級別的舊題目）
             game_key = f"{selected_level}|{game_mode}|{sel_sem_game}|{sel_unit_game}"
             if st.session_state.get("game_key") != game_key:
                 st.session_state.game_key = game_key
-                st.session_state.game_queue = df_game_queue_source.sample(frac=1).to_dict('records')
+                st.session_state.game_queue = build_queue()
                 st.session_state.game_index = 0
                 st.session_state.wrong_answers = []
                 st.session_state.is_finished = False
@@ -756,7 +974,16 @@ elif main_menu == "🎮 我是拼字王":
                     st.markdown("**答錯的單字：**")
                     for w in wrong:
                         st.markdown(f"- `{w['word']}`　{w.get('definition', '')}")
-                if st.button("🔄 重新挑戰本範圍", type="primary", use_container_width=True):
+                    if st.button("🔁 只重考答錯的題目", type="primary", use_container_width=True):
+                        retry = list(wrong)
+                        random.shuffle(retry)
+                        st.session_state.game_queue = retry
+                        st.session_state.game_index = 0
+                        st.session_state.wrong_answers = []
+                        st.session_state.is_finished = False
+                        st.session_state.last_feedback = None
+                        st.rerun()
+                if st.button("🔄 重新挑戰本範圍", use_container_width=True):
                     st.session_state.game_key = None
                     st.rerun()
             else:
@@ -785,12 +1012,13 @@ elif main_menu == "🎮 我是拼字王":
                         with r_col2:
                             components.html(speech_html(target_word), height=45)
                     else:
+                        # 把釋義裡的答案遮起來（顯示成 ____，唸出來變成 blank），避免直接洩漏答案
                         st.markdown("<h3 style='margin-bottom: 5px;'>🔊 英文解釋聽力提示：</h3>", unsafe_allow_html=True)
                         st.markdown(
-                            f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{esc(target_adv_def)}</p>",
+                            f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{esc(mask_word(target_adv_def, target_word))}</p>",
                             unsafe_allow_html=True
                         )
-                        components.html(speech_html(target_adv_def), height=45)
+                        components.html(speech_html(mask_word(target_adv_def, target_word, repl="blank")), height=45)
 
                     st.markdown(
                         f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> <code>{esc(hint_masked)}</code></div>",
@@ -815,12 +1043,12 @@ elif main_menu == "🎮 我是拼字王":
                                     "輸入答案", placeholder="在此輸入拼寫答案...",
                                     key=f"ans_input_{st.session_state.game_index}",
                                     label_visibility="collapsed"
-                                ).strip().lower()
+                                )
                             with f_col2:
                                 submitted = st.form_submit_button("🚀 送出", type="primary", use_container_width=True)
 
                             if submitted:
-                                if user_ans == target_word.lower():
+                                if norm_answer(user_ans) == norm_answer(target_word):
                                     st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
                                 else:
                                     st.session_state.wrong_answers.append(current_item)
