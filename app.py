@@ -22,6 +22,14 @@ def _wide(fn):
     return {"use_container_width": True}
 
 
+def kcontainer(key):
+    """加上 key 的容器：新版 Streamlit 會在外層標上 st-key-<key>，CSS 才找得到這一區。"""
+    try:
+        return st.container(key=key)
+    except TypeError:
+        return st.container()
+
+
 W_BTN = _wide(st.button)
 W_FORM = _wide(st.form_submit_button)
 W_EDIT = _wide(st.data_editor)
@@ -58,7 +66,7 @@ st.markdown("""
         font-size: 15px !important;
     }
     [data-testid="stSidebar"] .stRadio label p {
-        font-size: 18px !important;
+        font-size: 1.1rem !important;
         font-weight: 500 !important;
     }
     [data-testid="stSidebar"] h5 {
@@ -73,6 +81,51 @@ st.markdown("""
     }
     .vsp-btn:hover { border-color: #ff4b4b; color: #ff4b4b; }
     .vsp-btn:active { transform: scale(0.95); }
+
+    /* ===== 響應式：手機／平板／電腦自動調整（字體用 rem，會跟著下方「字體大小」一起縮放）===== */
+    html { font-size: calc(var(--vw-scale, 1) * clamp(14px, 0.6vw + 11.5px, 16px)) !important; }
+    .block-container {
+        max-width: 1400px !important;
+        padding-top: clamp(1rem, 3vw, 3rem) !important;
+        padding-left: clamp(0.75rem, 3vw, 3rem) !important;
+        padding-right: clamp(0.75rem, 3vw, 3rem) !important;
+    }
+    h1 { font-size: clamp(1.6rem, 5vw, 2.5rem) !important; }
+    [data-testid="stMetricValue"] { font-size: clamp(1.2rem, 4vw, 2rem) !important; }
+    .vw-word { text-align: center; font-weight: 700; line-height: 1.15; margin: 0 0 0.3rem;
+               font-size: clamp(2.2rem, 9vw, 3.5rem); word-break: break-word; }
+    .vw-pos { font-size: 0.5em; color: gray; font-weight: 400; }
+    .vw-ans { font-size: clamp(1rem, 2.6vw, 1.2rem); margin: 0.4rem 0; }
+    .vw-ans-sm { font-size: clamp(0.95rem, 2.3vw, 1.05rem); margin: 0.4rem 0; }
+    .vw-h3 { font-size: clamp(1.1rem, 3.6vw, 1.5rem); font-weight: 600; margin: 0; padding-top: 0.3rem; }
+    .vw-hint { margin: 0.9rem 0; overflow-x: auto; }
+    .vsp-wrap { flex-wrap: wrap; }
+    .vsp-btn { min-height: 2.5rem; font-size: 1rem; }
+    @media (max-width: 640px) {
+        [data-testid="stVerticalBlockBorderWrapper"] { padding: 12px !important; }
+        /* 背誦頁那一排 4 顆按鈕：手機上排成 2×2，而不是疊成 4 列 */
+        .st-key-flash_btns [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+        .st-key-flash_btns [data-testid="stColumn"],
+        .st-key-flash_btns [data-testid="column"] {
+            flex: 1 1 calc(50% - 0.5rem) !important;
+            min-width: calc(50% - 0.5rem) !important;
+        }
+        /* 上方兩個統計數字：手機上並排顯示（不要疊成兩大塊），字放小一點 */
+        .st-key-metrics [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 0.5rem !important; }
+        .st-key-metrics [data-testid="stColumn"],
+        .st-key-metrics [data-testid="column"] { min-width: 0 !important; flex: 1 1 0 !important; }
+        .st-key-metrics [data-testid="stMetricValue"] {
+            font-size: 1.05rem !important; white-space: normal !important; overflow-wrap: anywhere;
+        }
+        .st-key-metrics [data-testid="stMetricLabel"] p { font-size: 0.8rem !important; }
+        /* 手機輸入框字體至少 16px：iPhone 小於 16px 時，點輸入框會被自動放大畫面 */
+        input, textarea, [data-baseweb="select"] input { font-size: max(16px, 1rem) !important; }
+    }
+    /* 橫放的手機／矮螢幕：單字不要佔掉整個畫面高度 */
+    @media (max-height: 520px) and (orientation: landscape) {
+        .vw-word { font-size: clamp(1.8rem, 12vh, 3rem); }
+        .block-container { padding-top: 0.75rem !important; }
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -161,6 +214,25 @@ selected_level = st.sidebar.radio(
     ["國中部", "高中部", "TOEIC"],
     label_visibility="collapsed"
 )
+
+st.sidebar.markdown("---")
+FS_SCALE = {"小": 0.88, "中": 1.0, "大": 1.2, "特大": 1.4}
+try:
+    _fs_default = st.query_params.get("fs", "中")
+except Exception:
+    _fs_default = "中"
+if _fs_default not in FS_SCALE:
+    _fs_default = "中"
+fs_choice = st.sidebar.select_slider(
+    "🔠 字體大小", options=list(FS_SCALE), value=_fs_default, key="fs_choice",
+    help="畫面本來就會依螢幕大小自動調整；覺得整體還是太小或太大，用這裡微調（手機、平板、電腦各自記住）。"
+)
+try:
+    if st.query_params.get("fs") != fs_choice:
+        st.query_params["fs"] = fs_choice
+except Exception:
+    pass
+st.markdown(f"<style>:root {{ --vw-scale: {FS_SCALE[fs_choice]}; }}</style>", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
 st.sidebar.checkbox(
@@ -435,7 +507,8 @@ except Exception as e:
     st.stop()
 
 unique_words = df_vocab.attrs.get("unique_words", 0)
-col_m1, col_m2 = st.columns(2)
+with kcontainer("metrics"):
+    col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端單字量", value=f"{unique_words} 個單字／{len(df_vocab)} 筆",
               help="「筆」= 資料列數；同一個單字有多個詞性、或出現在不同單元時，會算多筆。")
 clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
@@ -1347,10 +1420,9 @@ elif main_menu == "🎯 背誦單字":
                     unsafe_allow_html=True
                 )
                 pos_disp = str(row.get('part_of_speech', '')).strip().rstrip('.')
-                pos_html = (f" <span style='font-size: 28px; color: gray; font-weight: 400;'>({esc(pos_disp)})</span>"
-                            if pos_disp else "")
+                pos_html = f" <span class='vw-pos'>({esc(pos_disp)})</span>" if pos_disp else ""
                 st.markdown(
-                    f"<h1 style='text-align: center; font-size: 54px; margin-bottom: 5px;'>{esc(row['word'])}{pos_html}</h1>",
+                    f"<div class='vw-word'>{esc(row['word'])}{pos_html}</div>",
                     unsafe_allow_html=True
                 )
 
@@ -1358,31 +1430,32 @@ elif main_menu == "🎯 背誦單字":
 
                 st.markdown("---")
                 if show_answer:
-                    st.markdown(f"<h4>中文釋義：{esc(row['definition'])}</h4>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='vw-ans'><b>中文釋義：{esc(row['definition'])}</b></div>", unsafe_allow_html=True)
                     if row.get('advanced_sentence'):
-                        st.markdown(f"<p style='font-size: 19px;'>📖 英文釋義：{esc(row.get('advanced_sentence'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<p class='vw-ans'>📖 英文釋義：{esc(row.get('advanced_sentence'))}</p>", unsafe_allow_html=True)
                     if row.get('basic_sentence'):
-                        st.markdown(f"<p style='font-style: italic; font-size: 19px;'>💬 例句：{esc(row.get('basic_sentence'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<p class='vw-ans' style='font-style: italic;'>💬 例句：{esc(row.get('basic_sentence'))}</p>", unsafe_allow_html=True)
                     if row.get('collocations'):
-                        st.markdown(f"<p style='font-size: 17px;'>🔗 搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<p class='vw-ans-sm'>🔗 搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
                 else:
                     if st.button("👀 顯示答案", **W_BTN):
                         st.session_state.flash_revealed = True
                         st.rerun()
 
-            b1, b2, b3, b4 = st.columns(4)
-            if b1.button("⬅️ 上一個", **W_BTN):
-                flash_move(-1)
-                st.rerun()
-            if b2.button("❌ 不記得", **W_BTN):
-                flash_mark(0)
-                st.rerun()
-            if b3.button("✅ 記得", **W_BTN):
-                flash_mark(min(stage + 1, 5))
-                st.rerun()
-            if b4.button("➡️ 下一個", **W_BTN):
-                flash_move(1)
-                st.rerun()
+            with kcontainer("flash_btns"):
+                b1, b2, b3, b4 = st.columns(4)
+                if b1.button("⬅️ 上一個", **W_BTN):
+                    flash_move(-1)
+                    st.rerun()
+                if b2.button("❌ 不記得", **W_BTN):
+                    flash_mark(0)
+                    st.rerun()
+                if b3.button("✅ 記得", **W_BTN):
+                    flash_mark(min(stage + 1, 5))
+                    st.rerun()
+                if b4.button("➡️ 下一個", **W_BTN):
+                    flash_move(1)
+                    st.rerun()
             st.caption("「不記得」熟練度歸零；「記得」+1（最高 5）。出題順序選「不熟的優先」時，熟練度低的會先出現。")
 
 # =====================================================================
@@ -1499,20 +1572,20 @@ elif main_menu == "🎮 我是拼字王":
                     if not is_advanced:
                         r_col1, r_col2 = st.columns([2, 3])
                         with r_col1:
-                            st.markdown(f"<h3 style='margin: 0; padding-top: 5px;'>中文：{esc(target_def)}</h3>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='vw-h3'>中文：{esc(target_def)}</div>", unsafe_allow_html=True)
                         with r_col2:
                             speech_buttons(target_word, "flex-start", 45)
                     else:
                         # 把釋義裡的答案遮起來（顯示成 ____，唸出來變成 blank），避免直接洩漏答案
-                        st.markdown("<h3 style='margin-bottom: 5px;'>🔊 英文解釋聽力提示：</h3>", unsafe_allow_html=True)
+                        st.markdown("<div class='vw-h3'>🔊 英文解釋聽力提示：</div>", unsafe_allow_html=True)
                         st.markdown(
-                            f"<p style='font-size: 17px; font-weight: 500; margin-bottom: 10px;'>{esc(mask_word(target_adv_def, target_word))}</p>",
+                            f"<p class='vw-ans' style='font-weight: 500;'>{esc(mask_word(target_adv_def, target_word))}</p>",
                             unsafe_allow_html=True
                         )
                         speech_buttons(mask_word(target_adv_def, target_word, repl="blank"), "flex-start", 45)
 
                     st.markdown(
-                        f"<div style='margin-top: 15px; margin-bottom: 15px;'><b>單字提示：</b> <code>{esc(hint_masked)}</code></div>",
+                        f"<div class='vw-hint'><b>單字提示：</b> <code style='white-space: pre;'>{esc(hint_masked)}</code></div>",
                         unsafe_allow_html=True
                     )
 
