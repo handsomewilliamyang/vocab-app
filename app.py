@@ -234,6 +234,54 @@ except Exception:
     pass
 st.markdown(f"<style>:root {{ --vw-scale: {FS_SCALE[fs_choice]}; }}</style>", unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------
+# 👆 按鈕與選項的觸控範圍：手指點的地方至少約 44～48px 高
+#   自動 = 只有觸控螢幕（手機、平板）才放大；加大 = 所有裝置都放大；標準 = 不調整
+# ---------------------------------------------------------------------
+TAP_CSS = """
+    .stButton button, .stDownloadButton button, [data-testid="stFormSubmitButton"] button {
+        min-height: 3rem !important; padding: 0.5rem 1rem !important; font-size: 1.05rem !important;
+    }
+    .st-key-flash_btns .stButton button { min-height: 3.5rem !important; font-size: 1.1rem !important; }
+    label[data-baseweb="radio"], label[data-baseweb="checkbox"] {
+        min-height: 2.75rem !important; align-items: center !important;
+        padding-top: 0.2rem !important; padding-bottom: 0.2rem !important;
+    }
+    [data-baseweb="select"] > div { min-height: 3rem !important; }
+    li[role="option"] { min-height: 2.75rem !important; padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+    [data-testid="stNumberInput"] [data-baseweb="input"], [data-testid="stTextInput"] [data-baseweb="input"],
+    [data-testid="stNumberInput"] input, [data-testid="stTextInput"] input { min-height: 3rem !important; }
+    [data-testid="stNumberInputStepUp"], [data-testid="stNumberInputStepDown"] { min-width: 2.75rem !important; }
+    [data-testid="stExpander"] summary { min-height: 3rem !important; align-items: center !important; }
+    [data-baseweb="slider"] [role="slider"] { width: 1.7rem !important; height: 1.7rem !important; }
+    .vsp-btn { min-height: 3rem !important; padding: 0.5rem 1.1rem !important; }
+    .vsp-wrap { gap: 0.6rem !important; }
+"""
+TAP_MODES = ["自動", "加大", "標準"]
+try:
+    _tap_default = st.query_params.get("tap", "自動")
+except Exception:
+    _tap_default = "自動"
+if _tap_default not in TAP_MODES:
+    _tap_default = "自動"
+tap_choice = st.sidebar.radio(
+    "👆 按鈕與選項大小", TAP_MODES, index=TAP_MODES.index(_tap_default), horizontal=True, key="tap_choice",
+    help="自動：手機、平板這類觸控螢幕會自動加大點擊範圍。覺得還是太小就選「加大」，太大就選「標準」。"
+)
+try:
+    if st.query_params.get("tap") != tap_choice:
+        st.query_params["tap"] = tap_choice
+except Exception:
+    pass
+if tap_choice == "自動":
+    _tap_css = "@media (pointer: coarse) {" + TAP_CSS + "}"
+elif tap_choice == "加大":
+    _tap_css = TAP_CSS
+else:
+    _tap_css = ""
+if _tap_css:
+    st.markdown("<style>" + _tap_css + "</style>", unsafe_allow_html=True)
+
 st.sidebar.markdown("---")
 st.sidebar.checkbox(
     "🔊 發音按鈕相容模式", key="compat_speech",
