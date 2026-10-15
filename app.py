@@ -1067,15 +1067,18 @@ if main_menu == "新增單字":
     if st.session_state.get("pending_batch"):
         render_batch_preview()
     else:
-        if selected_level == "國中部":
-            semester = st.selectbox("選擇年級學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
-            unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"])
-        elif selected_level == "高中部":
-            semester = st.selectbox("選擇年級學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
-            unit = st.selectbox("選擇課次單元：", ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"])
-        else:
-            semester = st.selectbox("選擇 TOEIC 主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
-            unit = st.selectbox("選擇課次：", ["第一課", "第二課", "第三課", "第四課"])
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            if selected_level == "國中部":
+                semester = st.selectbox("學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+            elif selected_level == "高中部":
+                semester = st.selectbox("學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+            else:
+                semester = st.selectbox("主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
+        with _c2:
+            _lessons = ["第一課", "第二課", "第三課", "第四課"] if selected_level == "TOEIC" else \
+                ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"]
+            unit = st.selectbox("課次：", _lessons)
 
         current_unit_tag = f"{semester} > {unit}"
         st.markdown("---")
@@ -1090,11 +1093,13 @@ if main_menu == "新增單字":
         with col_input1:
             st.subheader("📝 單筆快速建檔")
             with st.form("single_add_form", clear_on_submit=True):
-                single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
-                single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
-                single_eng = st.text_input("英文釋義（選填）：", placeholder="例如：able to recover quickly")
-                single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
-                single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
+                _f1, _f2 = st.columns(2)
+                single_word = _f1.text_input("英文單字：", placeholder="例如：resilient")
+                single_def = _f2.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
+                with st.expander("更多選填欄位"):
+                    single_eng = st.text_input("英文釋義：", placeholder="例如：able to recover quickly")
+                    single_sent = st.text_input("真實例句：", placeholder="例如：Sentence here")
+                    single_colloc = st.text_input("搭配詞：", placeholder="例如：Collocation here")
                 submitted_single = st.form_submit_button("瞬間寫入雲端", type="primary", **W_FORM)
 
             if submitted_single:
@@ -1121,7 +1126,7 @@ if main_menu == "新增單字":
 
         with col_input2:
             st.subheader("📋 智慧多格式快速貼上匯入")
-            st.markdown(f"**[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
+            st.caption(f"匯入目標：{selected_level}　{current_unit_tag}")
 
             with st.expander("懶得整理？複製這段給 AI，再把結果貼到下面"):
                 st.caption("點程式碼框右上角的複製鈕 → 貼給任何 AI → 把單字清單貼在最後 → 把 AI 的回答整段貼回下面的框。")
@@ -1136,9 +1141,9 @@ if main_menu == "新增單字":
             valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
             total_preview_count = len(valid_lines)
             if total_preview_count > 0:
-                st.info(f"**狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
+                st.info(f"偵測到 {total_preview_count} 個項目，按「解析並預覽」檢查後再寫入。")
             else:
-                st.caption(f"**狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
+                pass
 
             if st.button("解析並預覽", **W_BTN):
                 if valid_lines:
