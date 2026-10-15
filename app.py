@@ -73,6 +73,9 @@ st.markdown("""
     /* 背誦卡片 */
     .fc-def { font-size: clamp(20px,5vw,28px); font-weight: 600; text-align: center; margin: 4px 0 14px; }
     .fc-line { font-size: clamp(15px,2.6vw,18px); margin: 6px 0; line-height: 1.6; }
+    .fc-meta { text-align: right; font-size: 13px; opacity: .6; margin-bottom: 6px; }
+    .fc-pos { font-size: clamp(16px,4.5vw,24px); font-weight: 400; opacity: .6; }
+    .fc-word { text-align: center; font-size: clamp(30px,9vw,48px); font-weight: 700; line-height: 1.2; margin: 4px 0 6px; word-break: break-word; }
     .fc-line b { opacity: .6; font-weight: 500; margin-right: .5em; }
 
     .fc-hint { text-align: center; font-family: ui-monospace,Consolas,monospace; font-size: clamp(20px,5vw,28px); letter-spacing: .15em; white-space: pre-wrap; word-break: break-all; margin: 12px 0; opacity: .85; }
@@ -192,7 +195,7 @@ st.sidebar.checkbox(
     help="平常不用勾選。如果按發音按鈕沒有聲音，再勾選這個。"
 )
 st.sidebar.markdown(
-    "<p style='text-align: center; color: gray; font-size: clamp(11px, 1.8vw, 13px); margin-top: 20px;'>版權所有，切勿模仿</p>",
+    "<p style='text-align: center; opacity: .55; font-size: 12px; margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
 )
 if main_menu in ("背誦單字", "我是拼字王"):
@@ -1184,7 +1187,7 @@ elif main_menu == "字彙管理":
                 key=f"page_{selected_level}_{selected_sem}_{selected_unit}_{search_query}"
             )
             page_df = filtered_df.iloc[(page_no - 1) * PAGE_SIZE: page_no * PAGE_SIZE]
-        with col_f2:
+        with col_f2, st.expander("刪除單字／單元"):
             sub_col1, sub_col2 = st.columns([3, 1], gap="small")
             with sub_col1:
                 # 以「那一筆」為單位刪除（同一個字不同詞性不會一起被刪）
@@ -1367,14 +1370,14 @@ elif main_menu == "背誦單字":
             st.progress(mastered / total_count, text=f"已熟練（4 級以上）{mastered} / {total_count}")
             with st.container(border=True):
                 st.markdown(
-                    f"<div style='text-align:right; color:gray; font-size:clamp(12px,2.4vw,14px);'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'●' * stage}{'○' * (5 - stage)}</div>",
+                    f"<div class='fc-meta'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'●' * stage}{'○' * (5 - stage)}</div>",
                     unsafe_allow_html=True
                 )
                 pos_disp = str(row.get('part_of_speech', '')).strip().rstrip('.')
-                pos_html = (f" <span style='font-size: clamp(16px, 4.5vw, 28px); color: gray; font-weight: 400;'>({esc(pos_disp)})</span>"
+                pos_html = (f" <span class='fc-pos'>({esc(pos_disp)})</span>"
                             if pos_disp else "")
                 st.markdown(
-                    f"<h1 style='text-align: center; font-size: clamp(30px, 9vw, 54px); margin-bottom: 5px; word-break: break-word;'>{esc(row['word'])}{pos_html}</h1>",
+                    f"<div class='fc-word'>{esc(row['word'])}{pos_html}</div>",
                     unsafe_allow_html=True
                 )
 
@@ -1480,7 +1483,7 @@ elif main_menu == "我是拼字王":
                 st.session_state.is_finished = True
 
             if st.session_state.get("is_finished", False):
-                st.markdown("## 🎉 測驗圓滿結束！")
+                st.subheader("🎉 測驗圓滿結束！")
                 wrong = st.session_state.get("wrong_answers", [])
                 total_q = len(st.session_state.game_queue)
                 st.markdown(f"答對 **{total_q - len(wrong)}** / {total_q} 題")
