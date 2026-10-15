@@ -90,6 +90,26 @@ st.markdown("""
 # 只放一個「內容固定不變」的隱形 iframe，負責在瀏覽器裡安裝一次「點按鈕 → 唸出來」。
 # 若按了沒聲音，到側邊欄勾選「發音按鈕相容模式」就會退回舊做法。
 # ---------------------------------------------------------------------
+EYE_CSS = """
+<style>
+.stApp, [data-testid="stHeader"] { background: #f3ead3 !important; }
+[data-testid="stSidebar"] { background: #eadfc3 !important; }
+.stApp, .stApp p, .stApp label, .stApp li, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5,
+[data-testid="stMetricValue"], [data-testid="stMetricLabel"] { color: #3d3a2e; }
+:root { --acc: #6f8a5b; --line: rgba(90,80,50,.28); }
+.stApp input, .stApp textarea, .stApp [data-baseweb="select"] > div, .stApp [data-baseweb="input"] {
+    background: #fbf6e6 !important; color: #3d3a2e !important; }
+[data-baseweb="popover"] ul, [data-baseweb="popover"] li, [data-baseweb="menu"] {
+    background: #fbf6e6 !important; color: #3d3a2e !important; }
+.stButton button, .stDownloadButton button, .stFormSubmitButton button {
+    background: #fbf6e6; color: #3d3a2e; border: 1px solid var(--line); }
+.stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {
+    background: #6f8a5b; color: #fff; border-color: #6f8a5b; }
+[data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"] { background: rgba(120,100,50,.07) !important; }
+</style>
+"""
+
+
 SPEECH_INIT_HTML = """
 <script>
 (function () {
@@ -146,7 +166,7 @@ def speech_buttons(text, justify="center", height=45):
 # ---------------------------------------------------------------------
 APP_PASSWORD = str(st.secrets.get("app_password", ""))
 if APP_PASSWORD and not st.session_state.get("_authed"):
-    st.title("我愛背單字")
+    st.title("🔒 我愛背單字")
     pw = st.text_input("請輸入密碼：", type="password")
     if pw:
         if hmac.compare_digest(pw.encode(), APP_PASSWORD.encode()):
@@ -176,6 +196,9 @@ st.sidebar.checkbox(
     "發音按鈕相容模式", key="compat_speech",
     help="平常不用勾選。如果按發音按鈕沒有聲音，再勾選這個。"
 )
+st.sidebar.checkbox("護眼模式", key="eye_care", help="暖黃色底，夜間或久看比較不刺眼。")
+if st.session_state.get("eye_care"):
+    st.markdown(EYE_CSS, unsafe_allow_html=True)
 st.sidebar.markdown(
     "<p style='text-align: center; color: gray; font-size: clamp(11px, 1.8vw, 13px); margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
@@ -185,7 +208,7 @@ if main_menu in ("背誦單字", "我是拼字王"):
         speech_init()
 
 current_sheet_name = selected_level
-st.title("我愛背單字")
+st.title("📚 我愛背單字")
 
 # 儲存後的提示訊息（因為存完會 rerun，訊息要先存起來，重跑後才顯示）
 if st.session_state.get("_flash"):
@@ -984,7 +1007,7 @@ def start_batch_preview(records, unit_tag, raw_text):
 
 def render_batch_preview():
     pb = st.session_state["pending_batch"]
-    st.subheader("請先檢查，確認後才會寫入雲端")
+    st.subheader("🔍 請先檢查，確認後才會寫入雲端")
     st.markdown(f"**目標：** `{pb['sheet']} ({pb['unit_tag']})`　共 **{len(pb['rows'])}** 筆")
     st.caption("檢查重點：單字和中文有沒有切對位置？詞性對嗎？例句自然嗎？　"
                "點兩下格子可以直接修改；不要的整列，選取最左邊的框後按 Delete 刪除。「狀態」只是初步判斷。")
@@ -1070,7 +1093,7 @@ if main_menu == "新增單字":
 
         col_input1, col_input2 = st.columns(2, gap="large")
         with col_input1:
-            st.subheader("單筆快速建檔")
+            st.subheader("📝 單筆快速建檔")
             with st.form("single_add_form", clear_on_submit=True):
                 single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
                 single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
@@ -1102,7 +1125,7 @@ if main_menu == "新增單字":
                     st.warning("請先輸入英文單字")
 
         with col_input2:
-            st.subheader("智慧多格式快速貼上匯入")
+            st.subheader("📋 智慧多格式快速貼上匯入")
             st.markdown(f"**[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
 
             with st.expander("懶得整理？複製這段給 AI，再把結果貼到下面"):
@@ -1465,7 +1488,7 @@ elif main_menu == "我是拼字王":
                 st.session_state.is_finished = True
 
             if st.session_state.get("is_finished", False):
-                st.markdown("## 測驗圓滿結束！")
+                st.markdown("## 🎉 測驗圓滿結束！")
                 wrong = st.session_state.get("wrong_answers", [])
                 total_q = len(st.session_state.game_queue)
                 st.markdown(f"答對 **{total_q - len(wrong)}** / {total_q} 題")
