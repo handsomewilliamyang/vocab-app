@@ -81,6 +81,9 @@ st.markdown("""
     .fc-hint { text-align: center; font-family: ui-monospace,Consolas,monospace; font-size: clamp(20px,5vw,28px); letter-spacing: .15em; white-space: pre-wrap; word-break: break-all; margin: 12px 0; opacity: .85; }
 
     /* 標題與數據卡：整體縮小、更精簡 */
+    h1, h2, h3, [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { line-height: 1.5 !important; overflow: visible !important; }
+    [data-testid="stMetricValue"] > div, [data-testid="stMetricLabel"] > div { overflow: visible !important; text-overflow: clip !important; }
+    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { line-height: 1.5 !important; }
     h1 { font-size: clamp(26px,6.5vw,36px) !important; padding: .2rem 0 .4rem !important; }
     h3 { font-size: clamp(18px,4.2vw,22px) !important; }
     [data-testid="stMetricValue"] { font-size: clamp(20px,4.6vw,28px) !important; }
