@@ -70,6 +70,11 @@ st.markdown("""
     }
     .vsp-btn:hover { border-color: var(--acc); color: var(--acc); }
 
+    /* 背誦卡片 */
+    .fc-def { font-size: clamp(20px,5vw,28px); font-weight: 600; text-align: center; margin: 4px 0 14px; }
+    .fc-line { font-size: clamp(15px,2.6vw,18px); margin: 6px 0; line-height: 1.6; }
+    .fc-line b { opacity: .6; font-weight: 500; margin-right: .5em; }
+
     /* 手機 */
     @media (max-width: 640px) {
         .block-container { padding: 2.5rem .8rem 1rem !important; }
@@ -90,26 +95,6 @@ st.markdown("""
 # 只放一個「內容固定不變」的隱形 iframe，負責在瀏覽器裡安裝一次「點按鈕 → 唸出來」。
 # 若按了沒聲音，到側邊欄勾選「發音按鈕相容模式」就會退回舊做法。
 # ---------------------------------------------------------------------
-EYE_CSS = """
-<style>
-.stApp, [data-testid="stHeader"] { background: #f3ead3 !important; }
-[data-testid="stSidebar"] { background: #eadfc3 !important; }
-.stApp, .stApp p, .stApp label, .stApp li, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5,
-[data-testid="stMetricValue"], [data-testid="stMetricLabel"] { color: #3d3a2e; }
-:root { --acc: #6f8a5b; --line: rgba(90,80,50,.28); }
-.stApp input, .stApp textarea, .stApp [data-baseweb="select"] > div, .stApp [data-baseweb="input"] {
-    background: #fbf6e6 !important; color: #3d3a2e !important; }
-[data-baseweb="popover"] ul, [data-baseweb="popover"] li, [data-baseweb="menu"] {
-    background: #fbf6e6 !important; color: #3d3a2e !important; }
-.stButton button, .stDownloadButton button, .stFormSubmitButton button {
-    background: #fbf6e6; color: #3d3a2e; border: 1px solid var(--line); }
-.stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {
-    background: #6f8a5b; color: #fff; border-color: #6f8a5b; }
-[data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"] { background: rgba(120,100,50,.07) !important; }
-</style>
-"""
-
-
 SPEECH_INIT_HTML = """
 <script>
 (function () {
@@ -196,9 +181,6 @@ st.sidebar.checkbox(
     "發音按鈕相容模式", key="compat_speech",
     help="平常不用勾選。如果按發音按鈕沒有聲音，再勾選這個。"
 )
-st.sidebar.checkbox("護眼模式", key="eye_care", help="暖黃色底，夜間或久看比較不刺眼。")
-if st.session_state.get("eye_care"):
-    st.markdown(EYE_CSS, unsafe_allow_html=True)
 st.sidebar.markdown(
     "<p style='text-align: center; color: gray; font-size: clamp(11px, 1.8vw, 13px); margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
@@ -1372,7 +1354,7 @@ elif main_menu == "背誦單字":
                     flush_srs()
                 flash_move(1)
 
-            st.caption(f"已熟練（4 級以上）：{mastered} / {total_count}")
+            st.progress(mastered / total_count, text=f"已熟練（4 級以上）{mastered} / {total_count}")
             with st.container(border=True):
                 st.markdown(
                     f"<div style='text-align:right; color:gray; font-size:clamp(12px,2.4vw,14px);'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'●' * stage}{'○' * (5 - stage)}</div>",
@@ -1390,13 +1372,13 @@ elif main_menu == "背誦單字":
 
                 st.markdown("---")
                 if show_answer:
-                    st.markdown(f"<h4>中文釋義：{esc(row['definition'])}</h4>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='fc-def'>{esc(row['definition'])}</div>", unsafe_allow_html=True)
                     if row.get('advanced_sentence'):
-                        st.markdown(f"<p style='font-size: clamp(15px, 2.6vw, 19px);'>英文釋義：{esc(row.get('advanced_sentence'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='fc-line'><b>英文釋義</b>{esc(row.get('advanced_sentence'))}</div>", unsafe_allow_html=True)
                     if row.get('basic_sentence'):
-                        st.markdown(f"<p style='font-style: italic; font-size: clamp(15px, 2.6vw, 19px);'>例句：{esc(row.get('basic_sentence'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='fc-line'><b>例句</b>{esc(row.get('basic_sentence'))}</div>", unsafe_allow_html=True)
                     if row.get('collocations'):
-                        st.markdown(f"<p style='font-size: clamp(14px, 2.2vw, 17px);'>搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='fc-line'><b>搭配詞</b>{esc(row.get('collocations'))}</div>", unsafe_allow_html=True)
                 else:
                     if st.button("顯示答案", **W_BTN):
                         st.session_state.flash_revealed = True
