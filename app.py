@@ -177,20 +177,23 @@ if APP_PASSWORD and not st.session_state.get("_authed"):
             st.error("密碼錯誤")
     st.stop()
 
-main_menu = st.sidebar.radio(
-    "選擇主要功能：",
-    ["新增單字", "字彙管理", "背誦單字", "我是拼字王"],
-    label_visibility="collapsed"
-)
+st.title("📚 我愛背單字")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("##### 選擇級別")
+MENUS = ["新增單字", "字彙管理", "背誦單字", "我是拼字王"]
+LEVELS = ["國中部", "高中部", "TOEIC"]
 
-selected_level = st.sidebar.radio(
-    "選擇級別：",
-    ["國中部", "高中部", "TOEIC"],
-    label_visibility="collapsed"
-)
+
+def top_choice(label, options, key):
+    """頁面頂端的橫向選單；舊版 Streamlit 沒有 segmented_control 就退回橫向單選。"""
+    if hasattr(st, "segmented_control"):
+        v = st.segmented_control(label, options, default=options[0], key=key, label_visibility="collapsed")
+        return v if v in options else st.session_state.get(f"_last_{key}", options[0])   # 點到已選的那個不會變成空值
+    return st.radio(label, options, horizontal=True, key=key, label_visibility="collapsed")
+
+
+main_menu = top_choice("功能", MENUS, "menu_sel")
+selected_level = top_choice("級別", LEVELS, "level_sel")
+st.session_state["_last_menu_sel"], st.session_state["_last_level_sel"] = main_menu, selected_level
 
 st.sidebar.markdown("---")
 st.sidebar.checkbox(
@@ -206,7 +209,6 @@ if main_menu in ("背誦單字", "我是拼字王"):
         speech_init()
 
 current_sheet_name = selected_level
-st.title("📚 我愛背單字")
 
 # 儲存後的提示訊息（因為存完會 rerun，訊息要先存起來，重跑後才顯示）
 if st.session_state.get("_flash"):
