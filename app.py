@@ -35,26 +35,25 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    :root { --acc: var(--primary-color, #4f8cff); --line: rgba(128,128,128,.28); --r: 10px; }
-    html, body, [class*="css"] { font-family: "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif; }
+    :root { --acc: var(--primary-color, #4a76a8); --line: rgba(128,128,128,.28); --r: 10px; }
     .block-container { padding-top: 2.2rem; max-width: 1100px; }
 
-    /* 全站統一：同一種圓角、同一種細邊框，沒有陰影與動畫 */
-    [data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"],
-    [data-testid="stExpander"], div[data-testid="stForm"] {
-        border-radius: var(--r) !important; border: 1px solid var(--line) !important;
-        background: rgba(128,128,128,.04) !important;
+    /* 只保留：卡片／數據卡有淡灰底與細邊框；輸入框與下拉選單用 Streamlit 原生淡灰底，不加框 */
+    [data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"] {
+        border-radius: 12px !important; border: 1px solid var(--line) !important;
+        background: rgba(128,128,128,.06) !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"] { padding: 18px !important; }
-    [data-testid="stMetric"] { padding: 10px 14px; }
+    [data-testid="stMetric"] { padding: 12px 18px; }
+    [data-testid="stExpander"], div[data-testid="stForm"] { border-radius: 12px !important; border-color: var(--line) !important; }
 
     .stButton button, .stFormSubmitButton button, .stDownloadButton button,
     .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { border-radius: var(--r) !important; }
-    .stButton button, .stFormSubmitButton button, .stDownloadButton button { font-weight: 600; }
+    .stButton button:not([kind="primary"]), .stDownloadButton button { border: 1px solid var(--line); }
     .stButton button:hover, .stFormSubmitButton button:hover { border-color: var(--acc); color: var(--acc); }
+    hr { margin: 1.2rem 0 !important; }
 
-    [data-testid="stSidebar"] { border-right: 1px solid var(--line); }
-    [data-testid="stSidebar"] .stRadio label p { font-size: clamp(15px,2.2vw,18px) !important; font-weight: 500 !important; }
+    [data-testid="stSidebar"] .stRadio label p { font-size: clamp(15px,2.2vw,18px) !important; }
     [data-testid="stSidebar"] h5 { font-size: clamp(15px,2vw,17px) !important; font-weight: 600; }
 
     div[data-testid="stForm"] [data-testid="stHorizontalBlock"] { align-items: flex-end !important; }
@@ -63,11 +62,11 @@ st.markdown("""
         padding: 12px 0 !important; font-size: clamp(13px,1.6vw,15px) !important;
     }
 
-    /* 發音按鈕：與一般按鈕同圓角 */
+    /* 發音按鈕 */
     .vsp-wrap { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
     .vsp-btn {
         background: transparent; color: inherit; border: 1px solid var(--line); border-radius: var(--r);
-        padding: 6px 14px; font-size: clamp(13px,3.4vw,15px); font-weight: 600; cursor: pointer;
+        padding: 6px 14px; font-size: clamp(13px,3.4vw,15px); cursor: pointer;
     }
     .vsp-btn:hover { border-color: var(--acc); color: var(--acc); }
 
