@@ -77,9 +77,17 @@ st.markdown("""
 
     .fc-hint { text-align: center; font-family: ui-monospace,Consolas,monospace; font-size: clamp(20px,5vw,28px); letter-spacing: .15em; white-space: pre-wrap; word-break: break-all; margin: 12px 0; opacity: .85; }
 
+    /* 標題與數據卡：整體縮小、更精簡 */
+    h1 { font-size: clamp(26px,6.5vw,36px) !important; padding: .2rem 0 .4rem !important; }
+    h3 { font-size: clamp(18px,4.2vw,22px) !important; }
+    [data-testid="stMetricValue"] { font-size: clamp(20px,4.6vw,28px) !important; }
+    [data-testid="stMetricLabel"] { font-size: 13px !important; opacity: .75; }
+
     /* 手機 */
     @media (max-width: 640px) {
         .block-container { padding: 2.5rem .8rem 1rem !important; }
+        [data-testid="stVerticalBlock"] { gap: .7rem !important; }
+        [data-testid="stMetric"] { padding: 8px 14px !important; }
         [data-testid="stVerticalBlockBorderWrapper"] { padding: 12px !important; }
         [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) { flex-wrap: nowrap !important; gap: .3rem !important; }
         [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) > div { min-width: 0 !important; }
