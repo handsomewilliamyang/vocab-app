@@ -86,7 +86,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
-# 🔊 輕量發音：按鈕只是一小段 HTML，不再每換一張卡／每答一題就新建一個 iframe。
+# 輕量發音：按鈕只是一小段 HTML，不再每換一張卡／每答一題就新建一個 iframe。
 # 只放一個「內容固定不變」的隱形 iframe，負責在瀏覽器裡安裝一次「點按鈕 → 唸出來」。
 # 若按了沒聲音，到側邊欄勾選「發音按鈕相容模式」就會退回舊做法。
 # ---------------------------------------------------------------------
@@ -141,12 +141,12 @@ def speech_buttons(text, justify="center", height=45):
 
 
 # ---------------------------------------------------------------------
-# 🔒 密碼保護（選用）：在 secrets 加一行  app_password = "你的密碼"  就會啟用；
+# 密碼保護（選用）：在 secrets 加一行  app_password = "你的密碼"  就會啟用；
 # 沒設定就不會要求密碼。
 # ---------------------------------------------------------------------
 APP_PASSWORD = str(st.secrets.get("app_password", ""))
 if APP_PASSWORD and not st.session_state.get("_authed"):
-    st.title("🔒 我愛背單字")
+    st.title("我愛背單字")
     pw = st.text_input("請輸入密碼：", type="password")
     if pw:
         if hmac.compare_digest(pw.encode(), APP_PASSWORD.encode()):
@@ -158,12 +158,12 @@ if APP_PASSWORD and not st.session_state.get("_authed"):
 
 main_menu = st.sidebar.radio(
     "選擇主要功能：",
-    ["✨ 新增單字", "📖 字彙管理", "🎯 背誦單字", "🎮 我是拼字王"],
+    ["新增單字", "字彙管理", "背誦單字", "我是拼字王"],
     label_visibility="collapsed"
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("##### 📚 選擇級別")
+st.sidebar.markdown("##### 選擇級別")
 
 selected_level = st.sidebar.radio(
     "選擇級別：",
@@ -173,19 +173,19 @@ selected_level = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.checkbox(
-    "🔊 發音按鈕相容模式", key="compat_speech",
+    "發音按鈕相容模式", key="compat_speech",
     help="平常不用勾選。如果按發音按鈕沒有聲音，再勾選這個。"
 )
 st.sidebar.markdown(
     "<p style='text-align: center; color: gray; font-size: clamp(11px, 1.8vw, 13px); margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
 )
-if main_menu in ("🎯 背誦單字", "🎮 我是拼字王"):
+if main_menu in ("背誦單字", "我是拼字王"):
     with st.sidebar:
         speech_init()
 
 current_sheet_name = selected_level
-st.title("📚 我愛背單字")
+st.title("我愛背單字")
 
 # 儲存後的提示訊息（因為存完會 rerun，訊息要先存起來，重跑後才顯示）
 if st.session_state.get("_flash"):
@@ -440,14 +440,14 @@ try:
         active_worksheet = get_active_worksheet(gs_client, st.secrets["sheet_url"], current_sheet_name)
         df_vocab = load_vocab_dataframe(active_worksheet, current_sheet_name)
 except Exception as e:
-    st.error(f"⚠️ 連線或讀取 Google 試算表發生錯誤：{e}")
+    st.error(f"連線或讀取 Google 試算表發生錯誤：{e}")
     st.stop()
 
 unique_words = df_vocab.attrs.get("unique_words", 0)
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="雲端單字量", value=f"{unique_words} 個單字／{len(df_vocab)} 筆",
               help="「筆」= 資料列數；同一個單字有多個詞性、或出現在不同單元時，會算多筆。")
-clean_mode_name = main_menu.replace("✨ ", "").replace("📖 ", "").replace("🎯 ", "").replace("🎮 ", "")
+clean_mode_name = main_menu
 col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -972,7 +972,7 @@ def start_batch_preview(records, unit_tag, raw_text):
     rows = []
     for r in records:
         key = (r["word"].strip().lower(), r["part_of_speech"].strip().lower(), unit_tag)
-        status = "✏️ 已存在（會更新）" if key in existing else "🆕 新增"
+        status = "已存在（會更新）" if key in existing else "新增"
         rows.append({"status": status, **{c: r.get(c, "") for c in EDIT_COLS}})
     st.session_state["preview_token"] = st.session_state.get("preview_token", 0) + 1
     st.session_state["pending_batch"] = {
@@ -984,8 +984,8 @@ def start_batch_preview(records, unit_tag, raw_text):
 
 def render_batch_preview():
     pb = st.session_state["pending_batch"]
-    st.subheader("🔍 請先檢查，確認後才會寫入雲端")
-    st.markdown(f"📍 **目標：** `{pb['sheet']} ({pb['unit_tag']})`　共 **{len(pb['rows'])}** 筆")
+    st.subheader("請先檢查，確認後才會寫入雲端")
+    st.markdown(f"**目標：** `{pb['sheet']} ({pb['unit_tag']})`　共 **{len(pb['rows'])}** 筆")
     st.caption("檢查重點：單字和中文有沒有切對位置？詞性對嗎？例句自然嗎？　"
                "點兩下格子可以直接修改；不要的整列，選取最左邊的框後按 Delete 刪除。「狀態」只是初步判斷。")
 
@@ -1012,7 +1012,7 @@ def render_batch_preview():
     )
 
     c1, c2 = st.columns(2)
-    if c1.button("✅ 確認寫入雲端", type="primary", **W_BTN, disabled=wrong_sheet):
+    if c1.button("確認寫入雲端", type="primary", **W_BTN, disabled=wrong_sheet):
         rows = clean_rows(edited)
         if not rows:
             st.warning("表格裡沒有可寫入的單字。")
@@ -1026,11 +1026,11 @@ def render_batch_preview():
             if not ok:
                 st.error(f"寫入失敗：{msg}")
                 st.stop()
-            st.session_state["_flash"] = f"🎊 匯入完成：{result_text(stats)}"
+            st.session_state["_flash"] = f"匯入完成：{result_text(stats)}"
             st.session_state["clear_paste"] = True
             st.session_state.pop("pending_batch", None)
             st.rerun()
-    if c2.button("❌ 取消，不寫入", **W_BTN):
+    if c2.button("取消，不寫入", **W_BTN):
         st.session_state["paste_restore"] = pb["raw_text"]   # 把剛貼的內容還給你
         st.session_state.pop("pending_batch", None)
         st.rerun()
@@ -1038,14 +1038,14 @@ def render_batch_preview():
 
 # 離開「背誦單字」頁、或切換級別時，把累積的熟練度一次同步到雲端
 _pend = st.session_state.get("srs_pending", {})
-if _pend and (main_menu != "🎯 背誦單字" or any(k[0] != current_sheet_name for k in _pend)):
+if _pend and (main_menu != "背誦單字" or any(k[0] != current_sheet_name for k in _pend)):
     if not flush_srs():
-        st.session_state["_warn"] = "⚠️ 熟練度同步失敗（網路或 Google 限速），資料還留在本機，回到「背誦單字」頁繼續作答時會自動重試。"
+        st.session_state["_warn"] = "熟練度同步失敗（網路或 Google 限速），資料還留在本機，回到「背誦單字」頁繼續作答時會自動重試。"
 
 # =====================================================================
-# ✨ 新增單字
+# 新增單字
 # =====================================================================
-if main_menu == "✨ 新增單字":
+if main_menu == "新增單字":
     if st.session_state.get("pending_batch"):
         render_batch_preview()
     else:
@@ -1070,14 +1070,14 @@ if main_menu == "✨ 新增單字":
 
         col_input1, col_input2 = st.columns(2, gap="large")
         with col_input1:
-            st.subheader("📝 單筆快速建檔")
+            st.subheader("單筆快速建檔")
             with st.form("single_add_form", clear_on_submit=True):
                 single_word = st.text_input("輸入想要學習的英文單字：", placeholder="例如：resilient")
                 single_def = st.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
                 single_eng = st.text_input("英文釋義（選填）：", placeholder="例如：able to recover quickly")
                 single_sent = st.text_input("真實例句（選填）：", placeholder="例如：Sentence here")
                 single_colloc = st.text_input("搭配詞（選填）：", placeholder="例如：Collocation here")
-                submitted_single = st.form_submit_button("🚀 瞬間寫入雲端", type="primary", **W_FORM)
+                submitted_single = st.form_submit_button("瞬間寫入雲端", type="primary", **W_FORM)
 
             if submitted_single:
                 if single_word.strip():
@@ -1096,16 +1096,16 @@ if main_menu == "✨ 新增單字":
                     if not ok:
                         st.error(f"寫入失敗：{msg}")
                         st.stop()
-                    st.session_state["_flash"] = f"🎉 {single_word.strip()}：{result_text(stats)}"
+                    st.session_state["_flash"] = f"{single_word.strip()}：{result_text(stats)}"
                     st.rerun()
                 else:
                     st.warning("請先輸入英文單字")
 
         with col_input2:
-            st.subheader("📋 智慧多格式快速貼上匯入")
-            st.markdown(f"📍 **[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
+            st.subheader("智慧多格式快速貼上匯入")
+            st.markdown(f"**[狀態欄] 目前目標分類：** `{selected_level} ({current_unit_tag})`")
 
-            with st.expander("🤖 懶得整理？複製這段給 AI，再把結果貼到下面"):
+            with st.expander("懶得整理？複製這段給 AI，再把結果貼到下面"):
                 st.caption("點程式碼框右上角的複製鈕 → 貼給任何 AI → 把單字清單貼在最後 → 把 AI 的回答整段貼回下面的框。")
                 st.code(ai_prompt_text(selected_level), language=None)
 
@@ -1118,11 +1118,11 @@ if main_menu == "✨ 新增單字":
             valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
             total_preview_count = len(valid_lines)
             if total_preview_count > 0:
-                st.info(f"📊 **狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
+                st.info(f"**狀態預覽：** 偵測到 **{total_preview_count}** 個項目準備匯入至「{current_unit_tag}」")
             else:
-                st.caption(f"📊 **狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
+                st.caption(f"**狀態預覽：** 尚未貼上資料（目標：{current_unit_tag}）")
 
-            if st.button("📥 解析並預覽", **W_BTN):
+            if st.button("解析並預覽", **W_BTN):
                 if valid_lines:
                     records_all = []
                     for line in valid_lines:
@@ -1135,28 +1135,28 @@ if main_menu == "✨ 新增單字":
                     st.warning("請先貼上單字清單")
 
 # =====================================================================
-# 📖 字彙管理
+# 字彙管理
 # =====================================================================
-elif main_menu == "📖 字彙管理":
+elif main_menu == "字彙管理":
     if df_vocab.empty:
-        st.info("📭 目前雲端尚無單字，請至側邊欄新增！")
+        st.info("目前雲端尚無單字，請至側邊欄新增！")
     else:
         semesters, sem_to_units = get_hierarchical_units(df_vocab)
         col_sel1, col_sel2 = st.columns(2, gap="medium")
         with col_sel1:
-            selected_sem = st.selectbox("1️⃣ 選擇學期/篇章：", [ALL_SEM] + semesters)
+            selected_sem = st.selectbox("1. 選擇學期/篇章：", [ALL_SEM] + semesters)
         with col_sel2:
             if selected_sem == ALL_SEM:
                 selected_unit = ALL_UNIT
-                st.selectbox("2️⃣ 選擇單元/課次：", [ALL_UNIT], disabled=True)
+                st.selectbox("2. 選擇單元/課次：", [ALL_UNIT], disabled=True)
             else:
-                selected_unit = st.selectbox("2️⃣ 選擇單元/課次：", [ALL_UNIT] + sem_to_units.get(selected_sem, []))
+                selected_unit = st.selectbox("2. 選擇單元/課次：", [ALL_UNIT] + sem_to_units.get(selected_sem, []))
 
         filtered_df = scoped(df_vocab, selected_sem, selected_unit)
 
         col_f1, col_f2 = st.columns(2, gap="medium")
         with col_f1:
-            search_query = st.text_input("🔍 搜尋單字或釋義：")
+            search_query = st.text_input("搜尋單字或釋義：")
             if search_query:
                 filtered_df = filtered_df[
                     filtered_df['word'].str.contains(search_query, case=False, na=False, regex=False) |
@@ -1177,7 +1177,7 @@ elif main_menu == "📖 字彙管理":
                 del_map = {}
                 for _id, _w, _p in zip(page_df['id'], page_df['word'], page_df['part_of_speech']):
                     del_map[f"{_w}　{_p}　(#{_id})"] = str(_id)
-                word_to_delete = st.selectbox("🗑️ 快速刪除單字：", [placeholder_opt] + list(del_map.keys()))
+                word_to_delete = st.selectbox("快速刪除單字：", [placeholder_opt] + list(del_map.keys()))
                 if word_to_delete != placeholder_opt:
                     if st.button("確認刪除這一筆", type="primary", **W_BTN):
                         rid = del_map[word_to_delete]
@@ -1197,11 +1197,11 @@ elif main_menu == "📖 字彙管理":
                 st.write("")
                 ctr = st.session_state.get("del_ctr", 0)
                 confirm_unit_del = st.checkbox("確認", key=f"confirm_del_unit_{ctr}", help="勾選後才能刪除整個單元")
-                if st.button("🗑️ 刪除該單元", type="secondary", **W_BTN):
+                if st.button("刪除該單元", type="secondary", **W_BTN):
                     if selected_sem == ALL_SEM or selected_unit == ALL_UNIT:
-                        st.warning("⚠️ 請先在上方選單選擇到具體某個單元，才能執行刪除！")
+                        st.warning("請先在上方選單選擇到具體某個單元，才能執行刪除！")
                     elif not confirm_unit_del:
-                        st.warning("⚠️ 請先勾選「確認」。")
+                        st.warning("請先勾選「確認」。")
                     else:
                         target_tag = f"{selected_sem} > {selected_unit}"
                         drop_caches()
@@ -1214,11 +1214,11 @@ elif main_menu == "📖 字彙管理":
                             st.error(f"刪除失敗：{msg}")
                             st.stop()
                         st.session_state["del_ctr"] = ctr + 1   # 換一個新的勾選框，確認狀態才會重置
-                        st.session_state["_flash"] = f"🗑️ 已成功刪除「{target_tag}」整單元單字！"
+                        st.session_state["_flash"] = f"已成功刪除「{target_tag}」整單元單字！"
                         st.rerun()
 
         st.markdown("---")
-        with st.expander("📋 單字總表（可直接點兩下修改，改完按「儲存修改」）", expanded=True):
+        with st.expander("單字總表（可直接點兩下修改，改完按「儲存修改」）", expanded=True):
             orig = page_df[['id', 'word', 'part_of_speech', 'definition', '_row']].reset_index(drop=True)
             _longs, _lerr = get_page_long_text(orig)
             if _lerr:
@@ -1245,7 +1245,7 @@ elif main_menu == "📖 字彙管理":
                     "collocations": st.column_config.TextColumn("搭配詞", width="medium"),
                 }
             )
-            if st.button("💾 儲存修改", type="primary"):
+            if st.button("儲存修改", type="primary"):
                 changes = {}
                 for i in range(len(orig)):
                     new_vals = {c: ("" if pd.isna(edited.at[i, c]) else str(edited.at[i, c]).strip()) for c in EDIT_COLS}
@@ -1263,13 +1263,13 @@ elif main_menu == "📖 字彙管理":
                         st.error(f"儲存失敗：{msg}")
                         st.stop()
                     st.session_state["edit_ver"] = st.session_state.get("edit_ver", 0) + 1
-                    note = f"💾 已儲存 {applied} 筆修改"
+                    note = f"已儲存 {applied} 筆修改"
                     if skipped:
                         note += f"（{skipped} 筆因單字空白或資料已變動而略過）"
                     st.session_state["_flash"] = note
                     st.rerun()
 
-        if st.button("📦 產生備份檔（CSV）"):
+        if st.button("產生備份檔（CSV）"):
             try:
                 backup = load_vocab_full(active_worksheet)[HEADERS].copy()
             except Exception as e:
@@ -1279,31 +1279,31 @@ elif main_menu == "📖 字彙管理":
                 if sheet == current_sheet_name:       # 還沒同步到雲端的熟練度也一起備份
                     backup.loc[backup['id'].astype(str) == rid, 'srs_stage'] = str(stg)
             st.download_button(
-                "⬇️ 點此下載",
+                "點此下載",
                 data=backup.to_csv(index=False).encode("utf-8-sig"),
                 file_name=f"vocab_{selected_level}.csv",
                 mime="text/csv",
             )
 
 # =====================================================================
-# 🎯 背誦單字
+# 背誦單字
 # =====================================================================
-elif main_menu == "🎯 背誦單字":
+elif main_menu == "背誦單字":
     if df_vocab.empty:
-        st.warning("📭 目前雲端沒有單字！")
+        st.warning("目前雲端沒有單字！")
     else:
         semesters, sem_to_units = get_hierarchical_units(df_vocab)
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            sel_sem_flash = st.selectbox("🎯 選擇學期/篇章：", [ALL_SEM] + semesters,
+            sel_sem_flash = st.selectbox("選擇學期/篇章：", [ALL_SEM] + semesters,
                                          key=f"flash_sem_select_{selected_level}")
         with col_f2:
             if sel_sem_flash == ALL_SEM:
                 sel_unit_flash = ALL_UNIT
-                st.selectbox("🎯 選擇單元/課次：", [ALL_UNIT], disabled=True,
+                st.selectbox("選擇單元/課次：", [ALL_UNIT], disabled=True,
                              key=f"flash_unit_disabled_{selected_level}")
             else:
-                sel_unit_flash = st.selectbox("🎯 選擇單元/課次：",
+                sel_unit_flash = st.selectbox("選擇單元/課次：",
                                               [ALL_UNIT] + sem_to_units.get(sel_sem_flash, []),
                                               key=f"flash_unit_select_{selected_level}")
 
@@ -1311,12 +1311,12 @@ elif main_menu == "🎯 背誦單字":
         with col_o1:
             order_mode = st.radio("出題順序：", ["不熟的優先", "隨機", "依編號順序"], horizontal=True, key="flash_order")
         with col_o2:
-            hide_answer = st.checkbox("🙈 先隱藏答案（自己想完再點「顯示答案」）", key="flash_hide")
+            hide_answer = st.checkbox("先隱藏答案（自己想完再點「顯示答案」）", key="flash_hide")
 
         df_filtered_flash = scoped(df_vocab, sel_sem_flash, sel_unit_flash)
 
         if df_filtered_flash.empty:
-            st.info("📭 這個範圍沒有單字。")
+            st.info("這個範圍沒有單字。")
         else:
             sig = f"{selected_level}|{sel_sem_flash}|{sel_unit_flash}|{order_mode}|{len(df_filtered_flash)}"
             if st.session_state.get("flash_sig") != sig:
@@ -1349,10 +1349,10 @@ elif main_menu == "🎯 背誦單字":
                     flush_srs()
                 flash_move(1)
 
-            st.caption(f"已熟練（⭐ 4 以上）：{mastered} / {total_count}")
+            st.caption(f"已熟練（4 級以上）：{mastered} / {total_count}")
             with st.container(border=True):
                 st.markdown(
-                    f"<div style='text-align:right; color:gray; font-size:clamp(12px,2.4vw,14px);'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'⭐' * stage}{'☆' * (5 - stage)}</div>",
+                    f"<div style='text-align:right; color:gray; font-size:clamp(12px,2.4vw,14px);'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'●' * stage}{'○' * (5 - stage)}</div>",
                     unsafe_allow_html=True
                 )
                 pos_disp = str(row.get('part_of_speech', '')).strip().rstrip('.')
@@ -1369,39 +1369,39 @@ elif main_menu == "🎯 背誦單字":
                 if show_answer:
                     st.markdown(f"<h4>中文釋義：{esc(row['definition'])}</h4>", unsafe_allow_html=True)
                     if row.get('advanced_sentence'):
-                        st.markdown(f"<p style='font-size: clamp(15px, 2.6vw, 19px);'>📖 英文釋義：{esc(row.get('advanced_sentence'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: clamp(15px, 2.6vw, 19px);'>英文釋義：{esc(row.get('advanced_sentence'))}</p>", unsafe_allow_html=True)
                     if row.get('basic_sentence'):
-                        st.markdown(f"<p style='font-style: italic; font-size: clamp(15px, 2.6vw, 19px);'>💬 例句：{esc(row.get('basic_sentence'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-style: italic; font-size: clamp(15px, 2.6vw, 19px);'>例句：{esc(row.get('basic_sentence'))}</p>", unsafe_allow_html=True)
                     if row.get('collocations'):
-                        st.markdown(f"<p style='font-size: clamp(14px, 2.2vw, 17px);'>🔗 搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: clamp(14px, 2.2vw, 17px);'>搭配詞：{esc(row.get('collocations'))}</p>", unsafe_allow_html=True)
                 else:
-                    if st.button("👀 顯示答案", **W_BTN):
+                    if st.button("顯示答案", **W_BTN):
                         st.session_state.flash_revealed = True
                         st.rerun()
 
             b1, b2, b3, b4 = st.columns(4)
-            if b1.button("⬅️ 上一個", **W_BTN):
+            if b1.button("‹ 上一個", **W_BTN):
                 flash_move(-1)
                 st.rerun()
-            if b2.button("❌ 不記得", **W_BTN):
+            if b2.button("不記得", **W_BTN):
                 flash_mark(0)
                 st.rerun()
-            if b3.button("✅ 記得", **W_BTN):
+            if b3.button("記得", **W_BTN):
                 flash_mark(min(stage + 1, 5))
                 st.rerun()
-            if b4.button("➡️ 下一個", **W_BTN):
+            if b4.button("下一個 ›", **W_BTN):
                 flash_move(1)
                 st.rerun()
             st.caption("「不記得」熟練度歸零；「記得」+1（最高 5）。出題順序選「不熟的優先」時，熟練度低的會先出現。")
 
 # =====================================================================
-# 🎮 我是拼字王
+# 我是拼字王
 # =====================================================================
-elif main_menu == "🎮 我是拼字王":
+elif main_menu == "我是拼字王":
     if df_vocab.empty:
-        st.warning("📭 目前沒有足夠的單字來進行遊戲！")
+        st.warning("目前沒有足夠的單字來進行遊戲！")
     else:
-        game_mode = st.radio("選擇遊戲模式：🎮", ["標準模式 (中文提示 + 發音)", "進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
+        game_mode = st.radio("選擇遊戲模式：", ["標準模式 (中文提示 + 發音)", "進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
         is_advanced = "進階" in game_mode
         st.markdown("---")
         semesters, sem_to_units = get_hierarchical_units(df_vocab)
@@ -1457,16 +1457,15 @@ elif main_menu == "🎮 我是拼字王":
 
         if st.session_state.get("game_empty"):
             if is_advanced:
-                st.info("📭 這個範圍內的單字都還沒有「英文釋義」，進階模式沒有題目可出。請改用標準模式，或先補上英文釋義。")
+                st.info("這個範圍內的單字都還沒有「英文釋義」，進階模式沒有題目可出。請改用標準模式，或先補上英文釋義。")
             else:
-                st.info("📭 這個範圍沒有單字。")
+                st.info("這個範圍沒有單字。")
         else:
             if st.session_state.game_index >= len(st.session_state.game_queue):
                 st.session_state.is_finished = True
 
             if st.session_state.get("is_finished", False):
-                st.balloons()
-                st.markdown("## 🎉 測驗圓滿結束！")
+                st.markdown("## 測驗圓滿結束！")
                 wrong = st.session_state.get("wrong_answers", [])
                 total_q = len(st.session_state.game_queue)
                 st.markdown(f"答對 **{total_q - len(wrong)}** / {total_q} 題")
@@ -1474,7 +1473,7 @@ elif main_menu == "🎮 我是拼字王":
                     st.markdown("**答錯的單字：**")
                     for w in wrong:
                         st.markdown(f"- `{w['word']}`　{w.get('definition', '')}")
-                    if st.button("🔁 只重考答錯的題目", type="primary", **W_BTN):
+                    if st.button("只重考答錯的題目", type="primary", **W_BTN):
                         retry = list(wrong)
                         random.shuffle(retry)
                         st.session_state.game_queue = retry
@@ -1483,7 +1482,7 @@ elif main_menu == "🎮 我是拼字王":
                         st.session_state.is_finished = False
                         st.session_state.last_feedback = None
                         st.rerun()
-                if st.button("🔄 重新挑戰本範圍", **W_BTN):
+                if st.button("重新挑戰本範圍", **W_BTN):
                     st.session_state.game_key = None
                     st.rerun()
             else:
@@ -1513,7 +1512,7 @@ elif main_menu == "🎮 我是拼字王":
                             speech_buttons(target_word, "flex-start", 45)
                     else:
                         # 把釋義裡的答案遮起來（顯示成 ____，唸出來變成 blank），避免直接洩漏答案
-                        st.markdown("<h3 style='margin-bottom: 5px; font-size: clamp(17px, 3.2vw, 22px);'>🔊 英文解釋聽力提示：</h3>", unsafe_allow_html=True)
+                        st.markdown("<h3 style='margin-bottom: 5px; font-size: clamp(17px, 3.2vw, 22px);'>英文解釋聽力提示：</h3>", unsafe_allow_html=True)
                         st.markdown(
                             f"<p style='font-size: clamp(14px, 2.3vw, 17px); font-weight: 500; margin-bottom: 10px;'>{esc(mask_word(target_adv_def, target_word))}</p>",
                             unsafe_allow_html=True
@@ -1531,7 +1530,7 @@ elif main_menu == "🎮 我是拼字王":
                             st.success(fb["msg"])
                         else:
                             st.error(fb["msg"])
-                        if st.button("➡️ 點擊進入下一題", type="primary", **W_BTN):
+                        if st.button("下一題 ›", type="primary", **W_BTN):
                             st.session_state.last_feedback = None
                             st.session_state.game_index += 1
                             st.rerun()
@@ -1545,14 +1544,14 @@ elif main_menu == "🎮 我是拼字王":
                                     label_visibility="collapsed"
                                 )
                             with f_col2:
-                                submitted = st.form_submit_button("🚀 送出", type="primary", **W_FORM)
+                                submitted = st.form_submit_button("送出", type="primary", **W_FORM)
 
                             if submitted:
                                 if norm_answer(user_ans) == norm_answer(target_word):
-                                    st.session_state.last_feedback = {"type": "success", "msg": f"🎉 答對了！就是 `{target_word}`"}
+                                    st.session_state.last_feedback = {"type": "success", "msg": f"答對了！就是 `{target_word}`"}
                                 else:
                                     st.session_state.wrong_answers.append(current_item)
-                                    st.session_state.last_feedback = {"type": "error", "msg": f"❌ 答錯囉！正確答案是：`{target_word}`"}
+                                    st.session_state.last_feedback = {"type": "error", "msg": f"答錯囉！正確答案是：`{target_word}`"}
                                 st.rerun()
 
 # ===== 檔案結束（看到這一行代表程式碼完整）=====
