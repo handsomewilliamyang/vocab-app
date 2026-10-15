@@ -1059,7 +1059,8 @@ def render_batch_preview():
 
 # 離開「背誦單字」頁、或切換級別時，把累積的熟練度一次同步到雲端
 _pend = st.session_state.get("srs_pending", {})
-if _pend and (main_menu != "背誦單字" or any(k[0] != current_sheet_name for k in _pend)):
+_in_game = main_menu == "我是拼字王" and not st.session_state.get("is_finished")   # 拼字王作答中先不同步，測驗結束或離開頁面才一次寫入
+if _pend and ((main_menu != "背誦單字" and not _in_game) or any(k[0] != current_sheet_name for k in _pend)):
     if not flush_srs():
         st.session_state["_warn"] = "熟練度同步失敗（網路或 Google 限速），資料還留在本機，回到「背誦單字」頁繼續作答時會自動重試。"
 
@@ -1345,7 +1346,7 @@ elif main_menu == "背誦單字":
         if df_filtered_flash.empty:
             st.info("這個範圍沒有單字。")
         else:
-            sig = f"{selected_level}|{sel_sem_flash}|{sel_unit_flash}|{order_mode}|{len(df_filtered_flash)}"
+            sig = f"{selected_level}|{sel_sem_flash}|{sel_unit_flash}|{order_mode}|{len(df_filtered_flash)}|{st.session_state.get('srs_ver', 0)}"
             if st.session_state.get("flash_sig") != sig:
                 st.session_state.flash_sig = sig
                 st.session_state.flash_queue = build_flash_queue(df_filtered_flash, order_mode)
@@ -1566,6 +1567,8 @@ elif main_menu == "我是拼字王":
                                     st.session_state.last_feedback = {"type": "success", "msg": f"答對了！就是 `{target_word}`"}
                                 else:
                                     st.session_state.wrong_answers.append(current_item)
+                                    queue_srs_stage(current_item, 0)                 # 拼錯 → 熟練度歸零，背誦頁會優先出這個字
+                                    st.session_state["srs_ver"] = st.session_state.get("srs_ver", 0) + 1
                                     st.session_state.last_feedback = {"type": "error", "msg": f"答錯囉！正確答案是：`{target_word}`"}
                                 st.rerun()
 
