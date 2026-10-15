@@ -1195,26 +1195,27 @@ elif main_menu == "字彙管理":
         with col_f2, st.expander("刪除單字／單元"):
             sub_col1, sub_col2 = st.columns([3, 1], gap="small")
             with sub_col1:
-                # 以「那一筆」為單位刪除（同一個字不同詞性不會一起被刪）
-                placeholder_opt = "--請選擇要刪除的單字--"
+                # 可一次選多筆（以「那一筆」為單位，同一個字不同詞性不會一起被刪）；先用上方搜尋縮小範圍會更好選
                 del_map = {}
                 for _id, _w, _p in zip(page_df['id'], page_df['word'], page_df['part_of_speech']):
                     del_map[f"{_w}　{_p}　(#{_id})"] = str(_id)
-                word_to_delete = st.selectbox("快速刪除單字：", [placeholder_opt] + list(del_map.keys()))
-                if word_to_delete != placeholder_opt:
-                    if st.button("確認刪除這一筆", type="primary", **W_BTN):
-                        rid = del_map[word_to_delete]
-                        drop_caches()
-                        df_current = load_vocab_full(active_worksheet)
-                        df_current = df_current[df_current['id'].astype(str) != rid].copy()
-                        if not df_current.empty:
-                            df_current['id'] = range(1, len(df_current) + 1)
-                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
-                        if not ok:
-                            st.error(f"刪除失敗：{msg}")
-                            st.stop()
-                        st.session_state["_flash"] = f"已刪除：{word_to_delete.split('　')[0]}"
-                        st.rerun()
+                mctr = st.session_state.get("mdel_ctr", 0)
+                picked = st.multiselect("選擇要刪除的單字（可多選）：", list(del_map.keys()), key=f"mdel_{mctr}",
+                                        placeholder="點選或輸入搜尋，可選很多個")
+                if picked and st.button(f"確認刪除這 {len(picked)} 筆", type="primary", **W_BTN):
+                    rids = {del_map[k] for k in picked}
+                    drop_caches()
+                    df_current = load_vocab_full(active_worksheet)
+                    df_current = df_current[~df_current['id'].astype(str).isin(rids)].copy()
+                    if not df_current.empty:
+                        df_current['id'] = range(1, len(df_current) + 1)
+                    ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                    if not ok:
+                        st.error(f"刪除失敗：{msg}")
+                        st.stop()
+                    st.session_state["mdel_ctr"] = mctr + 1      # 換新的選單，已刪的選項才會清空
+                    st.session_state["_flash"] = f"已刪除 {len(rids)} 筆單字"
+                    st.rerun()
             with sub_col2:
                 st.write("")
                 st.write("")
