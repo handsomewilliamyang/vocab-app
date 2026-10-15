@@ -75,6 +75,8 @@ st.markdown("""
     .fc-line { font-size: clamp(15px,2.6vw,18px); margin: 6px 0; line-height: 1.6; }
     .fc-line b { opacity: .6; font-weight: 500; margin-right: .5em; }
 
+    .fc-hint { text-align: center; font-family: ui-monospace,Consolas,monospace; font-size: clamp(20px,5vw,28px); letter-spacing: .15em; white-space: pre-wrap; word-break: break-all; margin: 12px 0; opacity: .85; }
+
     /* 手機 */
     @media (max-width: 640px) {
         .block-container { padding: 2.5rem .8rem 1rem !important; }
@@ -1499,35 +1501,23 @@ elif main_menu == "我是拼字王":
 
                 total_q_count = len(st.session_state.game_queue)
                 current_q_num = st.session_state.game_index + 1
-                remaining_count = total_q_count - current_q_num + 1
 
                 with st.container(border=True):
-                    q_col1, q_col2 = st.columns([5, 1])
-                    with q_col2:
-                        st.markdown(
-                            f"<div style='text-align: right; color: gray; font-size: clamp(13px, 2.2vw, 15px); font-weight: bold;'>剩餘題數：{remaining_count}</div>",
-                            unsafe_allow_html=True
-                        )
+                    st.progress((current_q_num - 1) / total_q_count, text=f"第 {current_q_num} / {total_q_count} 題")
 
                     if not is_advanced:
-                        r_col1, r_col2 = st.columns([2, 3])
-                        with r_col1:
-                            st.markdown(f"<h3 style='margin: 0; padding-top: 5px; font-size: clamp(18px, 3.4vw, 24px);'>中文：{esc(target_def)}</h3>", unsafe_allow_html=True)
-                        with r_col2:
-                            speech_buttons(target_word, "flex-start", 45)
+                        st.markdown(f"<div class='fc-def'>{esc(target_def)}</div>", unsafe_allow_html=True)
+                        speech_buttons(target_word, "center", 45)
                     else:
                         # 把釋義裡的答案遮起來（顯示成 ____，唸出來變成 blank），避免直接洩漏答案
-                        st.markdown("<h3 style='margin-bottom: 5px; font-size: clamp(17px, 3.2vw, 22px);'>英文解釋聽力提示：</h3>", unsafe_allow_html=True)
+                        st.caption("聽英文解釋，拼出單字")
                         st.markdown(
-                            f"<p style='font-size: clamp(14px, 2.3vw, 17px); font-weight: 500; margin-bottom: 10px;'>{esc(mask_word(target_adv_def, target_word))}</p>",
+                            f"<div class='fc-line' style='text-align:center'>{esc(mask_word(target_adv_def, target_word))}</div>",
                             unsafe_allow_html=True
                         )
-                        speech_buttons(mask_word(target_adv_def, target_word, repl="blank"), "flex-start", 45)
+                        speech_buttons(mask_word(target_adv_def, target_word, repl="blank"), "center", 45)
 
-                    st.markdown(
-                        f"<div style='margin-top: 15px; margin-bottom: 15px; word-break: break-all; font-size: clamp(14px, 2.2vw, 17px);'><b>單字提示：</b> <code>{esc(hint_masked)}</code></div>",
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f"<div class='fc-hint'>{esc(hint_masked)}</div>", unsafe_allow_html=True)
 
                     if st.session_state.get("last_feedback"):
                         fb = st.session_state.last_feedback
