@@ -35,56 +35,70 @@ st.set_page_config(
 
 st.markdown("""
     <style>
+    :root { --acc: var(--primary-color, #4f8cff); --line: rgba(128,128,128,.25); }
+    html, body, [class*="css"] { font-family: "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif; }
+    .block-container { padding-top: 2.2rem; max-width: 1100px; }
+    h1 { letter-spacing: .5px; }
+
+    /* 卡片 */
     [data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 14px !important;
-        border: 1px solid rgba(128, 128, 128, 0.2) !important;
-        padding: 20px !important;
-        background-color: rgba(128, 128, 128, 0.03) !important;
-        animation: fadeIn 0.25s ease-in-out;
+        border-radius: 16px !important; border: 1px solid var(--line) !important;
+        padding: 20px !important; background: rgba(128,128,128,.05) !important;
+        box-shadow: 0 4px 18px rgba(0,0,0,.08); animation: fadeIn .25s ease-in-out;
     }
-    @keyframes fadeIn {
-        from { opacity: 0.4; transform: translateY(4px); }
-        to { opacity: 1; transform: translateY(0); }
+    @keyframes fadeIn { from {opacity:.4; transform:translateY(4px)} to {opacity:1; transform:none} }
+
+    /* 數據卡 */
+    [data-testid="stMetric"] {
+        background: rgba(128,128,128,.07); border: 1px solid var(--line);
+        border-radius: 14px; padding: 12px 16px;
     }
-    div[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
-        align-items: flex-end !important;
+
+    /* 按鈕 */
+    .stButton button, .stFormSubmitButton button, .stDownloadButton button {
+        border-radius: 12px !important; font-weight: 600; transition: transform .12s, box-shadow .12s, border-color .12s;
     }
+    .stButton button:hover, .stFormSubmitButton button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.15); border-color: var(--acc); }
+    .stButton button:active, .stFormSubmitButton button:active { transform: scale(.97); }
+
+    /* 輸入框、下拉選單 */
+    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { border-radius: 10px !important; }
+    [data-testid="stExpander"] { border-radius: 12px; border: 1px solid var(--line); }
+
+    /* 側邊欄 */
+    [data-testid="stSidebar"] { border-right: 1px solid var(--line); }
+    [data-testid="stSidebar"] .stRadio label p { font-size: clamp(15px,2.2vw,18px) !important; font-weight: 500 !important; }
+    [data-testid="stSidebar"] h5 { font-size: clamp(15px,2vw,17px) !important; font-weight: 600; }
+
+    div[data-testid="stForm"] { border-radius: 14px; border: 1px solid var(--line); }
+    div[data-testid="stForm"] [data-testid="stHorizontalBlock"] { align-items: flex-end !important; }
     .stDataFrame [data-testid="stTable"] td {
-        white-space: normal !important;
-        word-wrap: break-word !important;
-        height: auto !important;
-        padding-top: 12px !important;
-        padding-bottom: 12px !important;
-        font-size: clamp(13px, 1.6vw, 15px) !important;
+        white-space: normal !important; word-wrap: break-word !important; height: auto !important;
+        padding: 12px 0 !important; font-size: clamp(13px,1.6vw,15px) !important;
     }
-    [data-testid="stSidebar"] .stRadio label p {
-        font-size: clamp(15px, 2.2vw, 18px) !important;
-        font-weight: 500 !important;
+
+    /* 發音按鈕 */
+    .vsp-wrap { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+    .vsp-btn {
+        background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 999px;
+        padding: 6px 14px; font-size: clamp(13px,3.4vw,15px); font-weight: 600; cursor: pointer; transition: all .12s;
     }
-    [data-testid="stSidebar"] h5 {
-        font-size: clamp(15px, 2vw, 17px) !important;
-        font-weight: 600;
-    }
-    /* 依螢幕大小自動調整：手機縮小邊距與卡片內距，觸控裝置放大按鈕好按 */
+    .vsp-btn:hover { border-color: var(--acc); color: var(--acc); }
+    .vsp-btn:active { transform: scale(.95); }
+
+    /* 手機 */
     @media (max-width: 640px) {
-        .block-container { padding-left: 0.8rem !important; padding-right: 0.8rem !important; padding-top: 2.5rem !important; }
-        [data-testid="stVerticalBlockBorderWrapper"] { padding: 12px !important; border-radius: 10px !important; }
-    }
-    @media (min-width: 1400px) {
-        .block-container { max-width: 1300px !important; margin-left: auto; margin-right: auto; }
+        .block-container { padding: 2.5rem .8rem 1rem !important; }
+        [data-testid="stVerticalBlockBorderWrapper"] { padding: 12px !important; border-radius: 12px !important; }
+        /* 剛好 4 欄的一排（背誦頁四顆按鈕）在手機上維持同一排 */
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) { flex-wrap: nowrap !important; gap: .3rem !important; }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) > div { min-width: 0 !important; }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) button { padding: 0 4px !important; font-size: 13px !important; }
     }
     @media (pointer: coarse) {
         .stButton button, .stFormSubmitButton button { min-height: 46px; }
         [data-baseweb="select"] > div, .stTextInput input { min-height: 44px; }
     }
-    .vsp-wrap { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
-    .vsp-btn {
-        background: transparent; color: inherit;
-        border: 1px solid rgba(128, 128, 128, 0.5); border-radius: 6px;
-        padding: 6px 12px; font-size: clamp(13px, 3.4vw, 15px); font-weight: 600; cursor: pointer;
-    }
-    .vsp-btn:hover { border-color: #ff4b4b; color: #ff4b4b; }
-    .vsp-btn:active { transform: scale(0.95); }
     </style>
 """, unsafe_allow_html=True)
 
