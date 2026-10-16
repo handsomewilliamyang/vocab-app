@@ -183,7 +183,7 @@ if APP_PASSWORD and not st.session_state.get("_authed"):
 
 st.title("📚 我愛背單字")
 
-MENUS = ["新增單字", "字彙管理", "背誦單字", "我是拼字王"]
+MENUS = ["背誦單字", "我是拼字王", "新增單字", "字彙管理"]
 LEVELS = ["國中部", "高中部", "TOEIC"]
 
 
