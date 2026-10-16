@@ -856,7 +856,7 @@ def parse_stage(v):
         return 0
 
 
-SRS_FLUSH_EVERY = 5   # 累積幾筆熟練度就在背景自動同步一次到雲端（不會跳提示）
+SRS_FLUSH_EVERY = 3   # 累積幾筆熟練度就在背景自動同步一次到雲端（不會跳提示）
 
 
 def _a1(row, col):
