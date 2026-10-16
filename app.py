@@ -80,6 +80,10 @@ st.markdown("""
 
     .fc-hint { text-align: center; font-family: ui-monospace,Consolas,monospace; font-size: clamp(20px,5vw,28px); letter-spacing: .15em; white-space: pre-wrap; word-break: break-all; margin: 12px 0; opacity: .85; }
 
+    /* 隱藏 Streamlit Cloud 右下角的徽章與頭像（平台加的，不保證每個版本都藏得掉） */
+    [class*="viewerBadge"], [class*="_profileContainer_"], [class*="_profilePreview"],
+    [data-testid="appCreatorAvatar"], [data-testid="manage-app-button"], .stDeployButton { display: none !important; }
+
     /* 標題與數據卡：整體縮小、更精簡 */
     h1, h2, h3, [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { line-height: 1.5 !important; overflow: visible !important; }
     [data-testid="stMetricValue"] > div, [data-testid="stMetricLabel"] > div { overflow: visible !important; text-overflow: clip !important; }
@@ -467,12 +471,11 @@ except Exception as e:
     st.stop()
 
 unique_words = df_vocab.attrs.get("unique_words", 0)
-col_m1, col_m2 = st.columns(2)
-col_m1.metric(label="雲端單字量", value=f"{unique_words} 個單字／{len(df_vocab)} 筆",
+if main_menu in ("新增單字", "字彙管理"):
+    st.metric(label=f"{selected_level}　雲端單字量", value=f"{unique_words} 個單字／{len(df_vocab)} 筆",
               help="「筆」= 資料列數；同一個單字有多個詞性、或出現在不同單元時，會算多筆。")
-clean_mode_name = main_menu
-col_m2.metric(label="目前模式", value=f"{clean_mode_name}【{selected_level}】")
-st.markdown("<br>", unsafe_allow_html=True)
+else:
+    st.caption(f"{selected_level}　共 {unique_words} 個單字／{len(df_vocab)} 筆")
 
 # ---------------------------------------------------------------------
 # 簡體 → 繁體（簡易版）。已拿掉「文件、项目」：它們繁簡同形，會誤改正常的繁體字。
