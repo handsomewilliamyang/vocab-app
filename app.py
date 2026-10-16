@@ -1,6 +1,7 @@
 import hmac
 import html
 import json
+import time
 import random
 import re
 
@@ -26,6 +27,7 @@ W_BTN = _wide(st.button)
 W_FORM = _wide(st.form_submit_button)
 W_EDIT = _wide(st.data_editor)
 
+_T0 = time.perf_counter()
 st.set_page_config(
     page_title="我愛背單字",
     page_icon="📚",
@@ -204,6 +206,7 @@ st.sidebar.checkbox(
     "發音按鈕相容模式", key="compat_speech",
     help="平常不用勾選。如果按發音按鈕沒有聲音，再勾選這個。"
 )
+st.sidebar.checkbox("顯示載入秒數", key="show_timing", help="找出哪一頁慢用的，平常不用勾選。")
 st.sidebar.markdown(
     "<p style='text-align: center; opacity: .55; font-size: 12px; margin-top: 20px;'>版權所有，切勿模仿</p>",
     unsafe_allow_html=True
@@ -452,14 +455,18 @@ def get_page_long_text(orig):
     return data, err
 
 
-def ensure_flash_long(queue):
-    """背誦：第一次需要顯示答案時，才把這個範圍的例句／搭配詞讀進來。"""
-    data, err = fetch_long_text(active_worksheet, {str(d["id"]): (d["word"], int(d["_row"])) for d in queue})
+def ensure_flash_long(queue, idx, ahead=8):
+    """背誦：只讀「目前這張＋接下來幾張」的例句／搭配詞（一次 API 呼叫），其他等翻到再讀。"""
+    todo = [d for d in queue[idx: idx + ahead] if not d.get("_long")]
+    if not todo:
+        return
+    data, err = fetch_long_text(active_worksheet, {str(d["id"]): (d["word"], int(d["_row"])) for d in todo})
     if err:
         st.warning(f"例句／搭配詞暫時讀不到（{err}），先只顯示中文釋義。")
-    for d in queue:
+    for d in todo:
         d.update(data.get(str(d["id"]), {}))
-    st.session_state.flash_long = True      # 失敗也先標記，避免每次點擊都重試、被 Google 限速
+        d["_long"] = True           # 失敗也先標記，避免每次點擊都重試、被 Google 限速
+
 
 try:
     with st.spinner("⏳ 正在從雲端載入單字資料庫..."):
@@ -871,7 +878,7 @@ def queue_srs_stage(row, new_stage):
     """按「記得／不記得」只先記在本機（瞬間完成），之後再批次寫入雲端。"""
     rid = str(row.get("id", "")).strip()
     word = str(row.get("word", "")).strip().lower()
-    st.session_state.setdefault("srs_pending", {})[(current_sheet_name, rid)] = (word, new_stage)
+    st.session_state.setdefault("srs_pending", {})[(current_sheet_name, rid)] = (word, new_stage, row.get("_row"))
     st.session_state.setdefault("srs_local", {})[(current_sheet_name, rid)] = new_stage
     row["_stage"] = new_stage
 
@@ -883,12 +890,28 @@ def flush_srs():
     if not pend:
         return True
     by_sheet = {}
-    for (sheet, rid), (word, stage) in pend.items():
-        by_sheet.setdefault(sheet, {})[rid] = (word, stage)
+    for (sheet, rid), (word, stage, rown) in pend.items():
+        by_sheet.setdefault(sheet, {})[rid] = (word, stage, rown)
     all_ok = True
     for sheet, items in by_sheet.items():
         try:
             ws = get_active_worksheet(gs_client, st.secrets["sheet_url"], sheet)
+            if (sheet == current_sheet_name and df_vocab.attrs.get("header_ok", False)
+                    and all(v[2] for v in items.values())):
+                # 快速路徑：已知列號 → 只讀那幾格單字確認沒對錯列，再一次寫入（共 2 次 API 呼叫）
+                rids = list(items)
+                srs_col = chr(65 + HEADERS.index("srs_stage"))
+                res = ws.batch_get([f"{WORD_LETTER}{int(items[r][2])}" for r in rids])
+                data = []
+                for r, cell in zip(rids, res):
+                    word, stage, rown = items[r]
+                    if cell and cell[0] and str(cell[0][0]).strip().lower() == word:
+                        data.append({"range": f"{srs_col}{int(rown)}", "values": [[stage]]})
+                if data:
+                    ws.batch_update(data, value_input_option="RAW")
+                for r in rids:
+                    pend.pop((sheet, r), None)
+                continue
             hdr = [str(h).strip().lower() for h in ws.row_values(1)]
             c_id, c_word, c_srs = hdr.index("id") + 1, hdr.index("word") + 1, hdr.index("srs_stage") + 1
             ids = ws.col_values(c_id)
@@ -897,7 +920,7 @@ def flush_srs():
             for i, v in enumerate(ids):
                 row_of.setdefault(str(v).strip(), i + 1)
             data = []
-            for rid, (word, stage) in items.items():
+            for rid, (word, stage, _r) in items.items():
                 rn = row_of.get(rid)
                 if rn and rn <= len(words) and str(words[rn - 1]).strip().lower() == word:
                     data.append({"range": _a1(rn, c_srs), "values": [[stage]]})
@@ -1365,9 +1388,9 @@ elif main_menu == "背誦單字":
             row = queue[st.session_state.flashcard_index]
             stage = row["_stage"]
             show_answer = (not hide_answer) or st.session_state.get("flash_revealed", False)
-            if show_answer and not st.session_state.get("flash_long"):
+            if show_answer and not row.get("_long"):
                 with st.spinner("載入例句與搭配詞…"):
-                    ensure_flash_long(queue)
+                    ensure_flash_long(queue, st.session_state.flashcard_index)
             mastered = sum(1 for r in queue if r["_stage"] >= 4)
 
             def flash_move(step):
@@ -1576,5 +1599,8 @@ elif main_menu == "我是拼字王":
                                     st.session_state["srs_ver"] = st.session_state.get("srs_ver", 0) + 1
                                     st.session_state.last_feedback = {"type": "error", "msg": f"答錯囉！正確答案是：`{target_word}`"}
                                 st.rerun()
+
+if st.session_state.get("show_timing"):
+    st.sidebar.caption(f"這次執行花了 {time.perf_counter() - _T0:.1f} 秒")
 
 # ===== 檔案結束（看到這一行代表程式碼完整）=====
