@@ -1,7 +1,6 @@
 import hmac
 import html
 import json
-import time
 import random
 import re
 
@@ -27,12 +26,11 @@ W_BTN = _wide(st.button)
 W_FORM = _wide(st.form_submit_button)
 W_EDIT = _wide(st.data_editor)
 
-_T0 = time.perf_counter()
 st.set_page_config(
     page_title="我愛背單字",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 st.markdown("""
@@ -201,19 +199,8 @@ main_menu = top_choice("功能", MENUS, "menu_sel")
 selected_level = top_choice("級別", LEVELS, "level_sel")
 st.session_state["_last_menu_sel"], st.session_state["_last_level_sel"] = main_menu, selected_level
 
-st.sidebar.markdown("---")
-st.sidebar.checkbox(
-    "發音按鈕相容模式", key="compat_speech",
-    help="平常不用勾選。如果按發音按鈕沒有聲音，再勾選這個。"
-)
-st.sidebar.checkbox("顯示載入秒數", key="show_timing", help="找出哪一頁慢用的，平常不用勾選。")
-st.sidebar.markdown(
-    "<p style='text-align: center; opacity: .55; font-size: 12px; margin-top: 20px;'>版權所有，切勿模仿</p>",
-    unsafe_allow_html=True
-)
 if main_menu in ("背誦單字", "我是拼字王"):
-    with st.sidebar:
-        speech_init()
+    speech_init()
 
 current_sheet_name = selected_level
 
@@ -456,7 +443,7 @@ def get_page_long_text(orig):
 
 
 def ensure_flash_long(queue, idx, ahead=8):
-    """背誦：只讀「目前這張＋接下來幾張」的例句／搭配詞（一次 API 呼叫），其他等翻到再讀。"""
+    """背誦：只讀「目前這張＋後面 7 張」的例句／搭配詞（一次 API 呼叫），其他等翻到再讀。"""
     todo = [d for d in queue[idx: idx + ahead] if not d.get("_long")]
     if not todo:
         return
@@ -1600,7 +1587,6 @@ elif main_menu == "我是拼字王":
                                     st.session_state.last_feedback = {"type": "error", "msg": f"答錯囉！正確答案是：`{target_word}`"}
                                 st.rerun()
 
-if st.session_state.get("show_timing"):
-    st.sidebar.caption(f"這次執行花了 {time.perf_counter() - _T0:.1f} 秒")
+st.markdown("<p style='text-align:center; opacity:.5; font-size:12px; margin-top:2rem;'>版權所有，切勿模仿</p>", unsafe_allow_html=True)
 
 # ===== 檔案結束（看到這一行代表程式碼完整）=====
