@@ -1095,7 +1095,7 @@ if main_menu == "新增單字":
             else:
                 semester = st.selectbox("主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
         with _c2:
-            _lessons = ["第一課", "第二課", "第三課", "第四課"] if selected_level == "TOEIC" else \
+                        _lessons = ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課"] if selected_level == "TOEIC" else \
                 ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"]
             unit = st.selectbox("課次：", _lessons)
 
