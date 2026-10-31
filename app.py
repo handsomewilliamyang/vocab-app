@@ -24,7 +24,14 @@ def _wide(fn):
 
 W_BTN = _wide(st.button)
 W_FORM = _wide(st.form_submit_button)
-W_EDIT = _wide(st.data_editor)
+def _ver():
+    try:
+        return tuple(int(x) for x in st.__version__.split(".")[:2])
+    except Exception:
+        return (0, 0)
+
+
+W_EDIT = {"width": "stretch"} if _ver() >= (1, 50) else {"use_container_width": True}
 
 st.set_page_config(
     page_title="我愛背單字",
