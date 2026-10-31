@@ -24,14 +24,7 @@ def _wide(fn):
 
 W_BTN = _wide(st.button)
 W_FORM = _wide(st.form_submit_button)
-def _ver():
-    try:
-        return tuple(int(x) for x in st.__version__.split(".")[:2])
-    except Exception:
-        return (0, 0)
-
-
-W_EDIT = {"width": "stretch"} if _ver() >= (1, 50) else {"use_container_width": True}
+W_EDIT = _wide(st.data_editor)
 
 st.set_page_config(
     page_title="我愛背單字",
@@ -1037,7 +1030,7 @@ def render_batch_preview():
         st.warning(f"這批資料是要匯入「{pb['sheet']}」的，目前側邊欄選的是「{current_sheet_name}」。請切回該級別再確認，或按取消。")
 
     edited = st.data_editor(
-        pd.DataFrame(pb["rows"]),
+        pd.DataFrame(pb["rows"]).astype({c: "string" for c in EDIT_COLS}),
         key=f"batch_preview_{pb['token']}",
         num_rows="dynamic",
         hide_index=True,
@@ -1279,6 +1272,7 @@ elif main_menu == "字彙管理":
             for _c in LONG_COLS:
                 orig[_c] = [_longs[str(i)][_c] for i in orig['id']]
             orig = orig[['id'] + EDIT_COLS]
+            orig = orig.astype({c: "string" for c in EDIT_COLS})
             edit_key = f"vocab_editor_{selected_level}_{st.session_state.get('edit_ver', 0)}_{hash(tuple(orig['id']))}"
             edited = st.data_editor(
                 orig,
