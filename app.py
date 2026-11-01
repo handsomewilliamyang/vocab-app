@@ -797,6 +797,28 @@ def scoped(df, sem, unit):
     return df if sem == ALL_SEM else df[scope_mask(df, sem, unit)]
 
 
+def _count_maps(df):
+    """各學期、各單元的筆數（用來顯示在下拉選單，例如「第一課 (66)」）。"""
+    sem_c = {str(k): int(v) for k, v in df['_sem'].value_counts().items()}
+    unit_c = {(str(a), str(b)): int(n)
+              for (a, b), n in df.groupby(['_sem', '_unit'], observed=True).size().items()}
+    return sem_c, unit_c
+
+
+def sem_label_fn(df):
+    """學期/篇章下拉選單的顯示文字：名稱 (筆數)。選項的實際值不變，只改顯示。"""
+    sem_c, _ = _count_maps(df)
+    return lambda v: f"{v} ({len(df)})" if v == ALL_SEM else f"{v} ({sem_c.get(v, 0)})"
+
+
+def unit_label_fn(df, sem):
+    """單元/課次下拉選單的顯示文字：名稱 (筆數)。sem 是目前選的學期/篇章。"""
+    _, unit_c = _count_maps(df)
+    total = len(df) if sem == ALL_SEM else sum(n for (a, _b), n in unit_c.items() if a == sem)
+    return lambda v: f"{v} ({total})" if v == ALL_UNIT else f"{v} ({unit_c.get((sem, v), 0)})"
+
+
+
 # ---------------------------------------------------------------------
 # 發音：瀏覽器內建語音，不用連網
 # ---------------------------------------------------------------------
@@ -1093,19 +1115,20 @@ if main_menu == "新增單字":
         render_batch_preview()
     else:
         _c1, _c2 = st.columns(2)
+        _sem_fmt = sem_label_fn(df_vocab)
         with _c1:
             if selected_level == "國中部":
-                semester = st.selectbox("學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"])
+                semester = st.selectbox("學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"], format_func=_sem_fmt)
             elif selected_level == "高中部":
-                semester = st.selectbox("學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"])
+                semester = st.selectbox("學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"], format_func=_sem_fmt)
             else:
-                semester = st.selectbox("主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"])
+                semester = st.selectbox("主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"], format_func=_sem_fmt)
         with _c2:
             if selected_level == "TOEIC":
                 _lessons = ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課"]
             else:
                 _lessons = ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"]
-            unit = st.selectbox("課次：", _lessons)
+            unit = st.selectbox("課次：", _lessons, format_func=unit_label_fn(df_vocab, semester))
 
         current_unit_tag = f"{semester} > {unit}"
         st.markdown("---")
@@ -1194,18 +1217,21 @@ elif main_menu == "字彙管理":
         semesters, sem_to_units = get_hierarchical_units(df_vocab)
         col_sel1, col_sel2 = st.columns(2, gap="medium")
         with col_sel1:
-            selected_sem = st.selectbox("1. 選擇學期/篇章：", [ALL_SEM] + semesters)
+            selected_sem = st.selectbox("1. 選擇學期/篇章：", [ALL_SEM] + semesters,
+                                        format_func=sem_label_fn(df_vocab))
         with col_sel2:
             if selected_sem == ALL_SEM:
                 selected_unit = ALL_UNIT
-                st.selectbox("2. 選擇單元/課次：", [ALL_UNIT], disabled=True)
+                st.selectbox("2. 選擇單元/課次：", [ALL_UNIT], disabled=True,
+                             format_func=unit_label_fn(df_vocab, ALL_SEM))
             else:
-                selected_unit = st.selectbox("2. 選擇單元/課次：", [ALL_UNIT] + sem_to_units.get(selected_sem, []))
+                selected_unit = st.selectbox("2. 選擇單元/課次：", [ALL_UNIT] + sem_to_units.get(selected_sem, []),
+                                             format_func=unit_label_fn(df_vocab, selected_sem))
 
         filtered_df = scoped(df_vocab, selected_sem, selected_unit)
 
         col_f1, col_f2 = st.columns([3, 2], gap="medium")
-        with col_f1:
+        with col_f2:          # 右邊：搜尋（要先執行，頁碼才知道篩出幾筆）
             search_query = st.text_input("搜尋單字或釋義：")
             if search_query:
                 filtered_df = filtered_df[
@@ -1213,6 +1239,13 @@ elif main_menu == "字彙管理":
                     filtered_df['definition'].str.contains(search_query, case=False, na=False, regex=False)
                 ]
             n_pages = max(1, -(-len(filtered_df) // PAGE_SIZE))
+        with col_f1:          # 左邊：頁碼 + 重複單字檢查
+            page_no = st.number_input(
+                f"頁碼（每頁 {PAGE_SIZE} 筆，目前範圍共 {len(filtered_df)} 筆）",
+                min_value=1, max_value=n_pages, value=1, step=1,
+                key=f"page_{selected_level}_{selected_sem}_{selected_unit}_{search_query}"
+            )
+            page_df = filtered_df.iloc[(page_no - 1) * PAGE_SIZE: page_no * PAGE_SIZE]
 
             # ---- 左邊：重複單字檢查（寬一點，才看得到完整資訊）----
             with st.expander("🔎 檢查重複單字（整個級別）"):
@@ -1276,13 +1309,6 @@ elif main_menu == "字彙管理":
                                    key=f"show_multi_{selected_level}"):
                         st.dataframe(_multi[_show], hide_index=True, column_config=_cfg, **_wide(st.dataframe))
         with col_f2:
-            page_no = st.number_input(
-                f"頁碼（每頁 {PAGE_SIZE} 筆，目前範圍共 {len(filtered_df)} 筆）",
-                min_value=1, max_value=n_pages, value=1, step=1,
-                key=f"page_{selected_level}_{selected_sem}_{selected_unit}_{search_query}"
-            )
-            page_df = filtered_df.iloc[(page_no - 1) * PAGE_SIZE: page_no * PAGE_SIZE]
-
             # ---- 右邊：刪除整課（只有選到某一課時才會出現）----
             if selected_sem != ALL_SEM and selected_unit != ALL_UNIT:
                 target_tag = f"{selected_sem} > {selected_unit}"
@@ -1408,16 +1434,19 @@ elif main_menu == "背誦單字":
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             sel_sem_flash = st.selectbox("選擇學期/篇章：", [ALL_SEM] + semesters,
-                                         key=f"flash_sem_select_{selected_level}")
+                                         key=f"flash_sem_select_{selected_level}",
+                                         format_func=sem_label_fn(df_vocab))
         with col_f2:
             if sel_sem_flash == ALL_SEM:
                 sel_unit_flash = ALL_UNIT
                 st.selectbox("選擇單元/課次：", [ALL_UNIT], disabled=True,
-                             key=f"flash_unit_disabled_{selected_level}")
+                             key=f"flash_unit_disabled_{selected_level}",
+                             format_func=unit_label_fn(df_vocab, ALL_SEM))
             else:
                 sel_unit_flash = st.selectbox("選擇單元/課次：",
                                               [ALL_UNIT] + sem_to_units.get(sel_sem_flash, []),
-                                              key=f"flash_unit_select_{selected_level}")
+                                              key=f"flash_unit_select_{selected_level}",
+                                              format_func=unit_label_fn(df_vocab, sel_sem_flash))
 
         col_o1, col_o2 = st.columns(2)
         with col_o1:
@@ -1520,16 +1549,19 @@ elif main_menu == "我是拼字王":
         col_g1, col_g2 = st.columns(2)
         with col_g1:
             sel_sem_game = st.selectbox("選擇學期/篇章範圍：", [ALL_SEM] + semesters,
-                                        key=f"game_sem_select_{selected_level}")
+                                        key=f"game_sem_select_{selected_level}",
+                                        format_func=sem_label_fn(df_vocab))
         with col_g2:
             if sel_sem_game == ALL_SEM:
                 sel_unit_game = ALL_UNIT
                 st.selectbox("選擇單元/課次範圍：", [ALL_UNIT], disabled=True,
-                             key=f"game_unit_disabled_{selected_level}")
+                             key=f"game_unit_disabled_{selected_level}",
+                             format_func=unit_label_fn(df_vocab, ALL_SEM))
             else:
                 sel_unit_game = st.selectbox("選擇單元/課次範圍：",
                                              [ALL_UNIT] + sem_to_units.get(sel_sem_game, []),
-                                             key=f"game_unit_select_{selected_level}")
+                                             key=f"game_unit_select_{selected_level}",
+                                             format_func=unit_label_fn(df_vocab, sel_sem_game))
 
         # 級別、模式、範圍、資料筆數任何一個變動，才重新篩選與出題（答題過程中的每次操作都不再重算）
         game_key = f"{selected_level}|{game_mode}|{sel_sem_game}|{sel_unit_game}|{len(df_vocab)}"
