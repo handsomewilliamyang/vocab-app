@@ -496,6 +496,8 @@ def simple_s2t_convert(text):
 # ---------------------------------------------------------------------
 # 詞性標記，前面不能緊接英文字母（避免把 "Mon." 之類的字誤判成 n.）
 POS_RE = re.compile(r'(?<![A-Za-z])(v|n|adj|adv|prep|conj|pron|phr|aux)\.', re.IGNORECASE)
+# 整欄只有詞性（例如 n. 或 n./v.），用來判斷「|」格式的第 2、3 欄有沒有放反
+POS_ONLY_RE = re.compile(r'^(?:(?:v|n|adj|adv|prep|conj|pron|phr|aux)\.?[\s,/]*)+$', re.IGNORECASE)
 SEP_CHARS = ';,；，、 '
 
 
@@ -566,12 +568,12 @@ def parse_raw_vocab_line_advanced(line):
 
     if '|' in line_clean:
         parts = [p.strip() for p in line_clean.split('|')]
-        w = parts[0]
-        d = parts[1] if len(parts) > 1 else ""
-        pasted_p = parts[2] if len(parts) > 2 else ""
-        pasted_eng = parts[3] if len(parts) > 3 else ""
-        pasted_s = parts[4] if len(parts) > 4 else ""
-        pasted_c = parts[5] if len(parts) > 5 else ""
+        parts += [""] * (6 - len(parts))                 # 欄位不足就補空白
+        w, pasted_p, d, pasted_eng, pasted_s, pasted_c = parts[:6]
+        # 順序：單字 | 詞性 | 中文釋義 | 英文釋義 | 例句 | 搭配詞
+        # 保險：如果第 2 欄不像詞性、第 3 欄卻像詞性（舊順序），就自動對調
+        if not POS_ONLY_RE.match(pasted_p) and POS_ONLY_RE.match(d):
+            pasted_p, d = d, pasted_p
         return parse_mixed_vocab_input(w, raw_def=d, pasted_pos=pasted_p,
                                        pasted_eng_def=pasted_eng, pasted_sent=pasted_s,
                                        pasted_colloc=pasted_c)
@@ -594,8 +596,11 @@ def parse_raw_vocab_line_advanced(line):
 
 def ai_prompt_text(level):
     """給你複製到任何 AI 的固定提示詞；輸出格式剛好是下方批次貼上可以直接吃的格式。"""
-    return f"""請幫我整理英文單字，對象是台灣的「{level}」學生。我會在最後貼上單字清單，請每個單字輸出一行，格式固定為（用 | 分隔；不要加編號、不要加表格、不要加任何說明文字）：
+    return f"""請幫我整理英文單字，對象是台灣的「{level}」學生。我會在最後貼上單字清單，請每個單字輸出一行，格式固定為（用 | 分隔；不要加編號、不要加表格、不要加程式碼區塊、不要加任何說明文字）：
 單字 | 詞性 | 中文釋義 | 英文釋義 | 例句 | 搭配詞
+
+格式範例：
+torture | n. | 酷刑；折磨 | The act of causing great pain to someone as punishment, or something very unpleasant. | Waiting for the exam results was torture. | under torture / torture chamber
 
 規則：
 1. 中文用繁體中文（台灣用語），釋義簡短。
@@ -603,7 +608,8 @@ def ai_prompt_text(level):
 3. 英文釋義用簡單英文寫一句話，不要在釋義裡直接使用該單字。
 4. 例句要自然、日常、母語者真的會說；字義必須符合該行的中文與詞性；難度適合「{level}」學生；不要荒謬、誇張或硬湊的句子。
 5. 搭配詞給 2～3 個母語者真實常用的，用 / 分隔；沒把握就少給，不要編造。
-6. 不確定的欄位請留空，不要亂填。
+6. 不確定的欄位請留空，但必須保留 | 分隔符，確保每行都剛好有 6 個欄位。
+7. 各欄位內容中不要出現 | 符號。
 
 單字清單：
 （把單字貼在這裡）"""
@@ -1155,7 +1161,7 @@ if main_menu == "新增單字":
 
             pasted_text = st.text_area(
                 "貼上完整單字清單", key="paste_box",
-                placeholder="source | 來源 | n. | A place... | Sentence | Collocation\n或：resilient 有彈性的\n或只貼單字：resilient",
+                placeholder="source | n. | 來源 | A place... | Sentence | Collocation\n或：resilient 有彈性的\n或只貼單字：resilient",
                 height=140, label_visibility="collapsed"
             )
 
