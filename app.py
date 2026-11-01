@@ -1204,7 +1204,7 @@ elif main_menu == "字彙管理":
 
         filtered_df = scoped(df_vocab, selected_sem, selected_unit)
 
-        col_f1, col_f2 = st.columns(2, gap="medium")
+        col_f1, col_f2 = st.columns([3, 2], gap="medium")
         with col_f1:
             search_query = st.text_input("搜尋單字或釋義：")
             if search_query:
@@ -1213,14 +1213,8 @@ elif main_menu == "字彙管理":
                     filtered_df['definition'].str.contains(search_query, case=False, na=False, regex=False)
                 ]
             n_pages = max(1, -(-len(filtered_df) // PAGE_SIZE))
-            page_no = st.number_input(
-                f"頁碼（每頁 {PAGE_SIZE} 筆，目前範圍共 {len(filtered_df)} 筆）",
-                min_value=1, max_value=n_pages, value=1, step=1,
-                key=f"page_{selected_level}_{selected_sem}_{selected_unit}_{search_query}"
-            )
-            page_df = filtered_df.iloc[(page_no - 1) * PAGE_SIZE: page_no * PAGE_SIZE]
-        with col_f2:
-            # ---- 右邊：重複單字檢查 ----
+
+            # ---- 左邊：重複單字檢查（寬一點，才看得到完整資訊）----
             with st.expander("🔎 檢查重複單字（整個級別）"):
                 _d = df_vocab[['id', 'word', 'part_of_speech', 'definition', 'unit_tag']].copy()
                 _d['_w'] = _d['word'].str.strip().str.lower()
@@ -1281,6 +1275,13 @@ elif main_menu == "字彙管理":
                     if st.checkbox(f"顯示「同一個字、不同詞性」（{_multi['_w'].nunique()} 個字，通常是正常的）",
                                    key=f"show_multi_{selected_level}"):
                         st.dataframe(_multi[_show], hide_index=True, column_config=_cfg, **_wide(st.dataframe))
+        with col_f2:
+            page_no = st.number_input(
+                f"頁碼（每頁 {PAGE_SIZE} 筆，目前範圍共 {len(filtered_df)} 筆）",
+                min_value=1, max_value=n_pages, value=1, step=1,
+                key=f"page_{selected_level}_{selected_sem}_{selected_unit}_{search_query}"
+            )
+            page_df = filtered_df.iloc[(page_no - 1) * PAGE_SIZE: page_no * PAGE_SIZE]
 
             # ---- 右邊：刪除整課（只有選到某一課時才會出現）----
             if selected_sem != ALL_SEM and selected_unit != ALL_UNIT:
