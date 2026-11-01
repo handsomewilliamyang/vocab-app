@@ -1269,6 +1269,28 @@ elif main_menu == "字彙管理":
                         st.rerun()
 
         st.markdown("---")
+        with st.expander("🔎 檢查重複單字（整個級別）"):
+            _d = df_vocab[['id', 'word', 'part_of_speech', 'definition', 'unit_tag']].copy()
+            _d['_w'] = _d['word'].str.strip().str.lower()
+            _d['_p'] = _d['part_of_speech'].str.strip().str.lower()
+            # 真重複：單字＋詞性都一樣（可能在不同單元，也可能同單元貼了兩次）
+            _dup_full = _d[_d.duplicated(['_w', '_p'], keep=False)].sort_values(['_w', '_p'])
+            # 同一個字有多筆但詞性不同：通常是正常的（例如 n. 和 v.），只列出來參考
+            _multi = _d[_d.duplicated('_w', keep=False) & ~_d.index.isin(_dup_full.index)].sort_values('_w')
+            _show = ['id', 'word', 'part_of_speech', 'definition', 'unit_tag']
+            _cfg = {"id": "編號", "word": "單字", "part_of_speech": "詞性",
+                    "definition": "中文釋義", "unit_tag": "所在單元"}
+            if _dup_full.empty:
+                st.success("沒有發現「單字＋詞性」都相同的重複資料。")
+            else:
+                st.warning(f"發現 {_dup_full['_w'].nunique()} 個重複的單字，共 {len(_dup_full)} 筆（單字與詞性都相同）：")
+                st.dataframe(_dup_full[_show], hide_index=True, column_config=_cfg, **_wide(st.dataframe))
+                st.caption("要刪除：在上方「搜尋單字或釋義」輸入該單字，再用「刪除單字／單元」，選單裡會標示編號 (#編號)，保留一筆、刪掉其他的。")
+            if not _multi.empty:
+                with st.expander(f"同一個字、不同詞性（{_multi['_w'].nunique()} 個字，通常是正常的）"):
+                    st.dataframe(_multi[_show], hide_index=True, column_config=_cfg, **_wide(st.dataframe))
+
+        st.markdown("---")
         with st.expander("單字總表（可直接點兩下修改，改完按「儲存修改」）", expanded=True):
             orig = page_df[['id', 'word', 'part_of_speech', 'definition', '_row']].reset_index(drop=True)
             _longs, _lerr = get_page_long_text(orig)
