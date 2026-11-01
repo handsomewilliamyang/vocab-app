@@ -1283,9 +1283,47 @@ elif main_menu == "字彙管理":
             if _dup_full.empty:
                 st.success("沒有發現「單字＋詞性」都相同的重複資料。")
             else:
-                st.warning(f"發現 {_dup_full['_w'].nunique()} 個重複的單字，共 {len(_dup_full)} 筆（單字與詞性都相同）：")
-                st.dataframe(_dup_full[_show], hide_index=True, column_config=_cfg, **_wide(st.dataframe))
-                st.caption("要刪除：在上方「搜尋單字或釋義」輸入該單字，再用「刪除單字／單元」，選單裡會標示編號 (#編號)，保留一筆、刪掉其他的。")
+                # 同一組裡，有中文釋義的排前面（預設保留它），其餘依原順序
+                _dup_full = _dup_full.assign(_has_def=_dup_full['definition'].str.strip().ne(''))
+                _dup_full = _dup_full.sort_values(['_w', '_p', '_has_def'], ascending=[True, True, False], kind='stable')
+                st.warning(f"發現 {_dup_full['_w'].nunique()} 個重複的單字，共 {len(_dup_full)} 筆（單字與詞性都相同）。"
+                           "勾選最左邊的「刪除」欄，再按下方按鈕就會刪除。")
+                _auto = st.checkbox("自動勾選：每一組只保留第一筆（優先保留有中文釋義的），其餘預設勾選刪除",
+                                    value=True, key=f"dup_auto_{selected_level}")
+                _tbl = _dup_full[_show].reset_index(drop=True).astype({c: "string" for c in _show})
+                _flags = _dup_full.duplicated(['_w', '_p'], keep='first').to_numpy() if _auto else [False] * len(_dup_full)
+                _tbl.insert(0, "delete", _flags)
+                _dctr = st.session_state.get("dupdel_ctr", 0)
+                _dedit = st.data_editor(
+                    _tbl,
+                    key=f"dupdel_{selected_level}_{_auto}_{_dctr}_{hash(tuple(_tbl['id']))}",
+                    num_rows="fixed", hide_index=True, disabled=_show, **W_EDIT,
+                    column_config={"delete": st.column_config.CheckboxColumn("刪除", width="small"),
+                                   **{k: st.column_config.TextColumn(v) for k, v in _cfg.items()}},
+                )
+                _del_ids = {str(i) for i in _dedit.loc[_dedit['delete'], 'id']}
+                _all_gone = (_dedit.assign(_w=_dedit['word'].str.strip().str.lower(),
+                                           _p=_dedit['part_of_speech'].str.strip().str.lower())
+                             .groupby(['_w', '_p'])['delete'].all())
+                if _all_gone.any():
+                    st.warning("注意：有些單字的重複資料「全部」被勾選了，刪除後這個單字會完全消失。"
+                               "如果要保留，請取消其中一筆的勾選。")
+                if _del_ids and st.button(f"刪除勾選的 {len(_del_ids)} 筆", type="primary", **W_BTN, key="dup_del_btn"):
+                    with st.spinner("刪除中…"):
+                        drop_caches()
+                        df_current = load_vocab_full(active_worksheet)
+                        df_current = df_current[~df_current['id'].astype(str).isin(_del_ids)].copy()
+                        if not df_current.empty:
+                            df_current['id'] = range(1, len(df_current) + 1)
+                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                    if not ok:
+                        st.error(f"刪除失敗：{msg}")
+                        st.stop()
+                    st.session_state["dupdel_ctr"] = _dctr + 1
+                    st.session_state["_flash"] = f"已刪除 {len(_del_ids)} 筆重複單字"
+                    st.rerun()
+                elif not _del_ids:
+                    st.caption("目前沒有勾選任何一筆。")
             if not _multi.empty:
                 with st.expander(f"同一個字、不同詞性（{_multi['_w'].nunique()} 個字，通常是正常的）"):
                     st.dataframe(_multi[_show], hide_index=True, column_config=_cfg, **_wide(st.dataframe))
