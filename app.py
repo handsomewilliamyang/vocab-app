@@ -429,10 +429,11 @@ def ai_prompt_text(level):
 
 格式範例：
 torture | n. | 酷刑；折磨 | The act of causing great pain to someone as punishment, or something very unpleasant. | Waiting for the exam results was torture. | under torture / torture chamber
+torture | v. | 折磨；使痛苦 | To cause someone great pain or suffering. | The noise tortured me all night. | be tortured by / torture oneself
 
 規則：
 1. 中文用繁體中文（台灣用語），釋義簡短。
-2. 詞性用縮寫：n. v. adj. adv. prep. conj. pron. phr.；一個單字有多個常見詞性時，每個詞性各寫一行。
+2. 詞性用縮寫：n. v. adj. adv. prep. conj. pron. phr.；一個單字有多個常見詞性時，每個詞性各寫一行，而且每一行的中文釋義、英文釋義、例句、搭配詞都要對應「該詞性」的意思，不可以複製貼上同一份。名詞寫名詞的意思（例如「酷刑」），動詞寫動詞的意思（例如「折磨」）。
 3. 英文釋義用簡單英文寫一句話，不要在釋義裡直接使用該單字。
 4. 例句要自然、日常、母語者真的會說；字義必須符合該行的中文與詞性；難度適合「{level}」學生；不要荒謬、誇張或硬湊的句子。
 5. 搭配詞給 2～3 個母語者真實常用的，用 / 分隔；沒把握就少給，不要編造。
