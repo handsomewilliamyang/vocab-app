@@ -1,6 +1,5 @@
 import hmac
 import html
-import json
 import random
 import re
 
@@ -53,8 +52,6 @@ st.markdown("""
     .stButton button:hover, .stFormSubmitButton button:hover { border-color: var(--acc); color: var(--acc); }
     hr { margin: 1.2rem 0 !important; }
 
-    [data-testid="stSidebar"] .stRadio label p { font-size: clamp(15px,2.2vw,18px) !important; }
-    [data-testid="stSidebar"] h5 { font-size: clamp(15px,2vw,17px) !important; font-weight: 600; }
 
     div[data-testid="stForm"] [data-testid="stHorizontalBlock"] { align-items: flex-end !important; }
     .stDataFrame [data-testid="stTable"] td {
@@ -113,7 +110,6 @@ st.markdown("""
 # ---------------------------------------------------------------------
 # 輕量發音：按鈕只是一小段 HTML，不再每換一張卡／每答一題就新建一個 iframe。
 # 只放一個「內容固定不變」的隱形 iframe，負責在瀏覽器裡安裝一次「點按鈕 → 唸出來」。
-# 若按了沒聲音，到側邊欄勾選「發音按鈕相容模式」就會退回舊做法。
 # ---------------------------------------------------------------------
 SPEECH_INIT_HTML = """
 <script>
@@ -146,14 +142,10 @@ SPEECH_INIT_HTML = """
 
 
 def speech_init():
-    if not st.session_state.get("compat_speech"):
-        components.html(SPEECH_INIT_HTML, height=0)
+    components.html(SPEECH_INIT_HTML, height=0)
 
 
-def speech_buttons(text, justify="center", height=45):
-    if st.session_state.get("compat_speech"):
-        components.html(speech_html(text, justify), height=height)   # 相容模式：舊做法
-        return
+def speech_buttons(text, justify="center"):
     t = html.escape(str(text), quote=True)
     st.markdown(
         f'<div class="vsp-wrap" style="justify-content:{justify}">'
@@ -252,36 +244,27 @@ def get_active_worksheet(_client, sheet_url, sheet_name):
 #   常用欄位 LIGHT_COLS 一直放在記憶體；例句、搭配詞、英文釋義這類較長的文字不放進共用快取，
 #   只有「真的要顯示」的那幾筆（總表當頁、背誦翻開答案、進階模式出題）才向雲端讀，用完就丟。
 #   讀的時候用「列號」：載入時順便記下每一筆在試算表的第幾列（_row），之後只讀那幾列，
-#   不再整欄下載。列號對不上（資料被改動過）時，會自動退回用編號整欄搜尋，結果不會錯。
+#   不再整欄下載。讀回來時會核對編號與單字，對不上（資料被改動過）就當作沒讀到，不會顯示錯的內容。
 #   要寫入雲端之前，一律另外讀一份完整的表（load_vocab_full），不經過快取，所以不會漏掉長文字。
 # ---------------------------------------------------------------------
 LIGHT_COLS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition', 'unit_tag', 'srs_stage']
 LONG_COLS = ['advanced_sentence', 'basic_sentence', 'collocations']
-LONG_LETTER = {c: chr(65 + HEADERS.index(c)) for c in LONG_COLS}     # 長文字欄在試算表的欄位字母
-ID_LETTER, WORD_LETTER = chr(65 + HEADERS.index('id')), chr(65 + HEADERS.index('word'))
+WORD_LETTER = chr(65 + HEADERS.index('word'))
 LONG_IDX = [HEADERS.index(c) for c in LONG_COLS]                      # 長文字欄在 A~H 範圍裡的位置
 ROW_FETCH_MAX_RANGES = 25     # 一次最多讀幾段列範圍；超過就改整欄讀取（避免請求網址太長）
 
 
-def _rows_to_df(all_values, columns, with_row=False):
-    """只把 columns 指定的欄位轉成 DataFrame（其他欄位根本不建立，省記憶體）。
-    with_row=True 時多一欄 _row = 該筆在試算表的列號（標題列是第 1 列，資料從第 2 列開始）。"""
+def _rows_to_df(all_values, columns):
+    """只把 columns 指定的欄位轉成 DataFrame（依標題名稱找欄位，其他欄位不建立，省記憶體）。"""
     if len(all_values) > 1:
-        headers = [str(h).strip().lower() for h in all_values[0]]
         pos = {}
-        for i, h in enumerate(headers):
-            pos.setdefault(h, i)                      # 欄名重複時只取第一個
+        for i, h in enumerate(all_values[0]):
+            pos.setdefault(str(h).strip().lower(), i)        # 欄名重複時只取第一個
         body = all_values[1:]
-        data = {}
-        for c in columns:
-            i = pos.get(c)
-            data[c] = ([(r[i] if i < len(r) else "") for r in body]
-                       if i is not None else [""] * len(body))
-        df = pd.DataFrame(data, columns=list(columns))
-        if with_row:
-            df['_row'] = range(2, len(body) + 2)
-        return df
-    return pd.DataFrame(columns=list(columns) + (['_row'] if with_row else []))
+        data = {c: ([(r[pos[c]] if pos[c] < len(r) else "") for r in body] if c in pos else [""] * len(body))
+                for c in columns}
+        return pd.DataFrame(data, columns=list(columns))
+    return pd.DataFrame(columns=list(columns))
 
 
 def _finish_df(df_temp):
@@ -320,35 +303,23 @@ def _finish_df(df_temp):
 def load_vocab_dataframe(_worksheet, cache_key):
     # 讀取失敗時讓錯誤直接往上丟（由下方 try/except 顯示並停止），
     # 不可以變成「空表」，否則之後存檔會把雲端資料蓋掉。
-    # 快速路徑：標題列是標準順序時，只向雲端要「常用欄位」（A~E、F 只看有沒有、I~J），
-    # 例句／搭配詞（G、H）連下載都省掉，載入更快、暫時佔用的記憶體也更少。
+    # 只向雲端要「常用欄位」（A~E、F 只看有沒有、I~J），例句／搭配詞（G、H）連下載都省掉。
     res = _worksheet.batch_get(["A1:J1", "A2:E", "F2:F", "I2:J"])
     hdr = [str(h).strip().lower() for h in (res[0][0] if res[0] else [])]
-    header_ok = hdr[:len(HEADERS)] == HEADERS
+    if hdr and hdr[:len(HEADERS)] != HEADERS:       # 全新的空白工作表（沒有標題列）沒關係，第一次存檔會自動寫入
+        raise ValueError("試算表第 1 列（標題列）必須依序是：" + ", ".join(HEADERS))
     n = max(len(res[1]), len(res[2]), len(res[3]))
-    if header_ok and n > 0:
-        def col(rows, i):
-            return [(r[i] if i < len(r) else "") for r in rows] + [""] * (n - len(rows))
-        data = {c: col(res[1], i) for i, c in enumerate(HEADERS[:5])}
-        data['unit_tag'] = col(res[3], 0)
-        data['srs_stage'] = col(res[3], 1)
-        df_temp = pd.DataFrame(data, columns=LIGHT_COLS)
-        df_temp['_has_adv'] = pd.Series(col(res[2], 0), dtype=object).str.strip().ne('').to_numpy()
-        df_temp['_row'] = range(2, n + 2)       # 這幾個範圍都從第 2 列開始，所以第 i 筆就是第 i+2 列
-        del res
-    else:                                   # 空表或標題列順序不標準：用完整讀法
-        del res
-        all_values = _worksheet.get_all_values()
-        header_ok = (len(all_values) > 0 and
-                     [str(h).strip().lower() for h in all_values[0]][:len(HEADERS)] == HEADERS)
-        df_temp = _rows_to_df(all_values, LIGHT_COLS + ['advanced_sentence'], with_row=True)
-        del all_values
-        # 只留一個「有沒有英文釋義」的旗標（進階模式要用來篩題目），文字本身不留
-        df_temp['_has_adv'] = df_temp['advanced_sentence'].str.strip() != ''
-        df_temp = df_temp.drop(columns=['advanced_sentence'])
-    df_temp = _finish_df(df_temp)
-    df_temp.attrs["header_ok"] = bool(header_ok)
-    return df_temp
+    if n == 0:              # 空白工作表或只有標題列
+        return _finish_df(pd.DataFrame(columns=LIGHT_COLS + ['_has_adv', '_row'], dtype=object))
+
+    def col(rows, i):
+        return [(r[i] if i < len(r) else "") for r in rows] + [""] * (n - len(rows))
+    data = {c: col(res[1], i) for i, c in enumerate(HEADERS[:5])}
+    data['unit_tag'], data['srs_stage'] = col(res[3], 0), col(res[3], 1)
+    df_temp = pd.DataFrame(data, columns=LIGHT_COLS)
+    df_temp['_has_adv'] = pd.Series(col(res[2], 0), dtype=object).str.strip().ne('').to_numpy()
+    df_temp['_row'] = range(2, n + 2)       # 這幾個範圍都從第 2 列開始，所以第 i 筆就是第 i+2 列
+    return _finish_df(df_temp)
 
 
 def load_vocab_full(_worksheet):
@@ -373,55 +344,22 @@ def _row_groups(rows, gap=3):
     return groups
 
 
-def _fetch_by_columns(ws, wanted):
-    """備援：整欄讀取，用編號搜尋（列號對不上、或標題列順序不標準時才會用到）。
-    wanted = {編號: (單字, 列號)}"""
-    if not df_vocab.attrs.get("header_ok", False):          # 標題列順序不標準：退回讀整張表
-        full = load_vocab_full(ws)
-        out = {}
-        for i in range(len(full)):
-            rid = str(full.at[i, 'id']).strip()
-            if (rid in wanted and rid not in out
-                    and str(full.at[i, 'word']).strip().lower() == wanted[rid][0].strip().lower()):
-                out[rid] = {c: str(full.at[i, c]) for c in LONG_COLS}
-        return out
-    ranges = [f"{ID_LETTER}2:{ID_LETTER}", f"{WORD_LETTER}2:{WORD_LETTER}"] + \
-             [f"{LONG_LETTER[c]}2:{LONG_LETTER[c]}" for c in LONG_COLS]
-    res = ws.batch_get(ranges)                               # 一次 API 呼叫，只讀這 5 欄
-    ids_col = [str(r[0]).strip() if r else "" for r in res[0]]
-    words_col = [str(r[0]).strip().lower() if r else "" for r in res[1]]
-    long_cols = [[(r[0] if r else "") for r in vc] for vc in res[2:]]
-    out = {}
-    for i, rid in enumerate(ids_col):
-        if rid in wanted and rid not in out and i < len(words_col) \
-                and words_col[i] == wanted[rid][0].strip().lower():
-            out[rid] = {c: (vals[i] if i < len(vals) else "") for c, vals in zip(LONG_COLS, long_cols)}
-    return out
-
-
 def fetch_long_text(ws, wanted):
     """wanted = {編號字串: (單字, 試算表列號)}。只向雲端讀這幾列的 英文釋義／例句／搭配詞。
-    回傳 (結果 {編號: {欄位: 文字}}, 錯誤訊息)。單字對不上（資料已被改動）的編號不會出現在結果裡。"""
-    if not wanted:
-        return {}, ""
+    回傳 (結果 {編號: {欄位: 文字}}, 錯誤訊息)。編號或單字對不上（資料已被改動）的不會出現在結果裡。"""
+    out = {}
     try:
-        out = {}
-        if df_vocab.attrs.get("header_ok", False):
-            groups = _row_groups([r for _, r in wanted.values()])
-            if 0 < len(groups) <= ROW_FETCH_MAX_RANGES:
-                res = ws.batch_get([f"A{a}:H{b}" for a, b in groups])   # 一次 API 呼叫，只讀需要的那幾列
-                for block in res:
-                    for cells in block:
-                        if len(cells) < 2:
-                            continue
-                        rid = str(cells[0]).strip()
-                        if (rid in wanted and rid not in out
-                                and str(cells[1]).strip().lower() == wanted[rid][0].strip().lower()):
-                            out[rid] = {c: (cells[i] if i < len(cells) else "")
-                                        for c, i in zip(LONG_COLS, LONG_IDX)}
-        missing = {rid: v for rid, v in wanted.items() if rid not in out}
-        if missing:      # 列號對不上（資料被改動過）或這次不適合用列號 → 退回整欄搜尋
-            out.update(_fetch_by_columns(ws, missing))
+        groups = _row_groups([r for _, r in wanted.values()])
+        for k in range(0, len(groups), ROW_FETCH_MAX_RANGES):     # 範圍太多就分批，避免請求網址太長
+            for block in ws.batch_get([f"A{a}:H{b}" for a, b in groups[k:k + ROW_FETCH_MAX_RANGES]]):
+                for cells in block:
+                    if len(cells) < 2:
+                        continue
+                    rid = str(cells[0]).strip()
+                    if (rid in wanted and rid not in out
+                            and str(cells[1]).strip().lower() == wanted[rid][0].strip().lower()):
+                        out[rid] = {c: (cells[i] if i < len(cells) else "")
+                                    for c, i in zip(LONG_COLS, LONG_IDX)}
         return out, ""
     except Exception as e:
         return {}, str(e)
@@ -472,126 +410,16 @@ else:
     st.caption(f"{selected_level}　共 {unique_words} 個單字／{len(df_vocab)} 筆")
 
 # ---------------------------------------------------------------------
-# 簡體 → 繁體（簡易版）。已拿掉「文件、项目」：它們繁簡同形，會誤改正常的繁體字。
+# 解析貼上的單字清單：格式固定為  單字 | 詞性 | 中文釋義 | 英文釋義 | 例句 | 搭配詞
+# （沒填的欄位留空白；只貼單字也可以）
 # ---------------------------------------------------------------------
-S2T_DICT = {
-    "餐厅": "餐廳", "饭厅": "餐廳", "计算机": "電腦", "网络": "網路",
-    "软件": "軟體", "硬件": "硬體", "信息": "資訊", "视频": "影片",
-    "音频": "音訊", "打印": "列印", "鼠标": "滑鼠",
-    "键盘": "鍵盤", "屏幕": "螢幕", "组": "組",
-    "默认": "預設", "词": "詞", "语法": "語法"
-}
-
-
-def simple_s2t_convert(text):
-    if not text:
-        return text
-    for s, t in S2T_DICT.items():
-        text = text.replace(s, t)
-    return text
-
-
-# ---------------------------------------------------------------------
-# 解析輸入（不使用 AI、不連外部字典：沒填的欄位就留空白）
-# ---------------------------------------------------------------------
-# 詞性標記，前面不能緊接英文字母（避免把 "Mon." 之類的字誤判成 n.）
-POS_RE = re.compile(r'(?<![A-Za-z])(v|n|adj|adv|prep|conj|pron|phr|aux)\.', re.IGNORECASE)
-# 整欄只有詞性（例如 n. 或 n./v.），用來判斷「|」格式的第 2、3 欄有沒有放反
-POS_ONLY_RE = re.compile(r'^(?:(?:v|n|adj|adv|prep|conj|pron|phr|aux)\.?[\s,/]*)+$', re.IGNORECASE)
-SEP_CHARS = ';,；，、 '
-
-
-def make_record(word, pos, definition, eng="", sent="", colloc=""):
-    return {
-        "word": word,
-        "phonetic": "",
-        "part_of_speech": pos,
-        "definition": definition,
-        "advanced_sentence": eng,
-        "basic_sentence": sent,
-        "collocations": colloc,
-    }
-
-
-def split_def_by_pos(text):
-    """'v.張貼；n.職位' → [('v.', '張貼'), ('n.', '職位')]，每個詞性各自對應自己的釋義。"""
-    parts = POS_RE.split(text)  # [前面的字, 詞性, 釋義, 詞性, 釋義, ...]
-    lead = parts[0].strip(SEP_CHARS)
-    pairs = []
-    for i in range(1, len(parts), 2):
-        pos = parts[i].lower() + '.'
-        d = parts[i + 1].strip(SEP_CHARS)
-        pairs.append([pos, d])
-    if pairs and lead:
-        pairs[0][1] = f"{lead}；{pairs[0][1]}" if pairs[0][1] else lead
-    return [(p, d) for p, d in pairs]
-
-
-def parse_mixed_vocab_input(word, raw_def="", pasted_pos="", pasted_eng_def="",
-                            pasted_sent="", pasted_colloc=""):
-    w_clean = word.strip()
-    cleaned_def = simple_s2t_convert(raw_def.strip()) if raw_def else ""
-    records = []
-
-    # 1) 使用者直接指定詞性（用 | 格式貼上時）
-    if pasted_pos:
-        pos_list = [p.strip() for p in re.split(r'[,/]', pasted_pos) if p.strip()]
-        for p in pos_list:
-            records.append(make_record(w_clean, simple_s2t_convert(p), cleaned_def,
-                                       pasted_eng_def, pasted_sent, pasted_colloc))
-        if records:
-            return records
-
-    # 2) 釋義裡有 v. n. adj. 等標記 → 一個詞性一筆
-    pairs = split_def_by_pos(cleaned_def)
-    if pairs:
-        for pos, d in pairs:
-            records.append(make_record(w_clean, pos, d, pasted_eng_def, pasted_sent, pasted_colloc))
-        return records
-
-    # 3) 都沒有 → 猜一個詞性
-    fallback_pos = "phr." if " " in w_clean else "n."
-    records.append(make_record(w_clean, fallback_pos, cleaned_def,
-                               pasted_eng_def, pasted_sent, pasted_colloc))
-    return records
-
-
-# 切開「英文單字」與「後面的釋義」：遇到第一個中文字或詞性標記就切
-SPLIT_RE = re.compile(r'[\u4e00-\u9fa5]|(?<![A-Za-z])(?:v|n|adj|adv|prep|conj|pron|phr)\.', re.IGNORECASE)
-
-
-def parse_raw_vocab_line_advanced(line):
-    # 只去掉「1. 」「2) 」「3、」「4 」這種行首編號；像 3D 這種單字不會被吃掉
-    line_clean = re.sub(r'^\d+[\.\)、\s]+', '', line).strip()
-    if not line_clean:
-        return []
-
-    if '|' in line_clean:
-        parts = [p.strip() for p in line_clean.split('|')]
-        parts += [""] * (6 - len(parts))                 # 欄位不足就補空白
-        w, pasted_p, d, pasted_eng, pasted_s, pasted_c = parts[:6]
-        # 順序：單字 | 詞性 | 中文釋義 | 英文釋義 | 例句 | 搭配詞
-        # 保險：如果第 2 欄不像詞性、第 3 欄卻像詞性（舊順序），就自動對調
-        if not POS_ONLY_RE.match(pasted_p) and POS_ONLY_RE.match(d):
-            pasted_p, d = d, pasted_p
-        return parse_mixed_vocab_input(w, raw_def=d, pasted_pos=pasted_p,
-                                       pasted_eng_def=pasted_eng, pasted_sent=pasted_s,
-                                       pasted_colloc=pasted_c)
-
-    match_split = SPLIT_RE.search(line_clean)
-    if not match_split:
-        return [make_record(line_clean, "phr." if " " in line_clean else "n.", "")]
-
-    word_end_idx = match_split.start()
-    word = line_clean[:word_end_idx].strip()
-    rest = line_clean[word_end_idx:].strip()
-
-    if not word:
-        parts = line_clean.split(maxsplit=1)
-        word = parts[0] if len(parts) > 0 else line_clean
-        rest = parts[1] if len(parts) > 1 else ""
-
-    return parse_mixed_vocab_input(word, raw_def=rest)
+def parse_line(line):
+    """一行 → 一筆資料；空行回傳 None。"""
+    parts = [p.strip() for p in re.sub(r'^\d+[\.\)、\s]+', '', line).strip().split('|')] + [""] * 5
+    word, pos, definition, eng, sent, colloc = parts[:6]
+    return {"word": word, "phonetic": "", "part_of_speech": pos or ("phr." if " " in word else "n."),
+            "definition": definition, "advanced_sentence": eng, "basic_sentence": sent,
+            "collocations": colloc} if word else None
 
 
 def ai_prompt_text(level):
@@ -629,11 +457,20 @@ def save_all_vocab_to_sheet(_worksheet, df):
         _worksheet.update(values=rows, range_name="A1", value_input_option="RAW")
         _worksheet.batch_clear([f"A{len(rows) + 1}:J"])
         st.session_state["srs_local"] = {}
-        st.session_state[f"_hdr_ok_{_worksheet.title}"] = True
         drop_caches()
         return True, "成功"
     except Exception as e:
         return False, str(e)
+
+
+def delete_rows(match):
+    """match(df) 回傳要刪除的列（布林）。重新讀最新資料、刪除、編號重排後整張寫回。"""
+    drop_caches()
+    df = load_vocab_full(active_worksheet)
+    df = df[~match(df)].copy()
+    if not df.empty:
+        df['id'] = range(1, len(df) + 1)
+    return save_all_vocab_to_sheet(active_worksheet, df)
 
 
 def get_next_id(df):
@@ -643,16 +480,8 @@ def get_next_id(df):
 
 
 def persist_changes(_worksheet, df_after, new_rows, updated, was_empty):
-    """只有新增 → 只在表格最後面補幾列（快）；
-    有修改舊資料、原本是空表、或雲端標題列順序和程式不同 → 整張覆寫。"""
-    hkey = f"_hdr_ok_{_worksheet.title}"
-    if hkey not in st.session_state:
-        try:
-            header = [str(h).strip().lower() for h in _worksheet.row_values(1)]
-            st.session_state[hkey] = header[:len(HEADERS)] == HEADERS
-        except Exception:
-            st.session_state[hkey] = False
-    if updated or was_empty or not st.session_state[hkey]:
+    """只有新增 → 只在表格最後面補幾列（快）；有修改舊資料、或原本是空表 → 整張覆寫。"""
+    if updated or was_empty:
         return save_all_vocab_to_sheet(_worksheet, df_after)
     if not new_rows:
         return True, "沒有變更"
@@ -822,34 +651,15 @@ def unit_label_fn(df, sem):
 # ---------------------------------------------------------------------
 # 發音：瀏覽器內建語音，不用連網
 # ---------------------------------------------------------------------
-def speech_html(text, justify="flex-start"):
-    t = json.dumps(text).replace("</", "<\\/")
-    return f"""
-<style>
-  body {{ margin:0; display:flex; align-items:center; justify-content:{justify};
-         gap:clamp(5px,2vw,10px); height:100vh; overflow:hidden; background:transparent; }}
-  button {{ background:rgba(255,255,255,.2); border:1px solid rgba(255,255,255,.5);
-           border-radius:6px; cursor:pointer; font-size:clamp(12px,3.4vw,15px); padding:8px clamp(8px,2.6vw,16px);
-           color:#fff; font-weight:600; font-family:'Segoe UI',sans-serif; }}
-  button:hover {{ border-color:#ff4b4b; color:#ff4b4b; }}
-  button:active {{ transform:scale(.95); }}
-  @media (prefers-color-scheme: light) {{
-    button {{ color:#333; border-color:rgba(0,0,0,.2); }}
-  }}
-</style>
-<button onclick="say('en-US')">US 美式</button>
-<button onclick="say('en-GB')">GB 英式</button>
-<button onclick="say('en-AU')">AU 澳洲</button>
-<script>
-  const T = {t};
-  function say(lang) {{
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(T);
-    u.lang = lang; u.rate = 0.9;
-    speechSynthesis.speak(u);
-  }}
-</script>
-"""
+def scope_picker(df, prefix, sem_label, unit_label):
+    """「學期/篇章」＋「單元/課次」兩個下拉選單（顯示筆數）。回傳 (學期, 單元)；選全部時單元為 ALL_UNIT。"""
+    semesters, sem_to_units = get_hierarchical_units(df)
+    c1, c2 = st.columns(2, gap="medium")
+    sem = c1.selectbox(sem_label, [ALL_SEM] + semesters, key=f"{prefix}_sem_{selected_level}",
+                       format_func=sem_label_fn(df))
+    unit = c2.selectbox(unit_label, [ALL_UNIT] + sem_to_units.get(sem, []), key=f"{prefix}_unit_{selected_level}",
+                        format_func=unit_label_fn(df, sem), disabled=(sem == ALL_SEM))
+    return sem, (ALL_UNIT if sem == ALL_SEM else unit)
 
 
 def esc(x):
@@ -881,14 +691,6 @@ def parse_stage(v):
 SRS_FLUSH_EVERY = 3   # 累積幾筆熟練度就在背景自動同步一次到雲端（不會跳提示）
 
 
-def _a1(row, col):
-    letters = ""
-    while col > 0:
-        col, rem = divmod(col - 1, 26)
-        letters = chr(65 + rem) + letters
-    return f"{letters}{row}"
-
-
 def queue_srs_stage(row, new_stage):
     """按「記得／不記得」只先記在本機（瞬間完成），之後再批次寫入雲端。"""
     rid = str(row.get("id", "")).strip()
@@ -899,50 +701,26 @@ def queue_srs_stage(row, new_stage):
 
 
 def flush_srs():
-    """把累積的熟練度一次寫進雲端：不管幾筆，都只用 4 次 API 呼叫（讀標題、讀編號欄、讀單字欄、一次批次寫入）。
-    寫入前會確認編號對應的單字沒變，避免寫錯列。成功回傳 True。"""
+    """把累積的熟練度一次寫進雲端：每個級別 2 次 API 呼叫（讀單字核對、一次批次寫入）。
+    寫入前會確認該列的單字沒變，避免寫錯列。成功回傳 True。"""
     pend = st.session_state.get("srs_pending", {})
-    if not pend:
-        return True
     by_sheet = {}
-    for (sheet, rid), (word, stage, rown) in pend.items():
-        by_sheet.setdefault(sheet, {})[rid] = (word, stage, rown)
+    for (sheet, rid), v in pend.items():
+        by_sheet.setdefault(sheet, {})[rid] = v          # v = (單字, 熟練度, 列號)
+    srs_col = chr(65 + HEADERS.index("srs_stage"))
     all_ok = True
     for sheet, items in by_sheet.items():
         try:
             ws = get_active_worksheet(gs_client, st.secrets["sheet_url"], sheet)
-            if (sheet == current_sheet_name and df_vocab.attrs.get("header_ok", False)
-                    and all(v[2] for v in items.values())):
-                # 快速路徑：已知列號 → 只讀那幾格單字確認沒對錯列，再一次寫入（共 2 次 API 呼叫）
-                rids = list(items)
-                srs_col = chr(65 + HEADERS.index("srs_stage"))
-                res = ws.batch_get([f"{WORD_LETTER}{int(items[r][2])}" for r in rids])
-                data = []
-                for r, cell in zip(rids, res):
-                    word, stage, rown = items[r]
-                    if cell and cell[0] and str(cell[0][0]).strip().lower() == word:
-                        data.append({"range": f"{srs_col}{int(rown)}", "values": [[stage]]})
-                if data:
-                    ws.batch_update(data, value_input_option="RAW")
-                for r in rids:
-                    pend.pop((sheet, r), None)
-                continue
-            hdr = [str(h).strip().lower() for h in ws.row_values(1)]
-            c_id, c_word, c_srs = hdr.index("id") + 1, hdr.index("word") + 1, hdr.index("srs_stage") + 1
-            ids = ws.col_values(c_id)
-            words = ws.col_values(c_word)
-            row_of = {}
-            for i, v in enumerate(ids):
-                row_of.setdefault(str(v).strip(), i + 1)
-            data = []
-            for rid, (word, stage, _r) in items.items():
-                rn = row_of.get(rid)
-                if rn and rn <= len(words) and str(words[rn - 1]).strip().lower() == word:
-                    data.append({"range": _a1(rn, c_srs), "values": [[stage]]})
+            rids = list(items)
+            res = ws.batch_get([f"{WORD_LETTER}{int(items[r][2])}" for r in rids])
+            data = [{"range": f"{srs_col}{int(items[r][2])}", "values": [[items[r][1]]]}
+                    for r, cell in zip(rids, res)
+                    if cell and cell[0] and str(cell[0][0]).strip().lower() == items[r][0]]
             if data:
                 ws.batch_update(data, value_input_option="RAW")
-            for rid in items:          # 寫成功，或確定對不上（資料已變動）→ 都從待寫清單移除
-                pend.pop((sheet, rid), None)
+            for r in rids:          # 寫成功，或確定對不上（資料已變動）→ 都從待寫清單移除
+                pend.pop((sheet, r), None)
         except Exception:
             all_ok = False             # 失敗就留著，下次再試
     return all_ok
@@ -950,11 +728,8 @@ def flush_srs():
 
 def save_row_edits(changes, orig):
     """只更新有修改的那幾列（一次 batch_update），不重寫整張表。
-    回傳 (成功與否, 套用幾筆, 略過幾筆, 錯誤訊息)；成功與否為 None 表示雲端欄位順序不同，要改用整張覆寫。"""
+    回傳 (成功與否, 套用幾筆, 略過幾筆, 錯誤訊息)。"""
     try:
-        hdr = [str(h).strip().lower() for h in active_worksheet.row_values(1)]
-        if hdr[:len(HEADERS)] != HEADERS:
-            return None, 0, 0, ""
         ids = active_worksheet.col_values(1)
         words = active_worksheet.col_values(2)
         row_of = {}
@@ -969,9 +744,7 @@ def save_row_edits(changes, orig):
                 skipped += 1       # 單字空白，或雲端那一列已經不是原本那個字
                 continue
             data.append({"range": f"B{rn}", "values": [[vals['word']]]})
-            data.append({"range": f"D{rn}:H{rn}", "values": [[
-                vals['part_of_speech'], simple_s2t_convert(vals['definition']),
-                vals['advanced_sentence'], vals['basic_sentence'], vals['collocations']]]})
+            data.append({"range": f"D{rn}:H{rn}", "values": [[vals[c] for c in EDIT_COLS[1:]]]})
             applied += 1
         if data:
             active_worksheet.batch_update(data, value_input_option="RAW")
@@ -979,26 +752,6 @@ def save_row_edits(changes, orig):
         return True, applied, skipped, ""
     except Exception as e:
         return False, 0, 0, str(e)
-
-
-def save_row_edits_full(changes):
-    """備援：整張覆寫（雲端欄位順序和程式不同時才會用到）。"""
-    drop_caches()
-    df_current = load_vocab_full(active_worksheet)
-    applied, skipped = 0, 0
-    for rid, vals in changes.items():
-        m = df_current['id'].astype(str) == rid
-        if not vals['word'] or not m.any():
-            skipped += 1
-            continue
-        for c in EDIT_COLS:
-            df_current.loc[m, c] = simple_s2t_convert(vals[c]) if c == 'definition' else vals[c]
-        applied += 1
-    if applied:
-        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
-        if not ok:
-            return False, 0, 0, msg
-    return True, applied, skipped, ""
 
 
 def _num(v):
@@ -1055,7 +808,7 @@ def render_batch_preview():
 
     wrong_sheet = pb["sheet"] != current_sheet_name
     if wrong_sheet:
-        st.warning(f"這批資料是要匯入「{pb['sheet']}」的，目前側邊欄選的是「{current_sheet_name}」。請切回該級別再確認，或按取消。")
+        st.warning(f"這批資料是要匯入「{pb['sheet']}」的，目前選的級別是「{current_sheet_name}」。請切回該級別再確認，或按取消。")
 
     edited = st.data_editor(
         pd.DataFrame(pb["rows"]).astype({c: "string" for c in EDIT_COLS}),
@@ -1115,23 +868,15 @@ if main_menu == "新增單字":
         render_batch_preview()
     else:
         _c1, _c2 = st.columns(2)
-        _sem_fmt = sem_label_fn(df_vocab)
         with _c1:
-            if selected_level == "國中部":
-                semester = st.selectbox("學期：", ["國一上", "國一下", "國二上", "國二下", "國三上", "國三下"], format_func=_sem_fmt)
-            elif selected_level == "高中部":
-                semester = st.selectbox("學期：", ["高一上", "高一下", "高二上", "高二下", "高三上", "高三下"], format_func=_sem_fmt)
-            else:
-                semester = st.selectbox("主題篇章：", ["旅館篇", "旅遊篇", "交通篇", "公司篇", "醫療篇"], format_func=_sem_fmt)
+            semester = st.selectbox("主題篇章：" if selected_level == "TOEIC" else "學期：",
+                                    {"國中部": SEM_ORDER[:6], "高中部": SEM_ORDER[6:12]}.get(selected_level, SEM_ORDER[12:]),
+                                    format_func=sem_label_fn(df_vocab))
         with _c2:
-            if selected_level == "TOEIC":
-                _lessons = ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課"]
-            else:
-                _lessons = ["第一課", "第二課", "第三課", "第四課", "第五課", "第六課", "第七課", "第八課", "第九課", "第十課"]
-            unit = st.selectbox("課次：", _lessons, format_func=unit_label_fn(df_vocab, semester))
-
+            unit = st.selectbox("課次：", [f"第{c}課" for c in "一二三四五六七八九十"[:8 if selected_level == "TOEIC" else 10]],
+                                format_func=unit_label_fn(df_vocab, semester))
         current_unit_tag = f"{semester} > {unit}"
-        st.markdown("---")
+        st.caption(f"匯入目標：{selected_level}　{current_unit_tag}")
 
         # 匯入成功後清空貼上框、取消預覽後還原貼上內容（必須在 text_area 建立之前處理）
         if st.session_state.pop("clear_paste", False):
@@ -1139,94 +884,32 @@ if main_menu == "新增單字":
         if "paste_restore" in st.session_state:
             st.session_state["paste_box"] = st.session_state.pop("paste_restore")
 
-        col_input1, col_input2 = st.columns(2, gap="large")
-        with col_input1:
-            st.subheader("📝 單筆快速建檔")
-            with st.form("single_add_form", clear_on_submit=True):
-                _f1, _f2 = st.columns(2)
-                single_word = _f1.text_input("英文單字：", placeholder="例如：resilient")
-                single_def = _f2.text_input("中文釋義（選填）：", placeholder="例如：v.張貼；n.職位")
-                with st.expander("更多選填欄位"):
-                    single_eng = st.text_input("英文釋義：", placeholder="例如：able to recover quickly")
-                    single_sent = st.text_input("真實例句：", placeholder="例如：Sentence here")
-                    single_colloc = st.text_input("搭配詞：", placeholder="例如：Collocation here")
-                submitted_single = st.form_submit_button("瞬間寫入雲端", type="primary", **W_FORM)
+        with st.expander("複製這段給 AI，再把結果貼到下面"):
+            st.caption("點程式碼框右上角的複製鈕 → 貼給任何 AI → 把單字清單貼在最後 → 把 AI 的回答整段貼回下面的框。")
+            st.code(ai_prompt_text(selected_level), language=None)
 
-            if submitted_single:
-                if single_word.strip():
-                    records = parse_mixed_vocab_input(
-                        single_word, raw_def=single_def, pasted_eng_def=single_eng,
-                        pasted_sent=single_sent, pasted_colloc=single_colloc
-                    )
-                    # 寫入前重讀一次最新資料，避免蓋掉別處的修改
-                    drop_caches()
-                    df_current = load_vocab_full(active_worksheet)
-                    was_empty = df_current.empty
-
-                    df_current, new_rows_list, any_updated, stats = merge_records(df_current, records, current_unit_tag)
-
-                    ok, msg = persist_changes(active_worksheet, df_current, new_rows_list, any_updated, was_empty)
-                    if not ok:
-                        st.error(f"寫入失敗：{msg}")
-                        st.stop()
-                    st.session_state["_flash"] = f"{single_word.strip()}：{result_text(stats)}"
-                    st.rerun()
-                else:
-                    st.warning("請先輸入英文單字")
-
-        with col_input2:
-            st.subheader("📋 智慧多格式快速貼上匯入")
-            st.caption(f"匯入目標：{selected_level}　{current_unit_tag}")
-
-            with st.expander("懶得整理？複製這段給 AI，再把結果貼到下面"):
-                st.caption("點程式碼框右上角的複製鈕 → 貼給任何 AI → 把單字清單貼在最後 → 把 AI 的回答整段貼回下面的框。")
-                st.code(ai_prompt_text(selected_level), language=None)
-
-            pasted_text = st.text_area(
-                "貼上完整單字清單", key="paste_box",
-                placeholder="source | n. | 來源 | A place... | Sentence | Collocation\n或：resilient 有彈性的\n或只貼單字：resilient",
-                height=140, label_visibility="collapsed"
-            )
-
-            valid_lines = [l for l in pasted_text.strip().split('\n') if l.strip()] if pasted_text else []
-            total_preview_count = len(valid_lines)
-            if total_preview_count > 0:
-                st.info(f"偵測到 {total_preview_count} 個項目，按「解析並預覽」檢查後再寫入。")
+        pasted_text = st.text_area(
+            "貼上完整單字清單", key="paste_box", height=160, label_visibility="collapsed",
+            placeholder="source | n. | 來源 | A place... | Sentence | Collocation\n只貼單字也可以：resilient"
+        )
+        valid_lines = [l for l in (pasted_text or "").split("\n") if l.strip()]
+        if valid_lines:
+            st.info(f"偵測到 {len(valid_lines)} 個項目，按「解析並預覽」檢查後再寫入。")
+        if st.button("解析並預覽", **W_BTN):
+            records = [r for r in map(parse_line, valid_lines) if r]
+            if records:
+                start_batch_preview(records, current_unit_tag, pasted_text)
             else:
-                pass
-
-            if st.button("解析並預覽", **W_BTN):
-                if valid_lines:
-                    records_all = []
-                    for line in valid_lines:
-                        records_all.extend(parse_raw_vocab_line_advanced(line))
-                    if records_all:
-                        start_batch_preview(records_all, current_unit_tag, pasted_text)
-                    else:
-                        st.warning("沒有解析到任何單字，請檢查格式")
-                else:
-                    st.warning("請先貼上單字清單")
+                st.warning("請先貼上單字清單")
 
 # =====================================================================
 # 字彙管理
 # =====================================================================
 elif main_menu == "字彙管理":
     if df_vocab.empty:
-        st.info("目前雲端尚無單字，請至側邊欄新增！")
+        st.info("目前雲端尚無單字，請到上方「新增單字」新增！")
     else:
-        semesters, sem_to_units = get_hierarchical_units(df_vocab)
-        col_sel1, col_sel2 = st.columns(2, gap="medium")
-        with col_sel1:
-            selected_sem = st.selectbox("1. 選擇學期/篇章：", [ALL_SEM] + semesters,
-                                        format_func=sem_label_fn(df_vocab))
-        with col_sel2:
-            if selected_sem == ALL_SEM:
-                selected_unit = ALL_UNIT
-                st.selectbox("2. 選擇單元/課次：", [ALL_UNIT], disabled=True,
-                             format_func=unit_label_fn(df_vocab, ALL_SEM))
-            else:
-                selected_unit = st.selectbox("2. 選擇單元/課次：", [ALL_UNIT] + sem_to_units.get(selected_sem, []),
-                                             format_func=unit_label_fn(df_vocab, selected_sem))
+        selected_sem, selected_unit = scope_picker(df_vocab, "mng", "1. 選擇學期/篇章：", "2. 選擇單元/課次：")
 
         filtered_df = scoped(df_vocab, selected_sem, selected_unit)
 
@@ -1289,12 +972,7 @@ elif main_menu == "字彙管理":
                                    "如果要保留，請取消其中一筆的勾選。")
                     if _del_ids and st.button(f"刪除勾選的 {len(_del_ids)} 筆", type="primary", **W_BTN, key="dup_del_btn"):
                         with st.spinner("刪除中…"):
-                            drop_caches()
-                            df_current = load_vocab_full(active_worksheet)
-                            df_current = df_current[~df_current['id'].astype(str).isin(_del_ids)].copy()
-                            if not df_current.empty:
-                                df_current['id'] = range(1, len(df_current) + 1)
-                            ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                            ok, msg = delete_rows(lambda d: d['id'].astype(str).isin(_del_ids))
                         if not ok:
                             st.error(f"刪除失敗：{msg}")
                             st.stop()
@@ -1319,12 +997,7 @@ elif main_menu == "字彙管理":
                                                    key=f"confirm_del_unit_{ctr}")
                     if st.button("刪除整課", type="primary", **W_BTN, key="del_unit_btn",
                                  disabled=not confirm_unit_del):
-                        drop_caches()
-                        df_current = load_vocab_full(active_worksheet)
-                        df_current = df_current[df_current['unit_tag'] != target_tag].copy()
-                        if not df_current.empty:
-                            df_current['id'] = range(1, len(df_current) + 1)
-                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                        ok, msg = delete_rows(lambda d: d['unit_tag'] == target_tag)
                         if not ok:
                             st.error(f"刪除失敗：{msg}")
                             st.stop()
@@ -1377,10 +1050,7 @@ elif main_menu == "字彙管理":
                     st.info("沒有偵測到任何修改。")
                 else:
                     with st.spinner("儲存中…"):
-                        res = save_row_edits(changes, orig)
-                        if res[0] is None:     # 雲端欄位順序和程式不同 → 退回整張覆寫
-                            res = save_row_edits_full(changes)
-                    ok, applied, skipped, msg = res
+                        ok, applied, skipped, msg = save_row_edits(changes, orig)
                     if not ok:
                         st.error(f"儲存失敗：{msg}")
                         st.stop()
@@ -1393,12 +1063,7 @@ elif main_menu == "字彙管理":
             if _row_del_ids:
                 if b_del.button(f"刪除勾選的 {len(_row_del_ids)} 筆", **W_BTN, key="row_del_btn"):
                     with st.spinner("刪除中…"):
-                        drop_caches()
-                        df_current = load_vocab_full(active_worksheet)
-                        df_current = df_current[~df_current['id'].astype(str).isin(_row_del_ids)].copy()
-                        if not df_current.empty:
-                            df_current['id'] = range(1, len(df_current) + 1)
-                        ok, msg = save_all_vocab_to_sheet(active_worksheet, df_current)
+                        ok, msg = delete_rows(lambda d: d['id'].astype(str).isin(_row_del_ids))
                     if not ok:
                         st.error(f"刪除失敗：{msg}")
                         st.stop()
@@ -1430,23 +1095,7 @@ elif main_menu == "背誦單字":
     if df_vocab.empty:
         st.warning("目前雲端沒有單字！")
     else:
-        semesters, sem_to_units = get_hierarchical_units(df_vocab)
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            sel_sem_flash = st.selectbox("選擇學期/篇章：", [ALL_SEM] + semesters,
-                                         key=f"flash_sem_select_{selected_level}",
-                                         format_func=sem_label_fn(df_vocab))
-        with col_f2:
-            if sel_sem_flash == ALL_SEM:
-                sel_unit_flash = ALL_UNIT
-                st.selectbox("選擇單元/課次：", [ALL_UNIT], disabled=True,
-                             key=f"flash_unit_disabled_{selected_level}",
-                             format_func=unit_label_fn(df_vocab, ALL_SEM))
-            else:
-                sel_unit_flash = st.selectbox("選擇單元/課次：",
-                                              [ALL_UNIT] + sem_to_units.get(sel_sem_flash, []),
-                                              key=f"flash_unit_select_{selected_level}",
-                                              format_func=unit_label_fn(df_vocab, sel_sem_flash))
+        sel_sem_flash, sel_unit_flash = scope_picker(df_vocab, "flash", "選擇學期/篇章：", "選擇單元/課次：")
 
         col_o1, col_o2 = st.columns(2)
         with col_o1:
@@ -1465,7 +1114,6 @@ elif main_menu == "背誦單字":
                 st.session_state.flash_queue = build_flash_queue(df_filtered_flash, order_mode)
                 st.session_state.flashcard_index = 0
                 st.session_state.flash_revealed = False
-                st.session_state.flash_long = False
 
             queue = st.session_state.flash_queue
             total_count = len(queue)
@@ -1504,7 +1152,7 @@ elif main_menu == "背誦單字":
                     unsafe_allow_html=True
                 )
 
-                speech_buttons(row['word'], "center", 50)
+                speech_buttons(row['word'])
 
                 st.markdown("---")
                 if show_answer:
@@ -1545,23 +1193,7 @@ elif main_menu == "我是拼字王":
         game_mode = st.radio("選擇遊戲模式：", ["標準模式 (中文提示 + 發音)", "進階挑戰模式 (聽英文解釋拼單字)"], horizontal=True)
         is_advanced = "進階" in game_mode
         st.markdown("---")
-        semesters, sem_to_units = get_hierarchical_units(df_vocab)
-        col_g1, col_g2 = st.columns(2)
-        with col_g1:
-            sel_sem_game = st.selectbox("選擇學期/篇章範圍：", [ALL_SEM] + semesters,
-                                        key=f"game_sem_select_{selected_level}",
-                                        format_func=sem_label_fn(df_vocab))
-        with col_g2:
-            if sel_sem_game == ALL_SEM:
-                sel_unit_game = ALL_UNIT
-                st.selectbox("選擇單元/課次範圍：", [ALL_UNIT], disabled=True,
-                             key=f"game_unit_disabled_{selected_level}",
-                             format_func=unit_label_fn(df_vocab, ALL_SEM))
-            else:
-                sel_unit_game = st.selectbox("選擇單元/課次範圍：",
-                                             [ALL_UNIT] + sem_to_units.get(sel_sem_game, []),
-                                             key=f"game_unit_select_{selected_level}",
-                                             format_func=unit_label_fn(df_vocab, sel_sem_game))
+        sel_sem_game, sel_unit_game = scope_picker(df_vocab, "game", "選擇學期/篇章範圍：", "選擇單元/課次範圍：")
 
         # 級別、模式、範圍、資料筆數任何一個變動，才重新篩選與出題（答題過程中的每次操作都不再重算）
         game_key = f"{selected_level}|{game_mode}|{sel_sem_game}|{sel_unit_game}|{len(df_vocab)}"
@@ -1644,7 +1276,7 @@ elif main_menu == "我是拼字王":
 
                     if not is_advanced:
                         st.markdown(f"<div class='fc-def'>{esc(target_def)}</div>", unsafe_allow_html=True)
-                        speech_buttons(target_word, "center", 45)
+                        speech_buttons(target_word)
                     else:
                         # 把釋義裡的答案遮起來（顯示成 ____，唸出來變成 blank），避免直接洩漏答案
                         st.caption("聽英文解釋，拼出單字")
@@ -1652,7 +1284,7 @@ elif main_menu == "我是拼字王":
                             f"<div class='fc-line' style='text-align:center'>{esc(mask_word(target_adv_def, target_word))}</div>",
                             unsafe_allow_html=True
                         )
-                        speech_buttons(mask_word(target_adv_def, target_word, repl="blank"), "center", 45)
+                        speech_buttons(mask_word(target_adv_def, target_word, repl="blank"))
 
                     st.markdown(f"<div class='fc-hint'>{esc(hint_masked)}</div>", unsafe_allow_html=True)
 
