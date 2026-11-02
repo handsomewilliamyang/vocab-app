@@ -205,6 +205,11 @@ if st.session_state.get("_warn"):
 ALL_SEM = "全部單字"
 ALL_UNIT = "全部單元"
 
+# 課次：每個級別（國中部／高中部／TOEIC）都是 第一課 ～ 第十五課
+CN_NUMS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五"]
+LESSONS = [f"第{c}課" for c in CN_NUMS]
+LESSON_NO = {name: i + 1 for i, name in enumerate(LESSONS)}
+
 # 欄位順序固定放這裡，存檔時共用
 HEADERS = ['id', 'word', 'phonetic', 'part_of_speech', 'definition',
            'advanced_sentence', 'basic_sentence', 'collocations', 'unit_tag', 'srs_stage']
@@ -576,13 +581,13 @@ def clean_rows(df):
 # 學期 / 單元
 # ---------------------------------------------------------------------
 def parse_lesson_number(unit_str):
-    order_map = {
-        '第一課': 1, '第二課': 2, '第三課': 3, '第四課': 4, '第五課': 5,
-        '第六課': 6, '第七課': 7, '第八課': 8, '第九課': 9, '第十課': 10,
-        '上': 1, '中': 2, '下': 3
-    }
-    for k, v in order_map.items():
-        if k in unit_str:
+    """課次排序用：第一課=1 … 第十五課=15；其他舊式寫法（上／中／下）照舊；認不得的排最後。"""
+    s = str(unit_str).strip()
+    for name in sorted(LESSON_NO, key=len, reverse=True):      # 先比長的，避免「第十一課」被當成別的課
+        if name in s:
+            return LESSON_NO[name]
+    for k, v in (('上', 1), ('中', 2), ('下', 3)):
+        if k in s:
             return v
     return 99
 
@@ -874,8 +879,7 @@ if main_menu == "新增單字":
                                     {"國中部": SEM_ORDER[:6], "高中部": SEM_ORDER[6:12]}.get(selected_level, SEM_ORDER[12:]),
                                     format_func=sem_label_fn(df_vocab))
         with _c2:
-            unit = st.selectbox("課次：", [f"第{c}課" for c in "一二三四五六七八九十"[:8 if selected_level == "TOEIC" else 10]],
-                                format_func=unit_label_fn(df_vocab, semester))
+            unit = st.selectbox("課次：", LESSONS, format_func=unit_label_fn(df_vocab, semester))
         current_unit_tag = f"{semester} > {unit}"
         st.caption(f"匯入目標：{selected_level}　{current_unit_tag}")
 
