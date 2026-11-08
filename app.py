@@ -871,25 +871,44 @@ if _pend and ((main_menu != "背誦單字" and not _in_game) or any(k[0] != curr
         st.session_state["_warn"] = "熟練度同步失敗（網路或 Google 限速），資料還留在本機，回到「背誦單字」頁繼續作答時會自動重試。"
 
 # ---------------------------------------------------------------------
-# 專家模式（完整版，已含「自動組提示詞」）
-# 整段從頭貼到尾，貼在原檔這一行的正上方（那條「# 新增單字」註解線的上面）：
-#     if main_menu == "新增單字":
-# 貼上時不需要任何縮排調整，最左邊的 import / def 都是靠左的。
+# 專家模式：國中部／TOEIC = 克漏字（4 選 1，含文法與時態）；高中部 = 文意選填（A、B、C…一次列出）
+#   文章存在試算表的分頁「{級別}_文章」（第一次使用時自動建立），欄位：id, title, text
+#   單字題：[[decided]]                       → 干擾選項自動從單字庫挑（同詞性優先）
+#   文法／時態題：[[went|go|going|gone]]      → 第一個是正確答案，4 個選項都由文章裡自己寫
 # ---------------------------------------------------------------------
 BLANK_RE = re.compile(r'\[\[(.+?)\]\]')
+LETTERS = [chr(65 + i) for i in range(26)]
 
 
 def article_prompt_text(level, words, n_blank, n_chars):
-    return f"""請幫我寫一篇英文短文，給台灣「{level}」程度的學生做「文意選填」和「克漏字」練習。
+    if level == "高中部":
+        return f"""請幫我寫一篇英文短文，給台灣「高中部」程度的學生做「文意選填」練習。
 
 要求：
 1. 長度約 {n_chars} 字，內容自然、通順、像母語者寫的，主題日常或貼近生活。
 2. 從下方單字清單中選 {n_blank} 個放進文章，每個單字只用一次，用法必須符合清單上的詞性與中文意思。
-3. 被選中的單字，在文章裡要用兩層中括號包起來，例如：I [[decided]] to visit her.
+3. 被選中的單字用兩層中括號包起來，例如：I [[decided]] to visit her.
 4. 括號裡必須是單字「在文章中實際出現的樣子」（含 -ed、-ing、複數等變化），括號外不要再重複這個字。
-5. 挖空的位置要有足夠的上下文線索，讓答案是唯一合理的；不要把兩個空格放得太近。
+5. 每個空格都要有足夠的上下文線索，讓答案是唯一合理的；空格不要放得太近。
 6. 只輸出文章本身：不要標題、不要編號、不要粗體、不要說明、不要程式碼區塊，也不要在文章後面附答案。
 7. 除了 [[ ]] 之外，不要使用其他括號標記。
+
+單字清單（單字 | 詞性 | 中文意思）：
+{words}"""
+    n_vocab = max(1, round(n_blank * 0.6))
+    n_gram = max(1, n_blank - n_vocab)
+    topic = "主題以職場、商務情境為主（例如電子郵件、公告、備忘錄）。" if level == "TOEIC" else "主題日常或貼近生活。"
+    return f"""請幫我寫一篇英文短文，給台灣「{level}」程度的學生做「克漏字」練習（每格四選一）。
+
+要求：
+1. 長度約 {n_chars} 字，內容自然、通順、像母語者寫的，{topic}
+2. 全文共 {n_vocab + n_gram} 個空格，分成兩種：
+   (A) 單字題 {n_vocab} 個：從下方單字清單選字，每個字只用一次，寫成 [[單字]]，括號裡是它在文章中實際出現的樣子（含 -ed、-ing、複數等變化）。
+   (B) 文法／時態題 {n_gram} 個：考時態（過去式、現在完成式、未來式、進行式等）、主詞動詞一致、不定詞與動名詞、被動語態、比較級、連接詞、介系詞等，難度符合「{level}」。寫成 [[正確答案|錯誤選項1|錯誤選項2|錯誤選項3]]，共 4 個選項，第一個一定是正確答案。錯誤選項要是同一個字的其他變化或常見的混淆用法（例如 [[went|go|going|gone]]），而且依上下文只有正確答案成立。
+3. 兩種空格要平均穿插在全文，不要集中在某一段。
+4. 每個空格都要有足夠的上下文線索（時間副詞、主詞、前後文），讓答案是唯一合理的；空格不要放得太近。
+5. 只輸出文章本身：不要標題、不要編號、不要粗體、不要說明、不要程式碼區塊，也不要在文章後面附答案。
+6. 除了 [[ ]] 與選項之間的 | 之外，不要使用其他括號或 | 符號。
 
 單字清單（單字 | 詞性 | 中文意思）：
 {words}"""
@@ -907,15 +926,17 @@ def _load_passages(ws, cache_key):
     return st.session_state[cache_key]
 
 
-def _distractors(rng, answer, pool_by_pos, pool_all, pos_of, k):
+def _distractors(rng, answer, pool_by_pos, pool_all, pos_of, k, exclude=()):
     """挑 k 個干擾選項：優先同詞性，不夠就從全部單字補。"""
     a = answer.strip().lower()
-    same = [w for w in pool_by_pos.get(pos_of.get(a, ""), []) if w.lower() != a]
-    cand = same if len(same) >= k else [w for w in pool_all if w.lower() != a]
+    ex = {e.strip().lower() for e in exclude} | {a}
+    same = [w for w in pool_by_pos.get(pos_of.get(a, ""), []) if w.lower() not in ex]
+    cand = same if len(same) >= k else [w for w in pool_all if w.lower() not in ex]
     return rng.sample(cand, min(k, len(cand)))
 
 
 def expert_mode():
+    kind = "文意選填" if selected_level == "高中部" else "克漏字"
     ck = f"_passages_{selected_level}"
     try:
         ws = get_active_worksheet(gs_client, st.secrets["sheet_url"], f"{selected_level}_文章")
@@ -923,6 +944,9 @@ def expert_mode():
     except Exception as e:
         st.error(f"讀取文章失敗：{e}")
         return
+
+    st.caption(f"{selected_level}　題型：{kind}" +
+               ("（字庫 A、B、C… 一次列出，選字母作答）" if kind == "文意選填" else "（每格 4 選 1，含文法與時態）"))
 
     with st.expander("➕ 新增文章"):
         _sem, _unit = scope_picker(df_vocab, "exp", "選擇學期/篇章：", "選擇單元/課次：")
@@ -941,11 +965,15 @@ def expert_mode():
             st.code(article_prompt_text(selected_level, "\n".join(_lines), _nb, _nc), language=None)
         st.markdown("---")
         t = st.text_input("標題", key="ex_title")
-        x = st.text_area("文章（要挖空的單字用 [[ ]] 包起來）", key="ex_text", height=200,
-                         placeholder="Last week I [[decided]] to visit my grandmother. ...")
+        x = st.text_area("文章（單字題用 [[單字]]；文法題用 [[答案|選項2|選項3|選項4]]）", key="ex_text", height=200,
+                         placeholder="Last week I [[decided]] to visit my grandmother. She [[was|is|were|be]] happy. ...")
         if st.button("儲存文章", **W_BTN, key="ex_save"):
-            if len(BLANK_RE.findall(x)) < 2:
-                st.warning("至少要用 [[ ]] 標出 2 個要挖空的單字。")
+            inner = BLANK_RE.findall(x)
+            bad = [s for s in inner if '|' in s and len({o.strip() for o in s.split('|') if o.strip()}) != 4]
+            if len(inner) < 2:
+                st.warning("至少要用 [[ ]] 標出 2 個空格。")
+            elif bad and kind == "克漏字":
+                st.warning(f"有 {len(bad)} 個文法題的選項不是剛好 4 個不重複的選項，例如：[[{bad[0]}]]")
             else:
                 try:
                     ids = [int(p["id"]) for p in passages if str(p["id"]).isdigit()]
@@ -960,7 +988,6 @@ def expert_mode():
         st.info("還沒有文章，請先在上方「新增文章」貼一篇。")
         return
 
-    kind = st.radio("題型：", ["文意選填", "克漏字"], horizontal=True, key="ex_kind")
     idx = st.selectbox(
         "選擇文章", range(len(passages)), key=f"ex_pick_{selected_level}",
         format_func=lambda i: f"{passages[i]['title'] or '（無標題）'}（{len(BLANK_RE.findall(passages[i]['text']))} 格）")
@@ -969,7 +996,9 @@ def expert_mode():
     nonce = st.session_state.get("ex_nonce", 0)
 
     parts = BLANK_RE.split(p["text"])
-    answers = [a.strip() for a in parts[1::2]]
+    inner = parts[1::2]
+    answers = [s.split('|')[0].strip() for s in inner]
+    customs = [[o.strip() for o in s.split('|')[1:] if o.strip()] for s in inner]
 
     # 干擾選項的來源：這個級別已有的單字（依詞性分組，只算一次）
     pool_all, pool_by_pos, pos_of = [], {}, {}
@@ -983,17 +1012,25 @@ def expert_mode():
     # 用固定種子：同一篇、同一次挑戰，選項不會因為重跑而亂掉
     if kind == "文意選填":
         rng = random.Random(f"{pid}-bank-{nonce}")
-        bank = list(dict.fromkeys(answers))
-        extra = [w for w in rng.sample(pool_all, min(len(pool_all), 3)) if w.lower() not in {b.lower() for b in bank}][:2]
-        bank = bank + extra
-        rng.shuffle(bank)
-        opts_of = [bank] * len(answers)
-        st.caption("字庫（每個字最多用一次）：" + "　/　".join(bank))
+        extra = []
+        for a in rng.sample(answers, len(answers)):
+            if len(extra) >= 2:
+                break
+            extra += _distractors(rng, a, pool_by_pos, pool_all, pos_of, 1, exclude=answers + extra)
+        bank = sorted(answers + extra, key=str.lower)          # 題數 + 2 個選項，照字母排序
+        opts_of = [LETTERS[:len(bank)]] * len(answers)
+        with st.container(border=True):
+            gc = st.columns(3)
+            for i, w in enumerate(bank):
+                gc[i % 3].markdown(f"**{LETTERS[i]}.**　{esc(w)}", unsafe_allow_html=True)
     else:
         opts_of = []
         for i, a in enumerate(answers):
             rng = random.Random(f"{pid}-{i}-{nonce}")
-            o = [a] + _distractors(rng, a, pool_by_pos, pool_all, pos_of, 3)
+            if customs[i]:
+                o = list(dict.fromkeys([a] + customs[i]))[:4]
+            else:
+                o = [a] + _distractors(rng, a, pool_by_pos, pool_all, pos_of, 3)
             rng.shuffle(o)
             opts_of.append(o)
 
@@ -1010,13 +1047,21 @@ def expert_mode():
 
     if sub:
         chosen = [x_ for x_ in picks if x_ != "（選擇）"]
-        if kind == "文意選填" and len(chosen) != len(set(chosen)):
-            st.warning("有字庫的單字被重複使用了，再檢查一下。")
-        right = [norm_answer(pk) == norm_answer(a) for pk, a in zip(picks, answers)]
+        if kind == "文意選填":
+            if len(chosen) != len(set(chosen)):
+                st.warning("有字母被重複使用了，再檢查一下。")
+            given = [bank[LETTERS.index(pk)] if pk in LETTERS else "" for pk in picks]
+            right = [norm_answer(g) == norm_answer(a) for g, a in zip(given, answers)]
+        else:
+            given = [pk if pk != "（選擇）" else "" for pk in picks]
+            right = [norm_answer(g) == norm_answer(a) for g, a in zip(given, answers)]
         st.success(f"答對 {sum(right)} / {len(answers)} 格")
-        for i, (ok, pk, a) in enumerate(zip(right, picks, answers)):
+        for i, (ok, g, a) in enumerate(zip(right, given, answers)):
             if not ok:
-                st.markdown(f"- （{i + 1}）你選：`{pk}`　正確：`{a}`")
+                if kind == "文意選填":
+                    st.markdown(f"- （{i + 1}）你選：`{picks[i]}`　正確：`{LETTERS[bank.index(a)]}`（{a}）")
+                else:
+                    st.markdown(f"- （{i + 1}）你選：`{g or '未作答'}`　正確：`{a}`")
         if st.button("再做一次（重新洗牌）", **W_BTN, key="ex_again"):
             st.session_state["ex_nonce"] = nonce + 1
             st.rerun()
