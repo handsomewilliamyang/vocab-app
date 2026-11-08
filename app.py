@@ -179,7 +179,7 @@ if APP_PASSWORD and not st.session_state.get("_authed"):
 
 st.title("📚 我愛背單字")
 
-MENUS = ["背誦單字", "我是拼字王", "新增單字", "字彙管理"]
+MENUS = ["背誦單字", "我是拼字王", "新增單字", "字彙管理", "文章管理"]
 LEVELS = ["國中部", "高中部", "TOEIC"]
 
 
@@ -875,6 +875,7 @@ if _pend and ((main_menu != "背誦單字" and not _in_game) or any(k[0] != curr
 #   文章存在試算表的分頁「{級別}_文章」（第一次使用時自動建立），欄位：id, title, text
 #   單字題：[[decided]]                       → 干擾選項自動從單字庫挑（同詞性優先）
 #   文法／時態題：[[went|go|going|gone]]      → 第一個是正確答案，4 個選項都由文章裡自己寫
+#   新增與刪除文章在上方選單「文章管理」；「我是拼字王 → 專家模式」只負責作答。
 # ---------------------------------------------------------------------
 BLANK_RE = re.compile(r'\[\[(.+?)\]\]')
 LETTERS = [chr(65 + i) for i in range(26)]
@@ -931,6 +932,21 @@ def _load_passages(ws, cache_key):
     return st.session_state[cache_key]
 
 
+def delete_passages(ws, texts):
+    """刪除內容在 texts 裡的文章：重新讀最新資料、由下往上刪（連續的列一次刪），回傳刪了幾列。"""
+    vals = ws.get_all_values()
+    rows = sorted({n + 1 for n, r in enumerate(vals) if any(c in texts for c in r if c)}, reverse=True)
+    groups = []
+    for rn in rows:
+        if groups and groups[-1][0] - rn == 1:
+            groups[-1][0] = rn
+        else:
+            groups.append([rn, rn])
+    for a, b in groups:
+        ws.delete_rows(a, b)
+    return len(rows)
+
+
 def _distractors(rng, answer, pool_by_pos, pool_all, pos_of, k, exclude=()):
     """挑 k 個干擾選項：優先同詞性，不夠就從全部單字補。"""
     a = answer.strip().lower()
@@ -940,7 +956,7 @@ def _distractors(rng, answer, pool_by_pos, pool_all, pos_of, k, exclude=()):
     return rng.sample(cand, min(k, len(cand)))
 
 
-def expert_mode():
+def article_manager():
     kind = "文意選填" if selected_level == "高中部" else "克漏字"
     ck = f"_passages_{selected_level}"
     try:
@@ -950,10 +966,9 @@ def expert_mode():
         st.error(f"讀取文章失敗：{e}")
         return
 
-    st.caption(f"{selected_level}　題型：{kind}" +
-               ("（字庫 A、B、C… 一次列出，選字母作答）" if kind == "文意選填" else "（每格 4 選 1，含文法與時態）"))
+    st.caption(f"{selected_level}　題型：{kind}　已有 {len(passages)} 篇文章")
 
-    with st.expander("➕ 新增文章"):
+    with st.expander("➕ 新增文章", expanded=not passages):
         _sem, _unit = scope_picker(df_vocab, "exp", "選擇學期/篇章：", "選擇單元/課次：")
         _sub = scoped(df_vocab, _sem, _unit)
         _n1, _n2 = st.columns(2)
@@ -989,6 +1004,7 @@ def expert_mode():
                 except Exception as e:
                     st.error(f"儲存失敗：{e}")
 
+    st.markdown("---")
     if not passages:
         st.info("還沒有文章，請先在上方「新增文章」貼一篇。")
         raw = st.session_state.get(ck + "_raw", [])
@@ -998,8 +1014,59 @@ def expert_mode():
                 st.code(" | ".join(c[:40] for c in r) or "（空白列）", language=None)
         return
 
+    with st.expander("文章列表（勾選最左邊「刪除」欄，再按下方按鈕就會刪除）", expanded=True):
+        tbl = pd.DataFrame({
+            "delete": [False] * len(passages),
+            "title": [p["title"] or "（無標題）" for p in passages],
+            "n": [str(len(BLANK_RE.findall(p["text"]))) for p in passages],
+            "preview": [re.sub(r"\s+", " ", BLANK_RE.sub("＿＿", p["text"]))[:60] for p in passages],
+        })
+        ctr = st.session_state.get("pdel_ctr", 0)
+        ed = st.data_editor(
+            tbl, key=f"pdel_{selected_level}_{ctr}_{len(passages)}", num_rows="fixed", hide_index=True,
+            disabled=["title", "n", "preview"], **W_EDIT,
+            column_config={
+                "delete": st.column_config.CheckboxColumn("刪除", width="small"),
+                "title": st.column_config.TextColumn("標題", width="medium"),
+                "n": st.column_config.TextColumn("格數", width="small"),
+                "preview": st.column_config.TextColumn("內容預覽", width="large"),
+            },
+        )
+        picked = [i for i, v in enumerate(ed["delete"].fillna(False).astype(bool)) if v]
+        if picked and st.button(f"刪除勾選的 {len(picked)} 篇", type="primary", **W_BTN, key="pdel_btn"):
+            with st.spinner("刪除中…"):
+                try:
+                    delete_passages(ws, {passages[i]["text"] for i in picked})
+                except Exception as e:
+                    st.error(f"刪除失敗：{e}")
+                    st.stop()
+            st.session_state.pop(ck, None)
+            st.session_state["pdel_ctr"] = ctr + 1
+            st.session_state["_flash"] = f"已刪除 {len(picked)} 篇文章"
+            st.rerun()
+        elif not picked:
+            st.caption("目前沒有勾選任何一篇。")
+
+
+def expert_mode():
+    kind = "文意選填" if selected_level == "高中部" else "克漏字"
+    ck = f"_passages_{selected_level}"
+    try:
+        ws = get_active_worksheet(gs_client, st.secrets["sheet_url"], f"{selected_level}_文章")
+        passages = _load_passages(ws, ck)
+    except Exception as e:
+        st.error(f"讀取文章失敗：{e}")
+        return
+
+    st.caption(f"{selected_level}　題型：{kind}" +
+               ("（字庫 A、B、C… 一次列出，選字母作答）" if kind == "文意選填" else "（每格 4 選 1，含文法與時態）"))
+
+    if not passages:
+        st.info("還沒有文章，請到上方「文章管理」新增一篇。")
+        return
+
     idx = st.selectbox(
-        "選擇文章", range(len(passages)), key=f"ex_pick_{selected_level}",
+        "選擇文章", range(len(passages)), key=f"ex_pick_{selected_level}_{len(passages)}",
         format_func=lambda i: f"{passages[i]['title'] or '（無標題）'}（{len(BLANK_RE.findall(passages[i]['text']))} 格）")
     p = passages[idx]
     pid = f"{selected_level}-{p['id']}"
@@ -1061,10 +1128,9 @@ def expert_mode():
             if len(chosen) != len(set(chosen)):
                 st.warning("有字母被重複使用了，再檢查一下。")
             given = [bank[LETTERS.index(pk)] if pk in LETTERS else "" for pk in picks]
-            right = [norm_answer(g) == norm_answer(a) for g, a in zip(given, answers)]
         else:
             given = [pk if pk != "（選擇）" else "" for pk in picks]
-            right = [norm_answer(g) == norm_answer(a) for g, a in zip(given, answers)]
+        right = [norm_answer(g) == norm_answer(a) for g, a in zip(given, answers)]
         st.success(f"答對 {sum(right)} / {len(answers)} 格")
         for i, (ok, g, a) in enumerate(zip(right, given, answers)):
             if not ok:
@@ -1538,6 +1604,9 @@ elif main_menu == "我是拼字王":
                                     st.session_state["srs_ver"] = st.session_state.get("srs_ver", 0) + 1
                                     st.session_state.last_feedback = {"type": "error", "msg": f"答錯囉！正確答案是：`{target_word}`"}
                                 st.rerun()
+
+elif main_menu == "文章管理":
+    article_manager()
 
 st.markdown("<p style='text-align:center; opacity:.5; font-size:12px; margin-top:2rem;'>版權所有，切勿模仿</p>", unsafe_allow_html=True)
 
