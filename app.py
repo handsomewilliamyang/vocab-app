@@ -34,75 +34,79 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    :root { --acc: var(--primary-color, #4a76a8); --line: rgba(128,128,128,.28); --r: 10px; }
-    .block-container { padding-top: 2.2rem; max-width: 1100px; }
+    :root { --acc:#4F6FE0; --acc-soft:rgba(79,111,224,.10); --line:rgba(128,128,128,.22); --r:12px;
+            --sh:0 1px 2px rgba(0,0,0,.05),0 6px 16px rgba(0,0,0,.04); }
+    .stApp, .stApp button, .stApp input, .stApp textarea {
+        font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif; }
+    .stApp { font-size:15px; line-height:1.65; }
+    .block-container { padding-top:2.2rem; max-width:1040px; }
 
-    /* 只保留：卡片／數據卡有淡灰底與細邊框；輸入框與下拉選單用 Streamlit 原生淡灰底，不加框 */
+    /* 卡片：白底細線＋淡陰影 */
     [data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"] {
-        border-radius: 12px !important; border: 1px solid var(--line) !important;
-        background: rgba(128,128,128,.06) !important;
+        border-radius:var(--r) !important; border:1px solid var(--line) !important;
+        background:rgba(128,128,128,.05) !important; box-shadow:var(--sh);
     }
-    [data-testid="stVerticalBlockBorderWrapper"] { padding: 18px !important; }
-    [data-testid="stMetric"] { padding: 12px 18px; }
-    [data-testid="stExpander"], div[data-testid="stForm"] { border-radius: 12px !important; border-color: var(--line) !important; }
+    [data-testid="stVerticalBlockBorderWrapper"] { padding:24px !important; }
+    [data-testid="stMetric"] { padding:12px 16px; }
+    [data-testid="stExpander"], div[data-testid="stForm"] { border-radius:var(--r) !important; border-color:var(--line) !important; }
 
+    /* 按鈕、輸入框 */
     .stButton button, .stFormSubmitButton button, .stDownloadButton button,
-    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { border-radius: var(--r) !important; }
-    .stButton button:not([kind="primary"]), .stDownloadButton button { border: 1px solid var(--line); }
-    .stButton button:hover, .stFormSubmitButton button:hover { border-color: var(--acc); color: var(--acc); }
-    hr { margin: 1.2rem 0 !important; }
+    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { border-radius:10px !important; }
+    .stButton button, .stFormSubmitButton button, .stDownloadButton button {
+        min-height:40px; font-weight:500; transition:border-color .15s, background .15s, color .15s; }
+    .stButton button:not([kind="primary"]), .stDownloadButton button { border:1px solid var(--line); }
+    .stButton button:not([kind="primary"]):hover, .stDownloadButton button:hover {
+        border-color:var(--acc); color:var(--acc); background:var(--acc-soft); }
+    hr { margin:1.2rem 0 !important; opacity:.6; }
 
-
-    div[data-testid="stForm"] [data-testid="stHorizontalBlock"] { align-items: flex-end !important; }
+    div[data-testid="stForm"] [data-testid="stHorizontalBlock"] { align-items:flex-end !important; }
     .stDataFrame [data-testid="stTable"] td {
-        white-space: normal !important; word-wrap: break-word !important; height: auto !important;
-        padding: 12px 0 !important; font-size: clamp(13px,1.6vw,15px) !important;
-    }
+        white-space:normal !important; word-wrap:break-word !important; height:auto !important;
+        padding:12px 0 !important; font-size:15px !important; }
 
-    /* 發音按鈕 */
-    .vsp-wrap { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
-    .vsp-btn {
-        background: transparent; color: inherit; border: 1px solid var(--line); border-radius: var(--r);
-        padding: 6px 14px; font-size: clamp(13px,3.4vw,15px); cursor: pointer;
-    }
-    .vsp-btn:hover { border-color: var(--acc); color: var(--acc); }
+    /* 發音按鈕：膠囊 */
+    .vsp-wrap { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap; }
+    .vsp-btn { background:transparent; color:inherit; border:1px solid var(--line); border-radius:999px;
+        padding:4px 14px; font-size:13px; cursor:pointer; transition:all .15s; }
+    .vsp-btn:hover { border-color:var(--acc); color:var(--acc); background:var(--acc-soft); }
 
-    /* 背誦卡片 */
-    .fc-def { font-size: clamp(20px,5vw,28px); font-weight: 600; text-align: center; margin: 4px 0 14px; }
-    .fc-line { font-size: clamp(15px,2.6vw,18px); margin: 6px 0; line-height: 1.6; }
-    .fc-meta { text-align: right; font-size: 13px; opacity: .6; margin-bottom: 6px; }
-    .fc-pos { font-size: clamp(16px,4.5vw,24px); font-weight: 400; opacity: .6; }
-    .fc-word { text-align: center; font-size: clamp(30px,9vw,48px); font-weight: 700; line-height: 1.2; margin: 4px 0 6px; word-break: break-word; }
-    .fc-line b { opacity: .6; font-weight: 500; margin-right: .5em; }
-
-    .fc-hint { text-align: center; font-family: ui-monospace,Consolas,monospace; font-size: clamp(20px,5vw,28px); letter-spacing: .15em; white-space: pre-wrap; word-break: break-all; margin: 12px 0; opacity: .85; }
+    /* 背誦卡片：單字最大，其餘依序遞減 */
+    .fc-meta { text-align:right; font-size:13px; opacity:.6; margin-bottom:8px; letter-spacing:.04em; }
+    .fc-word { text-align:center; font-size:clamp(32px,9vw,44px); font-weight:700; line-height:1.3; margin:8px 0; word-break:break-word; }
+    .fc-pos { font-size:clamp(15px,4vw,18px); font-weight:400; opacity:.55; }
+    .fc-def { font-size:clamp(20px,5vw,24px); font-weight:600; text-align:center; margin:8px 0 16px; line-height:1.4; }
+    .fc-line { font-size:15px; margin:8px 0; line-height:1.65; }
+    .fc-line b { color:var(--acc); font-weight:600; margin-right:.6em; font-size:13px; }
+    .fc-hint { text-align:center; font-family:ui-monospace,Consolas,monospace; font-size:clamp(20px,5vw,24px);
+        letter-spacing:.15em; white-space:pre-wrap; word-break:break-all; margin:16px 0; opacity:.85; }
 
     /* 隱藏 Streamlit Cloud 右下角的徽章與頭像（平台加的，不保證每個版本都藏得掉） */
     [class*="viewerBadge"], [class*="_profileContainer_"], [class*="_profilePreview"],
-    [data-testid="appCreatorAvatar"], [data-testid="manage-app-button"], .stDeployButton { display: none !important; }
+    [data-testid="appCreatorAvatar"], [data-testid="manage-app-button"], .stDeployButton { display:none !important; }
 
-    /* 標題與數據卡：整體縮小、更精簡 */
-    h1, h2, h3, [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { line-height: 1.5 !important; overflow: visible !important; }
-    [data-testid="stMetricValue"] > div, [data-testid="stMetricLabel"] > div { overflow: visible !important; text-overflow: clip !important; }
-    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { line-height: 1.5 !important; }
-    h1 { font-size: clamp(26px,6.5vw,36px) !important; padding: .2rem 0 .4rem !important; }
-    h3 { font-size: clamp(18px,4.2vw,22px) !important; }
-    [data-testid="stMetricValue"] { font-size: clamp(20px,4.6vw,28px) !important; }
-    [data-testid="stMetricLabel"] { font-size: 13px !important; opacity: .75; }
+    /* 標題層級 */
+    h1, h2, h3, [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { line-height:1.4 !important; overflow:visible !important; }
+    [data-testid="stMetricValue"] > div, [data-testid="stMetricLabel"] > div { overflow:visible !important; text-overflow:clip !important; }
+    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { line-height:1.5 !important; }
+    h1 { font-size:clamp(26px,6.5vw,32px) !important; font-weight:700 !important; padding:.2rem 0 .6rem !important; }
+    h3 { font-size:18px !important; }
+    [data-testid="stMetricValue"] { font-size:clamp(20px,4.6vw,24px) !important; font-weight:600 !important; }
+    [data-testid="stMetricLabel"] { font-size:13px !important; opacity:.7; }
 
     /* 手機 */
-    @media (max-width: 640px) {
-        .block-container { padding: 2.5rem .8rem 1rem !important; }
-        [data-testid="stVerticalBlock"] { gap: .7rem !important; }
-        [data-testid="stMetric"] { padding: 8px 14px !important; }
-        [data-testid="stVerticalBlockBorderWrapper"] { padding: 12px !important; }
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) { flex-wrap: nowrap !important; gap: .3rem !important; }
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) > div { min-width: 0 !important; }
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) button { padding: 0 4px !important; font-size: 13px !important; }
+    @media (max-width:640px) {
+        .block-container { padding:2.5rem .8rem 1rem !important; }
+        [data-testid="stVerticalBlock"] { gap:.75rem !important; }
+        [data-testid="stMetric"] { padding:8px 12px !important; }
+        [data-testid="stVerticalBlockBorderWrapper"] { padding:16px !important; }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) { flex-wrap:nowrap !important; gap:.3rem !important; }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) > div { min-width:0 !important; }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) button { padding:0 4px !important; font-size:13px !important; }
     }
-    @media (pointer: coarse) {
-        .stButton button, .stFormSubmitButton button { min-height: 46px; }
-        [data-baseweb="select"] > div, .stTextInput input { min-height: 44px; }
+    @media (pointer:coarse) {
+        .stButton button, .stFormSubmitButton button { min-height:46px; }
+        [data-baseweb="select"] > div, .stTextInput input { min-height:44px; }
     }
     </style>
 """, unsafe_allow_html=True)
