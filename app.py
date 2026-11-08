@@ -902,7 +902,7 @@ def _load_passages(ws, cache_key):
             ws.update(values=[["id", "title", "text"]], range_name="A1")
         st.session_state[cache_key] = [
             {"id": r[0], "title": r[1], "text": r[2]}
-            for r in vals[1:] if len(r) >= 3 and r[2].strip()
+            for r in vals[1:] if len(r) >= 3 and BLANK_RE.search(r[2])
         ]
     return st.session_state[cache_key]
 
