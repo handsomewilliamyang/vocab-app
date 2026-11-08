@@ -919,10 +919,15 @@ def _load_passages(ws, cache_key):
         vals = ws.get_all_values()
         if not vals:
             ws.update(values=[["id", "title", "text"]], range_name="A1")
-        st.session_state[cache_key] = [
-            {"id": r[0], "title": r[1], "text": r[2]}
-            for r in vals[1:] if len(r) >= 3 and BLANK_RE.search(r[2])
-        ]
+        out = []
+        for n, r in enumerate(vals):
+            hit = [c for c in r if BLANK_RE.search(c)]       # 不管文章落在哪一欄，只要含 [[ ]] 就算
+            if hit:
+                out.append({"id": (r[0].strip() if r and r[0].strip() and r[0] is not hit[0] else f"r{n + 1}"),
+                            "title": (r[1] if len(r) > 1 and r[1] is not hit[0] else ""),
+                            "text": hit[0]})
+        st.session_state[cache_key] = out
+        st.session_state[cache_key + "_raw"] = vals
     return st.session_state[cache_key]
 
 
@@ -986,6 +991,11 @@ def expert_mode():
 
     if not passages:
         st.info("還沒有文章，請先在上方「新增文章」貼一篇。")
+        raw = st.session_state.get(ck + "_raw", [])
+        if len(raw) > 1:        # 試算表有資料卻讀不到文章 → 把看到的內容列出來方便檢查
+            st.warning(f"試算表「{selected_level}_文章」讀到 {len(raw)} 列，但沒有任何一列含有 [[ ]]。前 3 列內容：")
+            for r in raw[:3]:
+                st.code(" | ".join(c[:40] for c in r) or "（空白列）", language=None)
         return
 
     idx = st.selectbox(
