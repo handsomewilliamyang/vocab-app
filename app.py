@@ -879,7 +879,15 @@ if _pend and ((main_menu != "背誦單字" and not _in_game) or any(k[0] != curr
 # ---------------------------------------------------------------------
 BLANK_RE = re.compile(r'\[\[(.+?)\]\]')
 LETTERS = [chr(65 + i) for i in range(26)]
-HS_TYPES = ["藝術", "歷史", "財經", "醫療", "科學", "生活"]      # 高中部文章類型（同時當作文章標題）
+LEVEL_TYPES = {      # 每個級別的文章類型（同時當作文章標題；每次產生每種類型各一篇）
+    "國中部": ["藝術", "歷史", "財經", "醫療", "科學", "生活"],
+    "高中部": ["藝術", "歷史", "財經", "醫療", "科學", "生活"],
+    "TOEIC": ["購物", "公司", "旅遊", "文化", "財經", "退貨", "訂票", "退票", "改期"],
+}
+
+
+def _types():
+    return LEVEL_TYPES[selected_level]
 
 
 def _preview(p, n=24):
@@ -887,35 +895,41 @@ def _preview(p, n=24):
 
 
 def article_prompt_text(level, words, n_blank, n_chars):
+    types = LEVEL_TYPES[level]
+    n = len(types)
+    tlist = "、".join(types)
+    fmt = (f"輸出格式：每篇文章的第一行單獨寫該篇的類型，用【】包起來（例如：【{types[0]}】），第二行開始才是文章；篇與篇之間空一行。"
+           "不要編號、不要粗體、不要其他說明、不要程式碼區塊，也不要在文章後面附答案。")
     if level == "高中部":
-        return f"""請幫我寫 6 篇英文短文，給台灣「高中部」程度的學生做「文意選填」練習。6 篇的類型依序為：藝術、歷史、財經、醫療、科學、生活，每種類型各一篇。
+        return f"""請幫我寫 {n} 篇英文短文，給台灣「高中部」程度的學生做「文意選填」練習。{n} 篇的類型依序為：{tlist}，每種類型各一篇。
 
 要求：
 1. 每篇長度約 {n_chars} 字，內容自然、通順、像母語者寫的，主題要符合該類型（「生活」類是日常或貼近生活的情境）。
-2. 每篇從下方單字清單中選 {n_blank} 個放進文章，用法必須符合清單上的詞性與中文意思。同一篇內每個單字只用一次；6 篇之間也盡量不要重複使用同一個單字（清單單字不夠時才可以跨篇重複）。
+2. 每篇從下方單字清單中選 {n_blank} 個放進文章，用法必須符合清單上的詞性與中文意思。同一篇內每個單字只用一次；{n} 篇之間也盡量不要重複使用同一個單字（清單單字不夠時才可以跨篇重複）。
 3. 請挑適合該類型主題的單字放進去，不要硬塞。
 4. 被選中的單字用兩層中括號包起來，例如：I [[decided]] to visit her.
 5. 括號裡必須是單字「在文章中實際出現的樣子」（含 -ed、-ing、複數等變化），括號外不要再重複這個字。
 6. 每個空格都要有足夠的上下文線索，讓答案是唯一合理的；空格不要放得太近。
-7. 輸出格式：每篇文章的第一行單獨寫該篇的類型，用【】包起來（例如：【藝術】），第二行開始才是文章；篇與篇之間空一行。不要編號、不要粗體、不要其他說明、不要程式碼區塊，也不要在文章後面附答案。
+7. {fmt}
 8. 除了 [[ ]] 與【類型】之外，不要使用其他括號標記。
 
 單字清單（單字 | 詞性 | 中文意思）：
 {words}"""
     n_vocab = max(1, round(n_blank * 0.6))
     n_gram = max(1, n_blank - n_vocab)
-    topic = "主題以職場、商務情境為主（例如電子郵件、公告、備忘錄）。" if level == "TOEIC" else "主題日常或貼近生活。"
-    return f"""請幫我寫一篇英文短文，給台灣「{level}」程度的學生做「克漏字」練習（每格四選一）。
+    topic = ("主題以職場、商務與客服情境為主（例如電子郵件、公告、客服對話、通知信），並符合該篇的類型。"
+             if level == "TOEIC" else "主題要符合該篇的類型（「生活」類是日常或貼近生活的情境）。")
+    return f"""請幫我寫 {n} 篇英文短文，給台灣「{level}」程度的學生做「克漏字」練習（每格四選一）。{n} 篇的類型依序為：{tlist}，每種類型各一篇。
 
 要求：
-1. 長度約 {n_chars} 字，內容自然、通順、像母語者寫的，{topic}
-2. 全文共 {n_vocab + n_gram} 個空格，分成兩種：
-   (A) 單字題 {n_vocab} 個：從下方單字清單選字，每個字只用一次，寫成 [[單字]]，括號裡是它在文章中實際出現的樣子（含 -ed、-ing、複數等變化）。
+1. 每篇長度約 {n_chars} 字，內容自然、通順、像母語者寫的，{topic}
+2. 每篇共 {n_vocab + n_gram} 個空格，分成兩種：
+   (A) 單字題 {n_vocab} 個：從下方單字清單選字，寫成 [[單字]]，括號裡是它在文章中實際出現的樣子（含 -ed、-ing、複數等變化）。同一篇內每個單字只用一次；{n} 篇之間也盡量不要重複（清單單字不夠時才可以跨篇重複）。請挑適合該類型主題的單字，不要硬塞。
    (B) 文法／時態題 {n_gram} 個：考時態（過去式、現在完成式、未來式、進行式等）、主詞動詞一致、不定詞與動名詞、被動語態、比較級、連接詞、介系詞等，難度符合「{level}」。寫成 [[正確答案|錯誤選項1|錯誤選項2|錯誤選項3]]，共 4 個選項，第一個一定是正確答案。錯誤選項要是同一個字的其他變化或常見的混淆用法（例如 [[went|go|going|gone]]），而且依上下文只有正確答案成立。
 3. 兩種空格要平均穿插在全文，不要集中在某一段。
 4. 每個空格都要有足夠的上下文線索（時間副詞、主詞、前後文），讓答案是唯一合理的；空格不要放得太近。
-5. 只輸出文章本身：不要標題、不要編號、不要粗體、不要說明、不要程式碼區塊，也不要在文章後面附答案。
-6. 除了 [[ ]] 與選項之間的 | 之外，不要使用其他括號或 | 符號。
+5. {fmt}
+6. 除了 [[ ]]、選項之間的 | 與【類型】之外，不要使用其他括號或 | 符號。
 
 單字清單（單字 | 詞性 | 中文意思）：
 {words}"""
@@ -978,7 +992,7 @@ def article_manager():
         _sem, _unit = scope_picker(df_vocab, "exp", "選擇學期/篇章：", "選擇單元/課次：")
         _sub = scoped(df_vocab, _sem, _unit)
         _n1, _n2 = st.columns(2)
-        _nb = _n1.number_input("每篇挖空數量" if selected_level == "高中部" else "挖空數量", min_value=5, max_value=20, value=10, key="ex_nb")
+        _nb = _n1.number_input("每篇挖空數量", min_value=5, max_value=20, value=10, key="ex_nb")
         _nc = _n2.number_input("文章字數", min_value=80, max_value=400, value=150, step=10, key="ex_nc")
         if _sub.empty:
             st.caption("這個範圍沒有單字。")
@@ -987,26 +1001,21 @@ def article_manager():
                 f"{w} | {p} | {d}" for w, p, d in zip(_sub['word'], _sub['part_of_speech'], _sub['definition'])))
             if len(_lines) > 80:
                 st.caption(f"目前範圍有 {len(_lines)} 筆，清單偏長，建議選到單一課次。")
-            if selected_level == "高中部" and len(_lines) < 6 * _nb:
-                st.caption(f"提醒：6 篇各 {_nb} 格共需 {6 * _nb} 個單字，目前範圍只有 {len(_lines)} 個，AI 會跨篇重複使用，建議把範圍選大一點。")
-            st.caption("點程式碼框右上角複製 → 貼給 AI（會一次產生 6 篇）→ 整段貼到下面的「文章」框，會自動拆成 6 篇。"
-                       if selected_level == "高中部" else "點程式碼框右上角複製 → 貼給 AI → 把 AI 的文章貼到下面的「文章」框。")
+            _nt = len(_types())
+            if len(_lines) < _nt * _nb:
+                st.caption(f"提醒：{_nt} 篇各 {_nb} 格共需 {_nt * _nb} 個單字，目前範圍只有 {len(_lines)} 個，AI 會跨篇重複使用，建議把範圍選大一點。")
+            st.caption(f"點程式碼框右上角複製 → 貼給 AI（會一次產生 {_nt} 篇）→ 整段貼到下面的「文章」框，會自動拆成 {_nt} 篇。")
             st.code(article_prompt_text(selected_level, "\n".join(_lines), _nb, _nc), language=None)
         st.markdown("---")
-        if selected_level == "高中部":
-            t = st.selectbox("文章類型（只貼單篇時，會用這個當標題）", HS_TYPES, key="ex_type")
-        else:
-            t = st.text_input("標題", key="ex_title")
-        x = st.text_area("文章（單字題用 [[單字]]；文法題用 [[答案|選項2|選項3|選項4]]）"
-                         + ("　高中部可整段貼上 6 篇（每篇開頭有【類型】）" if selected_level == "高中部" else ""),
+        t = st.selectbox("文章類型（只貼單篇時，會用這個當標題）", _types(), key=f"ex_save_type_{selected_level}")
+        x = st.text_area("文章（單字題用 [[單字]]；文法題用 [[答案|選項2|選項3|選項4]]）　可整段貼上多篇（每篇開頭有【類型】）",
                          key="ex_text", height=200,
-                         placeholder="【藝術】\nLast week I [[decided]] to visit a museum. ..." if selected_level == "高中部"
-                         else "Last week I [[decided]] to visit my grandmother. She [[was|is|were|be]] happy. ...")
+                         placeholder=f"【{_types()[0]}】\nLast week I [[decided]] to visit a museum. ...")
         if st.button("儲存文章", **W_BTN, key="ex_save"):
             items = []
             marks = re.split(r"^[ \t]*【(.+?)】[ \t]*$", x, flags=re.M)      # [前言, 類型1, 內容1, 類型2, 內容2 …]
             for k in range(1, len(marks) - 1, 2):
-                if marks[k].strip() in HS_TYPES and marks[k + 1].strip():
+                if marks[k].strip() in _types() and marks[k + 1].strip():
                     items.append((marks[k].strip(), marks[k + 1].strip()))
             if not items:
                 items = [(t.strip(), x.strip())]
@@ -1092,7 +1101,7 @@ def expert_mode():
         return
 
     types = sorted(dict.fromkeys(q["title"] or "（無標題）" for q in passages),
-                   key=lambda v: HS_TYPES.index(v) if v in HS_TYPES else 99)
+                   key=lambda v: _types().index(v) if v in _types() else 99)
     tsel = st.selectbox("文章類型", ["全部"] + types, key=f"ex_type_{selected_level}")
     view = passages if tsel == "全部" else [q for q in passages if (q["title"] or "（無標題）") == tsel]
     idx = st.selectbox(
