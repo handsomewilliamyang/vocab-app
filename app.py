@@ -33,82 +33,129 @@ st.set_page_config(
 )
 
 st.markdown("""
-    <style>
-    :root { --acc:#4F6FE0; --acc-soft:rgba(79,111,224,.10); --line:rgba(128,128,128,.22); --r:12px;
-            --sh:0 1px 2px rgba(0,0,0,.05),0 6px 16px rgba(0,0,0,.04); }
-    .stApp, .stApp button, .stApp input, .stApp textarea {
-        font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif; }
-    .stApp { font-size:15px; line-height:1.65; }
-    .block-container { padding-top:2.2rem; max-width:1040px; }
+<style>
+:root {
+  --acc:#4F6FE0; --acc-hover:#3F5BC4; --acc-soft:rgba(79,111,224,.12);
+  --ok:#2FA37A;  --ok-soft:rgba(47,163,122,.14);
+  --bad:#E0675F; --bad-soft:rgba(224,103,95,.14);
+  --line:rgba(128,128,128,.26); --card:rgba(128,128,128,.06);
+  --r:14px; --r-sm:10px;
+  --sh:0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.05);
+}
 
-    /* 卡片：白底細線＋淡陰影 */
-    [data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"] {
-        border-radius:var(--r) !important; border:1px solid var(--line) !important;
-        background:rgba(128,128,128,.05) !important; box-shadow:var(--sh);
-    }
-    [data-testid="stVerticalBlockBorderWrapper"] { padding:24px !important; }
-    [data-testid="stMetric"] { padding:12px 16px; }
-    [data-testid="stExpander"], div[data-testid="stForm"] { border-radius:var(--r) !important; border-color:var(--line) !important; }
+/* ---------- 基礎 ---------- */
+.stApp, .stApp button, .stApp input, .stApp textarea {
+  font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif; }
+.stApp { font-size:16px; line-height:1.65; }
+.block-container, [data-testid="stMainBlockContainer"] { padding-top:3.2rem; max-width:1040px; }
+hr { margin:1.2rem 0 !important; opacity:.5; }
+h1 { font-size:clamp(26px,6.5vw,30px) !important; font-weight:700 !important; line-height:1.4 !important; padding:.2rem 0 .4rem !important; }
+h3 { font-size:18px !important; line-height:1.4 !important; }
+[data-testid="stMetricValue"] { font-size:clamp(20px,4.6vw,24px) !important; font-weight:600 !important; line-height:1.4 !important; overflow:visible !important; }
+[data-testid="stMetricLabel"] { font-size:13px !important; opacity:.7; }
+[data-testid="stMetricValue"] > div, [data-testid="stMetricLabel"] > div { overflow:visible !important; text-overflow:clip !important; }
 
-    /* 按鈕、輸入框 */
-    .stButton button, .stFormSubmitButton button, .stDownloadButton button,
-    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { border-radius:10px !important; }
-    .stButton button, .stFormSubmitButton button, .stDownloadButton button {
-        min-height:40px; font-weight:500; transition:border-color .15s, background .15s, color .15s; }
-    .stButton button:not([kind="primary"]), .stDownloadButton button { border:1px solid var(--line); }
-    .stButton button:not([kind="primary"]):hover, .stDownloadButton button:hover {
-        border-color:var(--acc); color:var(--acc); background:var(--acc-soft); }
-    hr { margin:1.2rem 0 !important; opacity:.6; }
+/* ---------- 卡片（巢狀卡片不再疊兩層邊框與陰影） ---------- */
+[data-testid="stVerticalBlockBorderWrapper"], [data-testid="stMetric"] {
+  border-radius:var(--r) !important; border:1px solid var(--line) !important;
+  background:var(--card) !important; box-shadow:var(--sh); }
+[data-testid="stVerticalBlockBorderWrapper"] { padding:20px !important; }
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlockBorderWrapper"] {
+  box-shadow:none; background:transparent !important; padding:14px !important; }
+[data-testid="stMetric"] { padding:12px 16px; }
+[data-testid="stExpander"], div[data-testid="stForm"], div[data-testid="stAlert"] {
+  border-radius:var(--r) !important; border-color:var(--line) !important; }
 
-    div[data-testid="stForm"] [data-testid="stHorizontalBlock"] { align-items:flex-end !important; }
-    .stDataFrame [data-testid="stTable"] td {
-        white-space:normal !important; word-wrap:break-word !important; height:auto !important;
-        padding:12px 0 !important; font-size:15px !important; }
+/* ---------- 按鈕 ---------- */
+.stButton button, .stFormSubmitButton button, .stDownloadButton button {
+  border-radius:var(--r-sm) !important; min-height:44px; font-weight:500;
+  transition:border-color .15s, background .15s, color .15s, transform .05s; }
+.stButton button:active, .stFormSubmitButton button:active { transform:translateY(1px); }
+.stButton button:not([kind="primary"]), .stDownloadButton button { border:1px solid var(--line); }
+.stButton button:not([kind="primary"]):hover, .stDownloadButton button:hover {
+  border-color:var(--acc); color:var(--acc); background:var(--acc-soft); }
+/* 主要按鈕統一用主色（原本會吃到 Streamlit 預設的紅色） */
+.stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"],
+[data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] {
+  background:var(--acc) !important; border:1px solid var(--acc) !important; color:#fff !important; }
+.stButton button[kind="primary"] p, .stFormSubmitButton button[kind="primary"] p,
+[data-testid="stBaseButton-primary"] p, [data-testid="stBaseButton-primaryFormSubmit"] p { color:#fff !important; }
+.stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover,
+[data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {
+  background:var(--acc-hover) !important; border-color:var(--acc-hover) !important; }
+.stButton button:focus-visible, .stFormSubmitButton button:focus-visible { outline:none !important; box-shadow:0 0 0 3px var(--acc-soft) !important; }
 
-    /* 發音按鈕：膠囊 */
-    .vsp-wrap { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap; }
-    .vsp-btn { background:transparent; color:inherit; border:1px solid var(--line); border-radius:999px;
-        padding:4px 14px; font-size:13px; cursor:pointer; transition:all .15s; }
-    .vsp-btn:hover { border-color:var(--acc); color:var(--acc); background:var(--acc-soft); }
+/* 背誦：記得（綠）／不記得（紅）／前後切換（淡） */
+.st-key-btn_know button { min-height:56px; font-size:17px; background:var(--ok) !important; border:1px solid var(--ok) !important; color:#fff !important; }
+.st-key-btn_know button p { color:#fff !important; }
+.st-key-btn_know button:hover { filter:brightness(1.06); background:var(--ok) !important; color:#fff !important; }
+.st-key-btn_forget button { min-height:56px; font-size:17px; background:var(--bad-soft) !important; border:1px solid var(--bad) !important; color:var(--bad) !important; }
+.st-key-btn_forget button p { color:var(--bad) !important; }
+.st-key-btn_forget button:hover { background:var(--bad-soft) !important; filter:brightness(1.1); }
+.st-key-btn_prev button, .st-key-btn_next button { background:transparent !important; border-color:transparent !important; opacity:.85; font-size:14px; }
 
-    /* 背誦卡片：單字最大，其餘依序遞減 */
-    .fc-meta { text-align:right; font-size:13px; opacity:.6; margin-bottom:8px; letter-spacing:.04em; }
-    .fc-word { text-align:center; font-size:clamp(32px,9vw,44px); font-weight:700; line-height:1.3; margin:8px 0; word-break:break-word; }
-    .fc-pos { font-size:clamp(15px,4vw,18px); font-weight:400; opacity:.55; }
-    .fc-def { font-size:clamp(20px,5vw,24px); font-weight:600; text-align:center; margin:8px 0 16px; line-height:1.4; }
-    .fc-line { font-size:15px; margin:8px 0; line-height:1.65; }
-    .fc-line b { color:var(--acc); font-weight:600; margin-right:.6em; font-size:13px; }
-    .fc-hint { text-align:center; font-family:ui-monospace,Consolas,monospace; font-size:clamp(20px,5vw,24px);
-        letter-spacing:.15em; white-space:pre-wrap; word-break:break-all; margin:16px 0; opacity:.85; }
+/* 這些橫列在手機也維持並排（Streamlit 預設會直向堆疊） */
+.st-key-fc_actions [data-testid="stHorizontalBlock"], [class*="st-key-quiz_form"] [data-testid="stHorizontalBlock"] {
+  flex-direction:row !important; flex-wrap:nowrap !important; gap:.5rem !important; align-items:flex-end; }
+.st-key-fc_actions [data-testid="stColumn"], .st-key-fc_actions [data-testid="column"],
+[class*="st-key-quiz_form"] [data-testid="stColumn"], [class*="st-key-quiz_form"] [data-testid="column"] { min-width:0 !important; }
 
-    /* 隱藏 Streamlit Cloud 右下角的徽章與頭像（平台加的，不保證每個版本都藏得掉） */
-    [class*="viewerBadge"], [class*="_profileContainer_"], [class*="_profilePreview"],
-    [data-testid="appCreatorAvatar"], [data-testid="manage-app-button"], .stDeployButton { display:none !important; }
+/* ---------- 輸入框 ---------- */
+.stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { border-radius:var(--r-sm) !important; line-height:1.5 !important; }
+div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within, [data-baseweb="select"]:focus-within > div {
+  border-color:var(--acc) !important; box-shadow:0 0 0 3px var(--acc-soft); }
 
-    /* 標題層級 */
-    h1, h2, h3, [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { line-height:1.4 !important; overflow:visible !important; }
-    [data-testid="stMetricValue"] > div, [data-testid="stMetricLabel"] > div { overflow:visible !important; text-overflow:clip !important; }
-    .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div { line-height:1.5 !important; }
-    h1 { font-size:clamp(26px,6.5vw,32px) !important; font-weight:700 !important; padding:.2rem 0 .6rem !important; }
-    h3 { font-size:18px !important; }
-    [data-testid="stMetricValue"] { font-size:clamp(20px,4.6vw,24px) !important; font-weight:600 !important; }
-    [data-testid="stMetricLabel"] { font-size:13px !important; opacity:.7; }
+/* ---------- 頂部選單：功能為主、級別為輔；5 項放不下時可左右滑 ---------- */
+.st-key-menu_sel, .st-key-level_sel { overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+.st-key-menu_sel::-webkit-scrollbar, .st-key-level_sel::-webkit-scrollbar { display:none; }
+.st-key-menu_sel > div, .st-key-level_sel > div { min-width:max-content; }
+.st-key-menu_sel button { min-height:46px; white-space:nowrap; font-weight:500; }
+.st-key-level_sel button { min-height:34px; font-size:13px !important; white-space:nowrap; opacity:.9; }
 
-    /* 手機 */
-    @media (max-width:640px) {
-        .block-container { padding:2.5rem .8rem 1rem !important; }
-        [data-testid="stVerticalBlock"] { gap:.75rem !important; }
-        [data-testid="stMetric"] { padding:8px 12px !important; }
-        [data-testid="stVerticalBlockBorderWrapper"] { padding:16px !important; }
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) { flex-wrap:nowrap !important; gap:.3rem !important; }
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) > div { min-width:0 !important; }
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) button { padding:0 4px !important; font-size:13px !important; }
-    }
-    @media (pointer:coarse) {
-        .stButton button, .stFormSubmitButton button { min-height:46px; }
-        [data-baseweb="select"] > div, .stTextInput input { min-height:44px; }
-    }
-    </style>
+/* ---------- 單字卡 ---------- */
+.fc-meta { display:flex; justify-content:space-between; align-items:center; font-size:13px; opacity:.8; margin-bottom:6px; }
+.fc-dots { display:inline-flex; gap:5px; }
+.fc-dot { width:8px; height:8px; border-radius:50%; background:var(--line); }
+.fc-dot.on { background:var(--acc); }
+.fc-word { text-align:center; font-size:clamp(34px,10vw,48px); font-weight:700; line-height:1.25;
+  margin:10px 0 4px; word-break:break-word; letter-spacing:-.01em; }
+.fc-pos { display:inline-block; vertical-align:middle; margin-left:8px; padding:2px 10px; border-radius:999px;
+  font-size:13px; font-weight:500; background:var(--acc-soft); color:color-mix(in srgb, var(--acc) 65%, currentColor); }
+.fc-def { text-align:center; font-size:clamp(20px,5.2vw,26px); font-weight:600; line-height:1.4;
+  background:var(--acc-soft); border-radius:12px; padding:14px 16px; margin:8px 0 14px; }
+.fc-line { font-size:16px; line-height:1.7; margin:10px 0; }
+.fc-line:has(> b) { padding-left:12px; border-left:3px solid var(--line); }
+.fc-line b { display:block; font-size:12px; font-weight:600; letter-spacing:.06em; margin-bottom:2px;
+  color:color-mix(in srgb, var(--acc) 65%, currentColor); }
+
+/* 發音按鈕：膠囊 */
+.vsp-wrap { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+.vsp-btn { background:transparent; color:inherit; border:1px solid var(--line); border-radius:999px;
+  padding:5px 14px; font-size:13px; cursor:pointer; transition:all .15s; }
+.vsp-btn:hover { border-color:var(--acc); background:var(--acc-soft); }
+.vsp-btn:active { transform:scale(.96); }
+
+/* ---------- 拼字提示：一個字母一個底線格 ---------- */
+.fc-hint { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin:18px 0; }
+.slot { width:clamp(22px,6.5vw,30px); height:clamp(30px,8vw,38px); border-bottom:3px solid var(--acc); border-radius:2px; }
+.slot-gap { width:14px; }
+
+/* 隱藏 Streamlit Cloud 右下角的徽章與頭像（平台加的，不保證每個版本都藏得掉） */
+[class*="viewerBadge"], [class*="_profileContainer_"], [class*="_profilePreview"],
+[data-testid="appCreatorAvatar"], [data-testid="manage-app-button"], .stDeployButton { display:none !important; }
+
+/* ---------- 手機與觸控 ---------- */
+@media (max-width:640px) {
+  .block-container, [data-testid="stMainBlockContainer"] { padding:3rem .8rem 1rem !important; }
+  [data-testid="stVerticalBlock"] { gap:.75rem !important; }
+  [data-testid="stVerticalBlockBorderWrapper"] { padding:16px !important; }
+  [data-testid="stMetric"] { padding:8px 12px !important; }
+  .st-key-menu_sel button { padding:0 12px !important; font-size:14px !important; }
+}
+@media (min-width:900px) { .stApp { font-size:17px; } .fc-line { font-size:17px; } }
+@media (pointer:coarse) { [data-baseweb="select"] > div, .stTextInput input { min-height:44px; } }
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
@@ -181,14 +228,17 @@ st.title("📚 我愛背單字")
 
 MENUS = ["背誦單字", "我是拼字王", "新增單字", "字彙管理", "文章管理"]
 LEVELS = ["國中部", "高中部", "TOEIC"]
+SHORT_LABEL = {"我是拼字王": "拼字王"}     # 手機上 5 個選項才放得下；選項的實際值不變
 
 
 def top_choice(label, options, key):
     """頁面頂端的橫向選單；舊版 Streamlit 沒有 segmented_control 就退回橫向單選。"""
+    fmt = lambda v: SHORT_LABEL.get(v, v)
     if hasattr(st, "segmented_control"):
-        v = st.segmented_control(label, options, default=options[0], key=key, label_visibility="collapsed")
+        v = st.segmented_control(label, options, default=options[0], key=key, label_visibility="collapsed",
+                                 format_func=fmt, **_wide(st.segmented_control))
         return v if v in options else st.session_state.get(f"_last_{key}", options[0])   # 點到已選的那個不會變成空值
-    return st.radio(label, options, horizontal=True, key=key, label_visibility="collapsed")
+    return st.radio(label, options, horizontal=True, key=key, label_visibility="collapsed", format_func=fmt)
 
 
 main_menu = top_choice("功能", MENUS, "menu_sel")
@@ -675,6 +725,16 @@ def scope_picker(df, prefix, sem_label, unit_label):
 def esc(x):
     """放進 HTML 之前先跳脫，避免單字或例句裡有 < > & 把畫面弄壞。"""
     return html.escape(str(x))
+
+
+def hint_html(word):
+    """拼字提示：每個字母一個底線格，空格與符號留成空隙。"""
+    return "".join("<span class='slot'></span>" if c.isalpha() else "<span class='slot-gap'></span>" for c in word)
+
+
+def stage_dots(stage):
+    """熟練度 5 顆圓點，已達成的用主色。"""
+    return "".join(f"<span class='fc-dot{' on' if i < stage else ''}'></span>" for i in range(5))
 
 
 def mask_word(text, word, repl="____"):
@@ -1462,12 +1522,12 @@ elif main_menu == "背誦單字":
             st.progress(mastered / total_count, text=f"已熟練（4 級以上）{mastered} / {total_count}")
             with st.container(border=True):
                 st.markdown(
-                    f"<div class='fc-meta'>第 {st.session_state.flashcard_index + 1} / {total_count} 張　熟練度 {'●' * stage}{'○' * (5 - stage)}</div>",
+                    f"<div class='fc-meta'><span>第 {st.session_state.flashcard_index + 1} / {total_count} 張</span>"
+                    f"<span class='fc-dots' title='熟練度'>{stage_dots(stage)}</span></div>",
                     unsafe_allow_html=True
                 )
                 pos_disp = str(row.get('part_of_speech', '')).strip().rstrip('.')
-                pos_html = (f" <span class='fc-pos'>({esc(pos_disp)})</span>"
-                            if pos_disp else "")
+                pos_html = f"<span class='fc-pos'>{esc(pos_disp)}</span>" if pos_disp else ""
                 st.markdown(
                     f"<div class='fc-word'>{esc(row['word'])}{pos_html}</div>",
                     unsafe_allow_html=True
@@ -1485,23 +1545,25 @@ elif main_menu == "背誦單字":
                     if row.get('collocations'):
                         st.markdown(f"<div class='fc-line'><b>搭配詞</b>{esc(row.get('collocations'))}</div>", unsafe_allow_html=True)
                 else:
-                    if st.button("顯示答案", **W_BTN):
+                    if st.button("顯示答案", type="primary", **W_BTN):
                         st.session_state.flash_revealed = True
                         st.rerun()
 
-            b1, b2, b3, b4 = st.columns(4)
-            if b1.button("‹ 上一個", **W_BTN):
-                flash_move(-1)
-                st.rerun()
-            if b2.button("不記得", **W_BTN):
-                flash_mark(0)
-                st.rerun()
-            if b3.button("記得", **W_BTN):
-                flash_mark(min(stage + 1, 5))
-                st.rerun()
-            if b4.button("下一個 ›", **W_BTN):
-                flash_move(1)
-                st.rerun()
+            with st.container(key="fc_actions"):
+                k1, k2 = st.columns(2)
+                if k1.button("不記得", key="btn_forget", **W_BTN):
+                    flash_mark(0)
+                    st.rerun()
+                if k2.button("記得", key="btn_know", **W_BTN):
+                    flash_mark(min(stage + 1, 5))
+                    st.rerun()
+                n1, n2 = st.columns(2)
+                if n1.button("‹ 上一個", key="btn_prev", **W_BTN):
+                    flash_move(-1)
+                    st.rerun()
+                if n2.button("下一個 ›", key="btn_next", **W_BTN):
+                    flash_move(1)
+                    st.rerun()
             st.caption("「不記得」熟練度歸零；「記得」+1（最高 5）。出題順序選「不熟的優先」時，熟練度低的會先出現。")
 
 # =====================================================================
@@ -1590,7 +1652,6 @@ elif main_menu == "我是拼字王":
                 target_word = str(current_item['word']).strip()
                 target_def = str(current_item['definition']).strip() or "(尚無中文釋義)"
                 target_adv_def = str(current_item.get('advanced_sentence', '')).strip()
-                hint_masked = "".join([" _ " if c.isalpha() else "   " for c in target_word])
 
                 total_q_count = len(st.session_state.game_queue)
                 current_q_num = st.session_state.game_index + 1
@@ -1610,7 +1671,7 @@ elif main_menu == "我是拼字王":
                         )
                         speech_buttons(mask_word(target_adv_def, target_word, repl="blank"))
 
-                    st.markdown(f"<div class='fc-hint'>{esc(hint_masked)}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='fc-hint'>{hint_html(target_word)}</div>", unsafe_allow_html=True)
 
                     if st.session_state.get("last_feedback"):
                         fb = st.session_state.last_feedback
